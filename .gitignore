@@ -1,0 +1,17 @@
+# Temporary files
+tmp/
+*.pyc
+__pycache__/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+venv/
+*.egg-info/
+dist/
+build/
