@@ -1,0 +1,22 @@
+{
+  "can_proceed": true,
+  "unfillable_fields": [],
+  "fillable_suggestions": [
+    {
+      "field": "monthly_data[1].chiller_supply_temp",
+      "original_value": null,
+      "suggested_value": 7.5,
+      "method": "linear_interpolation",
+      "confidence": "high",
+      "reasoning": "基于1月(7.0)和3月(8.0)线性插值"
+    },
+    {
+      "field": "monthly_data[1].cooling_tower_outlet_temp",
+      "original_value": null,
+      "suggested_value": 21,
+      "method": "season_default",
+      "confidence": "medium",
+      "reasoning": "使用冬季代表值"
+    }
+  ]
+}
