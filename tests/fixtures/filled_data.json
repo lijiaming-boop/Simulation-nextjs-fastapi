@@ -1,0 +1,22 @@
+{
+  "project_region": "华北",
+  "monthly_data": [
+    {
+      "month": 1,
+      "total_energy": 20.7948,
+      "chiller_supply_temp": 7.0,
+      "cooling_pump_freq": 45,
+      "cooling_water_temp_diff": 4.5,
+      "freezing_pump_freq": 50,
+      "freezing_water_temp_diff": 4.5,
+      "cooling_tower_outlet_temp": 22,
+      "_filled_fields": []
+    }
+  ],
+  "_metadata": {
+    "fill_timestamp": "2025-12-20T10:00:00",
+    "fill_count": 0,
+    "original_completeness": 1.0,
+    "final_completeness": 1.0
+  }
+}
