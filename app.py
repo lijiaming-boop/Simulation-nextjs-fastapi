@@ -235,8 +235,8 @@ def render_extract_check_stage():
 
 
 def render_filling_stage():
-    """阶段4: 填充建议 (需要用户确认)"""
-    st.header("🔧 步骤 4: 数据填充建议")
+    """阶段3: 填充建议 (需要用户确认)"""
+    st.header("🔧 步骤 3: 数据填充建议")
 
     # 检查是否已经生成填充建议
     if st.session_state.filling_suggestions is None:
@@ -345,8 +345,8 @@ def render_filling_stage():
 
 
 def render_calculate_stage():
-    """阶段5: 执行计算 (自动执行)"""
-    st.header("⚙️ 步骤 5: 执行计算")
+    """阶段4: 执行计算 (自动执行)"""
+    st.header("⚙️ 步骤 4: 执行计算")
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -402,7 +402,7 @@ def render_calculate_stage():
 
 
 def render_result_stage():
-    """阶段6: 结果展示"""
+    """阶段5: 结果展示"""
     st.header("📈 测算结果")
 
     result = st.session_state.result
