@@ -47,10 +47,10 @@ def main():
     st.markdown("---")
 
     # 流程进度指示器
-    stages = ['上传', '提取', '质量检查', '填充建议', '计算', '结果']
+    stages = ['上传', '提取+质量检查', '填充建议', '计算', '结果']
     stage_map = {
-        'upload': 0, 'extract': 1, 'quality': 2,
-        'filling': 3, 'calculate': 4, 'result': 5
+        'upload': 0, 'extract_check': 1,
+        'filling': 2, 'calculate': 3, 'result': 4
     }
     current_stage = stage_map.get(st.session_state.stage, 0)
 
@@ -71,10 +71,8 @@ def main():
 
     if stage == 'upload':
         render_upload_stage()
-    elif stage == 'extract':
-        render_extract_stage()
-    elif stage == 'quality':
-        render_quality_stage()
+    elif stage == 'extract_check':
+        render_extract_check_stage()
     elif stage == 'filling':
         render_filling_stage()
     elif stage == 'calculate':
@@ -110,44 +108,55 @@ def render_upload_stage():
         st.info(f"文件大小: {uploaded_file.size / 1024:.2f} KB")
 
         if st.button("🚀 开始分析", type="primary", use_container_width=True):
-            st.session_state.stage = 'extract'
+            st.session_state.stage = 'extract_check'
             st.rerun()
 
 
-def render_extract_stage():
-    """阶段2: 数据提取 (自动流转)"""
-    st.header("🔍 步骤 2: 数据提取")
+def render_extract_check_stage():
+    """阶段2: 数据提取和质量检查 (自动流转)"""
+    st.header("🔍 步骤 2: 数据提取和质量检查")
 
-    with st.spinner("正在提取调研表数据,请稍候..."):
+    with st.spinner("正在提取调研表数据并进行质量检查,请稍候..."):
         try:
             caller = SkillCaller(timeout=300)
 
             upload_path = Path("tmp/upload_survey.xlsx")
-            output_path = Path("tmp/extracted_data.json")
+            output_path = Path("tmp/extract_check_result.json")
 
-            # 调用 Skill 1: 数据提取
+            # 调用合并的 Skill: 提取和质量检查
             caller.call_skill(
-                "extract-survey-data",
+                "extract-and-check-data",
                 str(upload_path),
                 str(output_path)
             )
 
             # 读取结果
             with open(output_path, 'r', encoding='utf-8') as f:
-                extracted_data = json.load(f)
+                result = json.load(f)
 
             # 检查是否有错误
-            if extracted_data.get("error"):
-                st.error(f"❌ 数据提取失败: {extracted_data.get('message', '未知错误')}")
+            if result.get("error"):
+                st.error(f"❌ 数据处理失败: {result.get('message', '未知错误')}")
                 if st.button("🔄 重新上传", use_container_width=True):
                     reset_flow()
                     st.rerun()
                 return
 
+            # 分离提取数据和质量报告
+            extracted_data = result.get("extracted_data", {})
+            quality_report = result.get("quality_report", {})
+
             # 保存到 session
             st.session_state.extracted_data = extracted_data
+            st.session_state.quality_report = quality_report
 
-            # 展示提取结果摘要
+            # 同时保存单独的文件（供后续步骤使用）
+            with open("tmp/extracted_data.json", 'w', encoding='utf-8') as f:
+                json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+            with open("tmp/quality_report.json", 'w', encoding='utf-8') as f:
+                json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+            # 展示提取结果
             st.success("✅ 数据提取成功")
 
             col1, col2 = st.columns(2)
@@ -155,51 +164,6 @@ def render_extract_stage():
                 st.metric("项目地区", extracted_data.get("project_region", "未识别"))
             with col2:
                 st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
-
-            with st.expander("查看提取的原始数据"):
-                st.json(extracted_data)
-
-            # 自动进入下一阶段
-            time.sleep(1.5)
-            st.session_state.stage = 'quality'
-            st.rerun()
-
-        except SkillError as e:
-            st.error(f"❌ 数据提取失败: {str(e)}")
-            if st.button("🔄 重新上传", use_container_width=True):
-                reset_flow()
-                st.rerun()
-        except Exception as e:
-            st.error(f"❌ 发生未知错误: {str(e)}")
-            if st.button("🔄 重新上传", use_container_width=True):
-                reset_flow()
-                st.rerun()
-
-
-def render_quality_stage():
-    """阶段3: 质量检查 (自动流转)"""
-    st.header("📊 步骤 3: 数据质量检查")
-
-    with st.spinner("正在检查数据质量..."):
-        try:
-            caller = SkillCaller(timeout=300)
-
-            extracted_path = Path("tmp/extracted_data.json")
-            output_path = Path("tmp/quality_report.json")
-
-            # 调用 Skill 2: 质量检查
-            caller.call_skill(
-                "check-data-quality",
-                str(extracted_path),
-                str(output_path)
-            )
-
-            # 读取结果
-            with open(output_path, 'r', encoding='utf-8') as f:
-                quality_report = json.load(f)
-
-            # 保存到 session
-            st.session_state.quality_report = quality_report
 
             # 展示质量报告
             st.success("✅ 质量检查完成")
@@ -226,13 +190,11 @@ def render_quality_stage():
             if issues:
                 st.subheader("📋 发现的问题")
 
-                # 按严重程度分组
                 severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
                 for issue in issues:
                     severity = issue.get("severity", "low")
                     severity_groups.get(severity, []).append(issue)
 
-                # 展示各级别问题
                 severity_labels = {
                     "critical": "🔴 严重问题",
                     "high": "🟠 高优先级",
@@ -252,20 +214,23 @@ def render_quality_stage():
             # 总结
             st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
 
+            with st.expander("查看提取的原始数据"):
+                st.json(extracted_data)
+
             # 自动进入下一阶段
             time.sleep(1.5)
             st.session_state.stage = 'filling'
             st.rerun()
 
         except SkillError as e:
-            st.error(f"❌ 质量检查失败: {str(e)}")
-            if st.button("🔄 返回重试", use_container_width=True):
-                st.session_state.stage = 'extract'
+            st.error(f"❌ 数据处理失败: {str(e)}")
+            if st.button("🔄 重新上传", use_container_width=True):
+                reset_flow()
                 st.rerun()
         except Exception as e:
             st.error(f"❌ 发生未知错误: {str(e)}")
-            if st.button("🔄 返回重试", use_container_width=True):
-                st.session_state.stage = 'extract'
+            if st.button("🔄 重新上传", use_container_width=True):
+                reset_flow()
                 st.rerun()
 
 
@@ -301,13 +266,13 @@ def render_filling_stage():
             except SkillError as e:
                 st.error(f"❌ 生成填充建议失败: {str(e)}")
                 if st.button("🔄 返回重试", use_container_width=True):
-                    st.session_state.stage = 'quality'
+                    st.session_state.stage = 'extract_check'
                     st.rerun()
                 return
             except Exception as e:
                 st.error(f"❌ 发生未知错误: {str(e)}")
                 if st.button("🔄 返回重试", use_container_width=True):
-                    st.session_state.stage = 'quality'
+                    st.session_state.stage = 'extract_check'
                     st.rerun()
                 return
 
