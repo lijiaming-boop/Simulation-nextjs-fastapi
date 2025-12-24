@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 这是一个基于 AI + Excel 计算引擎的中央空调节能率智能测算工具，采用混合架构：
 - **AI 辅助层**：使用 Claude Skills 进行数据提取、质量检查、填充建议
 - **计算引擎层**：使用 xlwings/openpyxl 调用 Excel 模板中的物理公式计算节能率
-- **前端展示层**：Streamlit Web UI，提供6阶段工作流
+- **前端展示层**：Streamlit Web UI，提供5阶段工作流
 
 ## 常用命令
 
@@ -51,7 +51,7 @@ from core.skill_caller import SkillCaller
 
 caller = SkillCaller(timeout=300)
 result = caller.call_skill(
-    "extract-survey-data",
+    "extract-and-check-data",
     "input.xlsx",
     "output.json"
 )
@@ -151,7 +151,7 @@ except ImportError:
 - `.streamlit/secrets.toml`：管理员密码（用于下载保护）
 
 **Session State管理**：
-- 6个阶段状态：upload → extract → quality_check → filling_suggest → calculate → result
+- 5个阶段状态：upload → extract_check → filling → calculate → result
 - 每个阶段数据缓存在 `st.session_state` 中
 
 ### 临时文件约定
