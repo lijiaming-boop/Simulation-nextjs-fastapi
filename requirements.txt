@@ -4,3 +4,4 @@ openpyxl>=3.1.0
 xlwings>=0.30.0
 pytest>=7.0.0
 plotly>=5.0.0
+claude-agent-sdk>=0.1.0
