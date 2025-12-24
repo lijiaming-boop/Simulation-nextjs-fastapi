@@ -112,6 +112,15 @@
 - pip 包管理器
 - （可选）Microsoft Excel 或 LibreOffice（用于 xlwings）
 
+### 环境变量
+
+**必需配置：**
+```bash
+export ANTHROPIC_API_KEY='your-api-key-here'
+```
+
+获取 API Key: https://console.anthropic.com/settings/keys
+
 ### 安装步骤
 
 1. **克隆项目**
