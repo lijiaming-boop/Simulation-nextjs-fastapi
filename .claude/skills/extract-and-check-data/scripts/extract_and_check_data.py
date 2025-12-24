@@ -4,12 +4,18 @@
 合并了 extract-survey-data 和 check-data-quality 的功能
 """
 
-import pandas as pd
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
+
+try:
+    import pandas as pd
+except ImportError:
+    print("错误: 需要安装 pandas 库")
+    print("请运行: pip install pandas")
+    sys.exit(1)
 
 
 # ============= 数据提取部分 (来自 extract_survey_data.py) =============
