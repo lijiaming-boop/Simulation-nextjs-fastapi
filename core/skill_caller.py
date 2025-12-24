@@ -1,10 +1,12 @@
-"""Skill 调用封装
+"""Skill 调用封装(使用 Claude Agent SDK)
 
-提供统一的 Skill 调用接口,处理超时和错误
+提供统一的 Skill 调用接口,使用异步方式调用 Claude Agent SDK
 """
-import subprocess
+import os
+import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, List
+from claude_agent_sdk import query, ClaudeAgentOptions
 
 
 class SkillError(Exception):
@@ -13,15 +15,47 @@ class SkillError(Exception):
 
 
 class SkillCaller:
-    """Skill 调用器"""
+    """Skill 调用器(基于 Claude Agent SDK)"""
 
-    def __init__(self, timeout: int = 300):
+    def __init__(
+        self,
+        timeout: int = 300,
+        api_key: Optional[str] = None,
+        project_root: Optional[Path] = None
+    ):
         """初始化 Skill 调用器
 
         Args:
             timeout: 调用超时时间(秒)
+            api_key: Anthropic API Key,如果不提供则从环境变量读取
+            project_root: 项目根目录,包含 .claude/skills/ 目录
+
+        Raises:
+            SkillError: API key 未配置
         """
         self.timeout = timeout
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
+
+        if not self.api_key:
+            raise SkillError(
+                "ANTHROPIC_API_KEY 环境变量未设置。\n"
+                "请设置: export ANTHROPIC_API_KEY='your-api-key'"
+            )
+
+        # 确定项目根目录
+        if project_root:
+            self.project_root = Path(project_root).resolve()
+        else:
+            # 默认:从当前文件向上两级(core/ -> 项目根)
+            self.project_root = Path(__file__).parent.parent.resolve()
+
+        # 验证 skills 目录存在
+        self.skills_dir = self.project_root / ".claude" / "skills"
+        if not self.skills_dir.exists():
+            raise SkillError(
+                f"Skills 目录不存在: {self.skills_dir}\n"
+                f"项目根目录: {self.project_root}"
+            )
 
     def call_skill(
         self,
@@ -29,47 +63,140 @@ class SkillCaller:
         *args,
         check_output: bool = True
     ) -> Optional[str]:
-        """调用 Claude CLI Skill
+        """调用 Claude Skill(同步包装器)
 
         Args:
             skill_name: Skill 名称 (如 "extract-survey-data")
-            *args: Skill 参数
+            *args: Skill 参数(文件路径等)
             check_output: 是否检查输出文件
 
         Returns:
-            Skill 的 stdout 输出
+            Skill 的执行结果文本
 
         Raises:
             SkillError: Skill 调用失败
         """
-        # 检查 Skill 文件是否存在
-        skill_path = Path(f".claude/skills/{skill_name}.md")
-        if not skill_path.exists():
-            raise SkillError(f"Skill not found: {skill_name}")
-
+        # 在新的事件循环中运行异步调用
         try:
-            # 调用 Claude CLI
-            result = subprocess.run(
-                ['claude', 'skill', skill_name] + list(args),
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                check=True
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self._call_skill_async(skill_name, *args, check_output=check_output)
+        )
+
+    async def _call_skill_async(
+        self,
+        skill_name: str,
+        *args,
+        check_output: bool = True
+    ) -> Optional[str]:
+        """调用 Claude Skill(异步实现)
+
+        Args:
+            skill_name: Skill 名称
+            *args: Skill 参数
+            check_output: 是否检查输出文件
+
+        Returns:
+            Skill 执行结果
+
+        Raises:
+            SkillError: Skill 调用失败
+        """
+        # 检查 Skill 是否存在
+        skill_path = self.skills_dir / skill_name
+        skill_md = skill_path / "SKILL.md"
+
+        # 兼容旧版单文件格式
+        if not skill_md.exists():
+            skill_md_old = self.skills_dir / f"{skill_name}.md"
+            if not skill_md_old.exists():
+                raise SkillError(f"Skill not found: {skill_name}")
+
+        # 构建提示词
+        prompt = self._build_prompt(skill_name, *args)
+
+        # 配置 Agent SDK
+        options = ClaudeAgentOptions(
+            cwd=str(self.project_root),
+            setting_sources=["user", "project"],
+            allowed_tools=["Skill", "Read", "Write", "Bash"],
+            api_key=self.api_key,
+            max_tokens=4096
+        )
+
+        # 调用 Agent SDK
+        result_messages = []
+        try:
+            async for message in query(prompt=prompt, options=options):
+                result_messages.append(str(message))
+
+        except Exception as e:
+            raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
+
+        # 合并结果
+        result_text = "\n".join(result_messages)
+
+        # 检查输出文件(如果需要)
+        if check_output and len(args) >= 2:
+            output_file = Path(args[-1])
+            if not output_file.exists():
+                raise SkillError(
+                    f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
+                )
+
+        return result_text
+
+    def _build_prompt(self, skill_name: str, *args) -> str:
+        """构建 Skill 调用提示词
+
+        根据不同的 skill 构建合适的提示词
+        """
+        if skill_name == "extract-survey-data":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-survey-data 需要2个参数: 输入Excel路径, 输出JSON路径"
+                )
+            return (
+                f"请使用 extract-survey-data skill 从调研表中提取数据。\n"
+                f"输入文件: {args[0]}\n"
+                f"输出文件: {args[1]}\n"
+                f"请确保输出为有效的 JSON 格式。"
             )
 
-            return result.stdout
+        elif skill_name == "check-data-quality":
+            if len(args) < 2:
+                raise SkillError(
+                    "check-data-quality 需要2个参数: 提取数据JSON路径, 输出报告路径"
+                )
+            return (
+                f"请使用 check-data-quality skill 检查数据质量。\n"
+                f"输入文件: {args[0]}\n"
+                f"输出文件: {args[1]}\n"
+                f"请生成包含完整率、置信度和问题列表的质量报告。"
+            )
 
-        except subprocess.TimeoutExpired as e:
-            raise SkillError(
-                f"Skill '{skill_name}' 执行超时(>{self.timeout}秒)"
-            ) from e
+        elif skill_name == "suggest-data-filling":
+            if len(args) < 3:
+                raise SkillError(
+                    "suggest-data-filling 需要3个参数: "
+                    "提取数据路径, 质量报告路径, 输出建议路径"
+                )
+            return (
+                f"请使用 suggest-data-filling skill 生成数据填充建议。\n"
+                f"提取数据文件: {args[0]}\n"
+                f"质量报告文件: {args[1]}\n"
+                f"输出文件: {args[2]}\n"
+                f"请基于季节模式和插值法提供智能填充建议。"
+            )
 
-        except subprocess.CalledProcessError as e:
-            raise SkillError(
-                f"Skill '{skill_name}' 执行出错: {e.stderr}"
-            ) from e
-
-        except FileNotFoundError:
-            raise SkillError(
-                "Claude CLI not found. Please ensure Claude CLI is installed."
+        else:
+            # 通用提示词
+            params_str = ', '.join(str(arg) for arg in args)
+            return (
+                f"请使用 {skill_name} skill 完成任务。\n"
+                f"参数: {params_str}"
             )
