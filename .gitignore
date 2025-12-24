@@ -15,3 +15,13 @@ venv/
 *.egg-info/
 dist/
 build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Temporary exports
+*_export.txt

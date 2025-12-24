@@ -1,6 +1,6 @@
 ---
 name: extract-survey-data
-description: 从中央空调调研表 Excel 中提取月度运行数据
+description: 从中央空调节能调研表 Excel 文件中提取月度运行数据并输出为结构化 JSON。当用户需要处理中央空调调研表、提取能耗数据、解析调研 Excel 文件，或将调研表数据转换为 JSON 格式时使用此技能。
 ---
 
 # Extract Survey Data Skill
@@ -94,6 +94,26 @@ description: 从中央空调调研表 Excel 中提取月度运行数据
 
 ## 执行流程
 
+### 使用提供的脚本
+
+推荐使用 `scripts/extract_survey_data.py` 脚本来执行提取：
+
+```bash
+python scripts/extract_survey_data.py <survey_excel_path> <output_json_path>
+```
+
+脚本会自动完成：
+1. 读取 Excel 文件
+2. 智能识别包含月度数据的工作表
+3. 提取 1-12 月的数据并解析文本值
+4. 验证数据质量
+5. 输出 JSON 文件
+
+**注意**: 脚本使用默认的行号映射（如行38=冷机供水温度，行47=总能耗等）。如果实际文件结构不同，可能需要修改脚本中的 `row_mappings` 字典或重新实现数据提取逻辑。
+
+### 手动实现步骤
+
+如果需要自定义实现：
 1. 读取 Excel 文件 (`survey_excel_path`)
 2. 识别包含月度数据的工作表 (通常是"冷站"或类似名称)
 3. 提取 1-12 月的数据 (行号可能有偏移,灵活识别列标题和数据位置)
