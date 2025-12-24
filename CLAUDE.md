@@ -73,9 +73,7 @@ rm -rf ./tmp/*
 
 ### 数据流向
 ```
-调研表Excel → extract-survey-data Skill → JSON数据
-                ↓
-        check-data-quality Skill → 质量报告
+调研表Excel → extract-and-check-data Skill → JSON数据 + 质量报告
                 ↓
         suggest-data-filling Skill → 填充建议
                 ↓
@@ -88,7 +86,7 @@ rm -rf ./tmp/*
 
 | 模块 | 文件 | 核心职责 | 关键依赖 |
 |------|------|----------|----------|
-| **UI流程编排** | `app.py` | 6阶段流程控制、用户交互 | Streamlit session state |
+| **UI流程编排** | `app.py` | 5阶段流程控制（上传→提取+质量检查→填充建议→计算→结果）、用户交互 | Streamlit session state |
 | **Skill调用器** | `core/skill_caller.py` | 封装subprocess调用Claude CLI | 处理超时、错误重试 |
 | **数据填充器** | `core/data_filler.py` | 应用填充建议生成完整数据 | Pandas JSON处理 |
 | **Excel计算器** | `core/excel_calculator.py` | 写入数据、调用Excel公式、提取结果 | xlwings(优先)/openpyxl(降级) |
@@ -98,17 +96,17 @@ rm -rf ./tmp/*
 
 Skills 位于 `.claude/skills/` 目录，采用目录结构组织：
 
-1. **extract-survey-data**：从调研表Excel提取12个月运行数据
+1. **extract-and-check-data**：从调研表Excel提取数据并进行质量检查
    - 输入：调研表路径（`00_sample/02-中央空调节能调研表.xlsx`）
-   - 输出：`tmp/extracted_data.json`
-   - 关键提取字段：项目地区、月度耗电量(行47)、供水温度(行38)、泵频率(行39,41)、水温差(行40,42)、冷却塔温度(行44)
+   - 输出：`tmp/extract_check_result.json`（包含extracted_data和quality_report）
+   - 关键功能：
+     - 提取12个月运行数据（月度耗电量、供水温度、泵频率、水温差、冷却塔温度）
+     - 检查数据完整性（必填字段、数值范围、逻辑一致性）
+     - 计算完整率和置信度
+     - 输出问题列表和总结
+   - 同时保存单独的 `tmp/extracted_data.json` 和 `tmp/quality_report.json` 供后续使用
 
-2. **check-data-quality**：检查数据完整性和合理性
-   - 输入：提取的数据JSON
-   - 输出：`tmp/quality_report.json`（包含完整率、置信度、问题列表）
-   - 检查维度：缺失字段、数值范围（温度0-50℃、频率0-100%）、逻辑一致性
-
-3. **suggest-data-filling**：基于季节模式和插值法推荐填充值
+2. **suggest-data-filling**：基于季节模式和插值法推荐填充值
    - 输入：质量报告 + 提取数据
    - 输出：`tmp/filling_suggestions.json`
    - 填充策略：季节代表月法（夏季用7月、春秋用5/10月、冬季用1月）、线性插值
@@ -159,6 +157,7 @@ except ImportError:
 ### 临时文件约定
 
 所有中间文件存放在 `./tmp/` 目录：
+- `extract_check_result.json`：提取和质量检查的合并结果
 - `extracted_data.json`：提取的原始数据
 - `quality_report.json`：质量检查报告
 - `filling_suggestions.json`：填充建议
@@ -182,20 +181,17 @@ except ImportError:
 
 ## 修改常见场景
 
-### 场景1：调整数据提取逻辑
-修改 `.claude/skills/extract-survey-data/SKILL.md`，更新调研表行号或字段映射。
+### 场景1：调整数据提取或质量检查逻辑
+修改 `.claude/skills/extract-and-check-data/SKILL.md`，更新调研表行号、字段映射或检查规则。
 
-### 场景2：添加新的质量检查规则
-修改 `.claude/skills/check-data-quality/SKILL.md`，在 `检查维度` 部分添加新规则。
-
-### 场景3：修改计算公式
+### 场景2：修改计算公式
 1. 编辑 `00_sample/机房智能化节能评估表-按冷站电量数据.xlsx` 的Excel公式
 2. 更新 `config/cell_mapping.py` 中的单元格映射（如果新增输入/输出字段）
 
-### 场景4：添加气象数据城市
+### 场景3：添加气象数据城市
 编辑 `config/weather_data.json`（如果存在），添加新城市的月度湿球温度数据。
 
-### 场景5：UI流程调整
+### 场景4：UI流程调整
 修改 `app.py`，注意维护 `st.session_state.stage` 状态机的一致性。
 
 ## 测试注意事项
