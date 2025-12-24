@@ -120,20 +120,24 @@ class SkillCaller:
         prompt = self._build_prompt(skill_name, *args)
 
         # 配置 Agent SDK
+        # 注意: API key 通过环境变量 ANTHROPIC_API_KEY 传递
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
             setting_sources=["user", "project"],
-            allowed_tools=["Skill", "Read", "Write", "Bash"],
-            api_key=self.api_key,
-            max_tokens=4096
+            allowed_tools=["Skill", "Read", "Write", "Bash"]
         )
 
-        # 调用 Agent SDK
+        # 调用 Agent SDK（添加超时控制）
         result_messages = []
         try:
-            async for message in query(prompt=prompt, options=options):
-                result_messages.append(str(message))
+            async with asyncio.timeout(self.timeout):  # 添加超时控制
+                async for message in query(prompt=prompt, options=options):
+                    result_messages.append(str(message))
 
+        except asyncio.TimeoutError as e:
+            raise SkillError(
+                f"Skill '{skill_name}' 执行超时(>{self.timeout}秒)"
+            ) from e
         except Exception as e:
             raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
 
