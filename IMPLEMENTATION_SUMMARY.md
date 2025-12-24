@@ -336,3 +336,131 @@ conditioner_saving/
 **实现日期**: 2025-12-21
 **实现者**: Claude Sonnet 4.5
 **基准Commit**: 3ae99ac → 1603e6a
+
+---
+
+# Skill 调用机制迁移总结
+
+## 2025-12-24: Skill 调用机制迁移到 Claude Agent SDK
+
+### 改动概述
+
+将 `core/skill_caller.py` 从错误的 subprocess 实现迁移到正确的 Claude Agent SDK 异步调用方式。
+
+### 技术细节
+
+**核心改动：**
+- 使用 `claude_agent_sdk.query()` 和 `ClaudeAgentOptions` 进行异步调用
+- Skills 通过 `setting_sources=["user", "project"]` 自动发现
+- 保持同步接口向后兼容（内部使用 asyncio.run_until_complete）
+- API key 通过环境变量 `ANTHROPIC_API_KEY` 配置
+- 添加项目根目录自动检测功能
+
+**依赖更新：**
+- 新增 `claude-agent-sdk>=0.1.0`
+- 更新 `requirements.txt`
+
+**配置变更：**
+- 创建 `.env.example` 提供环境变量模板
+- 确保 `.gitignore` 排除 `.env` 文件
+- 更新 `CLAUDE.md` 和 `README.md` 的 API key 配置说明
+
+### 影响范围
+
+**核心模块：**
+- `core/skill_caller.py` (完全重写，314行)
+  - 新增 `__init__()` - API key 验证和项目根目录检测
+  - 重写 `call_skill()` - 同步包装器
+  - 新增 `_call_skill_async()` - 异步实现
+  - 新增 `_build_prompt()` - 智能提示词构建
+
+**测试套件：**
+- 更新 `tests/unit/test_skill_caller.py` (117行)
+  - 新增 API key mocking 到所有测试
+  - 新增 `test_project_root_detection()` - 项目根目录自动检测
+  - 新增 `test_build_prompt_extract_survey_data()` - 提示词构建
+  - 新增 `test_build_prompt_insufficient_args()` - 参数验证
+  - 新增 `test_skill_caller_async_initialization()` - 异步初始化
+  - 新增 `test_skill_caller_timeout()` - 超时机制
+- 新增 `tests/integration/test_backward_compatibility.py` (45行)
+  - `test_app_py_usage_pattern()` - app.py 调用模式兼容性
+  - `test_exception_type_compatibility()` - 异常类型一致性
+  - `test_return_type_compatibility()` - 返回类型兼容性
+- 更新 `pytest.ini` - 添加 integration marker
+
+**文档更新：**
+- `CLAUDE.md` - 更新 Skill 调用说明
+- `README.md` - 添加环境变量配置章节
+- `.env.example` - 环境变量模板
+- `.gitignore` - 确保包含 .env
+
+### 验证结果
+
+✅ **单元测试**: 15个测试全部通过
+✅ **向后兼容性**: 3个兼容性测试全部通过
+✅ **Streamlit 应用**: 正常启动和运行
+✅ **代码质量**: 无语法错误
+
+**测试覆盖：**
+- 初始化和配置验证
+- API key 检测和错误处理
+- 项目根目录自动检测
+- Skill 提示词构建
+- 参数验证
+- 异步超时机制
+- 向后兼容性
+
+### 向后兼容性
+
+**保持兼容的 API：**
+```python
+# app.py 中的调用方式完全兼容
+caller = SkillCaller(timeout=300)
+result = caller.call_skill("extract-survey-data", input_path, output_path)
+```
+
+**异常类型一致：**
+- 继续使用 `SkillError` 异常类
+- 错误消息格式保持一致
+
+**返回类型一致：**
+- 返回 `Optional[str]` (执行结果文本)
+- 内部实现改为异步，但对外接口保持同步
+
+### 已知限制
+
+1. **API Key 要求**: 必须配置 `ANTHROPIC_API_KEY` 环境变量
+2. **网络依赖**: 需要能够访问 Anthropic API
+3. **成本**: 每次 Skill 调用都会产生 API 费用
+4. **事件循环**: 在已有 asyncio 事件循环的环境中可能需要特殊处理
+
+### 安全注意事项
+
+⚠️ **重要安全提醒：**
+- 永远不要提交 `.env` 文件到版本控制
+- 生产环境使用系统环境变量而非 `.env` 文件
+- 定期轮换 API key
+- 监控 API 使用量和成本
+
+### 下一步优化建议
+
+1. **性能优化：**
+   - 添加结果缓存机制
+   - 实现批量调用支持
+   - 优化提示词以减少 token 消耗
+
+2. **功能增强：**
+   - 支持流式输出
+   - 添加进度回调
+   - 实现重试机制
+
+3. **监控和日志：**
+   - 添加 API 调用日志
+   - 监控成本和性能指标
+   - 错误追踪和告警
+
+---
+
+**迁移完成日期**: 2025-12-24
+**实施者**: Claude Sonnet 4.5
+**基准 Commit**: 1430ad1
