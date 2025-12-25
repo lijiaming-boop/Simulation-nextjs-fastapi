@@ -6,7 +6,7 @@ import os
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from claude_agent_sdk import query, ClaudeAgentOptions
+from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 
 class SkillError(Exception):
@@ -62,7 +62,7 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True
-    ) -> Optional[str]:
+    ) -> Dict[str, Any]:
         """调用 Claude Skill(同步包装器)
 
         Args:
@@ -71,7 +71,13 @@ class SkillCaller:
             check_output: 是否检查输出文件
 
         Returns:
-            Skill 的执行结果文本
+            包含执行结果的字典，结构如下：
+            {
+                "success": True,
+                "ai_responses": ["AI回复1", "AI回复2", ...],
+                "all_messages": ["消息1", "消息2", ...],
+                "result_text": "合并的文本"
+            }
 
         Raises:
             SkillError: Skill 调用失败
@@ -92,7 +98,7 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True
-    ) -> Optional[str]:
+    ) -> Dict[str, Any]:
         """调用 Claude Skill(异步实现)
 
         Args:
@@ -101,7 +107,7 @@ class SkillCaller:
             check_output: 是否检查输出文件
 
         Returns:
-            Skill 执行结果
+            包含执行结果的字典
 
         Raises:
             SkillError: Skill 调用失败
@@ -128,11 +134,19 @@ class SkillCaller:
         )
 
         # 调用 Agent SDK（添加超时控制）
-        result_messages = []
+        all_messages = []
+        ai_responses = []
         try:
             async with asyncio.timeout(self.timeout):  # 添加超时控制
                 async for message in query(prompt=prompt, options=options):
-                    result_messages.append(str(message))
+                    # 收集所有消息的字符串表示
+                    all_messages.append(str(message))
+
+                    # 只提取 AssistantMessage 的文本内容
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                ai_responses.append(block.text)
 
         except asyncio.TimeoutError as e:
             raise SkillError(
@@ -141,8 +155,8 @@ class SkillCaller:
         except Exception as e:
             raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
 
-        # 合并结果
-        result_text = "\n".join(result_messages)
+        # 合并结果文本
+        result_text = "\n".join(all_messages)
 
         # 检查输出文件(如果需要)
         if check_output and len(args) >= 2:
@@ -152,7 +166,13 @@ class SkillCaller:
                     f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
                 )
 
-        return result_text
+        # 返回详细结果
+        return {
+            "success": True,
+            "ai_responses": ai_responses,
+            "all_messages": all_messages,
+            "result_text": result_text
+        }
 
     def _build_prompt(self, skill_name: str, *args) -> str:
         """构建 Skill 调用提示词

@@ -124,11 +124,19 @@ def render_extract_check_stage():
             output_path = Path("tmp/extract_check_result.json")
 
             # 调用合并的 Skill: 提取和质量检查
-            caller.call_skill(
+            skill_result = caller.call_skill(
                 "extract-and-check-data",
                 str(upload_path),
                 str(output_path)
             )
+
+            # 展示 AI 响应过程
+            if skill_result.get("ai_responses"):
+                with st.expander("🤖 查看 AI 分析过程", expanded=False):
+                    for idx, response in enumerate(skill_result["ai_responses"], 1):
+                        st.markdown(f"**步骤 {idx}:**")
+                        st.text(response)
+                        st.markdown("---")
 
             # 读取结果
             with open(output_path, 'r', encoding='utf-8') as f:
@@ -249,12 +257,20 @@ def render_filling_stage():
                 output_path = Path("tmp/filling_suggestions.json")
 
                 # 调用 Skill 3: 填充建议
-                caller.call_skill(
+                skill_result = caller.call_skill(
                     "suggest-data-filling",
                     str(extracted_path),
                     str(quality_path),
                     str(output_path)
                 )
+
+                # 展示 AI 响应过程
+                if skill_result.get("ai_responses"):
+                    with st.expander("🤖 查看 AI 推理过程", expanded=False):
+                        for idx, response in enumerate(skill_result["ai_responses"], 1):
+                            st.markdown(f"**步骤 {idx}:**")
+                            st.text(response)
+                            st.markdown("---")
 
                 # 读取结果
                 with open(output_path, 'r', encoding='utf-8') as f:

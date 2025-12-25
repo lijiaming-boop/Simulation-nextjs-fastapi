@@ -55,12 +55,28 @@ result = caller.call_skill(
     "input.xlsx",
     "output.json"
 )
+
+# 访问返回结果
+ai_responses = result["ai_responses"]  # AI 助手的文本回复列表
+all_messages = result["all_messages"]  # 所有消息（调试用）
+result_text = result["result_text"]    # 合并的文本（向后兼容）
+```
+
+**返回值结构：**
+```python
+{
+    "success": True,
+    "ai_responses": ["AI回复1", "AI回复2", ...],  # AssistantMessage 的文本内容
+    "all_messages": ["消息1", "消息2", ...],      # 所有消息的字符串表示
+    "result_text": "合并的所有消息文本"            # 向后兼容字段
+}
 ```
 
 **特性：**
 - 使用 Claude Agent SDK 进行异步调用
 - 自动发现 `.claude/skills/` 目录下的 skills
 - 支持超时控制和错误处理
+- 提取 AssistantMessage 的文本内容供前端展示
 - 保持向后兼容的同步接口
 
 ### 临时文件管理
