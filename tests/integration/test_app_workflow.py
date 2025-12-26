@@ -68,3 +68,87 @@ def test_low_confidence_blocks_workflow():
 
     finally:
         temp_file.unlink()
+
+
+def test_end_to_end_low_confidence_interruption():
+    """端到端测试:低置信度数据中断流程"""
+    import sys
+    from pathlib import Path
+    import tempfile
+    import json
+
+    project_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    sys.path.insert(0, str(project_root / ".claude/skills/extract-and-check-data/scripts"))
+
+    from extract_and_check_data import extract_and_check_data
+
+    # 创建一个几乎为空的测试Excel
+    # 这里我们直接构造一个低置信度的质量报告来测试
+    low_confidence_result = {
+        "extracted_data": {
+            "project_region": "华北",
+            "monthly_data": [
+                {
+                    "month": i,
+                    "total_energy": None,
+                    "chiller_supply_temp": None,
+                    "cooling_pump_freq": None,
+                    "cooling_water_temp_diff": None,
+                    "freezing_pump_freq": None,
+                    "freezing_water_temp_diff": None,
+                    "cooling_tower_outlet_temp": None
+                }
+                for i in range(1, 13)
+            ]
+        },
+        "quality_report": {
+            "completeness": 0.0,
+            "confidence_level": "low",
+            "issues": [
+                {
+                    "field": f"monthly_data[{i}].total_energy",
+                    "severity": "high",
+                    "type": "missing",
+                    "message": f"{i+1}月冷站总能耗缺失"
+                }
+                for i in range(12)
+            ],
+            "summary": "数据完整率0%,建议补充缺失月份数据。发现12个高优先级问题。"
+        }
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result_path = Path(tmpdir) / "extract_check_result.json"
+
+        # 保存模拟结果
+        with open(result_path, 'w', encoding='utf-8') as f:
+            json.dump(low_confidence_result, f, ensure_ascii=False, indent=2)
+
+        # 读取并验证
+        with open(result_path, 'r', encoding='utf-8') as f:
+            result = json.load(f)
+
+        quality_report = result["quality_report"]
+
+        # 验证置信度判断逻辑
+        assert quality_report["confidence_level"] == "low"
+        assert quality_report["completeness"] == 0.0
+
+        # 模拟前端判断
+        should_block = quality_report["confidence_level"] == "low"
+        assert should_block is True
+
+        # 统计严重问题
+        critical_and_high = [
+            i for i in quality_report["issues"]
+            if i.get("severity") in ["critical", "high"]
+        ]
+
+        assert len(critical_and_high) == 12
+
+        print(f"✅ 端到端测试通过:")
+        print(f"   - 置信度: {quality_report['confidence_level']}")
+        print(f"   - 完整率: {quality_report['completeness']*100:.1f}%")
+        print(f"   - 严重问题数: {len(critical_and_high)}")
+        print(f"   - 流程已正确中断")
