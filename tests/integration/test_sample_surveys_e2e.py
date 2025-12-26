@@ -683,3 +683,206 @@ class TestInsufficientSurvey:
         print(f"  - 要求用户补充数据后重新上传")
         print(f"")
         print(f"  ⚠ 注意: 此测试不执行后续填充和计算步骤（符合设计）")
+
+
+@pytest.mark.integration
+class TestAllSurveysBatch:
+    """批量测试所有示例调研表"""
+
+    def test_all_surveys_summary(self):
+        """运行所有调研表并生成测试摘要报告"""
+        results = []
+        caller = SkillCaller(timeout=300)
+
+        for survey_key, config in SAMPLE_SURVEYS.items():
+            print(f"\n{'='*60}")
+            print(f"测试调研表: {survey_key} - {config['description']}")
+            print(f"{'='*60}")
+
+            try:
+                TestHelper.cleanup_tmp_dir()
+                survey_path = get_survey_path(survey_key)
+
+                # === 阶段1: 提取和质量检查 ===
+                extract_result = caller.call_skill(
+                    "extract-and-check-data",
+                    str(survey_path),
+                    str(TMP_DIR / "extract_check_result.json")
+                )
+
+                if not extract_result["success"]:
+                    results.append({
+                        "survey": survey_key,
+                        "status": "FAILED",
+                        "error": "提取失败",
+                        "description": config["description"]
+                    })
+                    print(f"✗ {survey_key}: 提取失败")
+                    continue
+
+                extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+                quality_report = extract_check["quality_report"]
+
+                # 记录质量信息
+                survey_result = {
+                    "survey": survey_key,
+                    "description": config["description"],
+                    "completeness": quality_report["completeness_rate"],
+                    "confidence": quality_report["confidence_level"],
+                    "expected_confidence": config["expected_confidence"]
+                }
+
+                # === 验证置信度是否符合预期 ===
+                if quality_report["confidence_level"] != config["expected_confidence"]:
+                    print(f"⚠ {survey_key}: 置信度不符预期 - 期望 {config['expected_confidence']}, 实际 {quality_report['confidence_level']}")
+
+                # === 如果是低置信度，不继续计算 ===
+                if quality_report["confidence_level"] == "low":
+                    survey_result["status"] = "BLOCKED"
+                    survey_result["saving_rate"] = None
+                    survey_result["note"] = "低置信度，流程中断"
+                    results.append(survey_result)
+                    print(f"⚠ {survey_key}: 低置信度，流程中断")
+                    continue
+
+                # === 阶段2: 生成填充建议 ===
+                with open(TMP_DIR / "extracted_data.json", 'w', encoding='utf-8') as f:
+                    json.dump(extract_check["extracted_data"], f, ensure_ascii=False, indent=2)
+                with open(TMP_DIR / "quality_report.json", 'w', encoding='utf-8') as f:
+                    json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+                suggest_result = caller.call_skill(
+                    "suggest-data-filling",
+                    str(TMP_DIR / "quality_report.json"),
+                    str(TMP_DIR / "filling_suggestions.json")
+                )
+
+                if not suggest_result["success"]:
+                    survey_result["status"] = "FAILED"
+                    survey_result["error"] = "生成填充建议失败"
+                    results.append(survey_result)
+                    print(f"✗ {survey_key}: 生成填充建议失败")
+                    continue
+
+                # === 阶段3: 应用填充建议 ===
+                filler = DataFiller()
+                filled_data_path = filler.fill_data(
+                    str(TMP_DIR / "extracted_data.json"),
+                    str(TMP_DIR / "filling_suggestions.json"),
+                    str(TMP_DIR / "filled_data.json")
+                )
+
+                # === 阶段4: 计算节能率 ===
+                template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
+                calculator = ExcelCalculator(str(template_path))
+                calc_result_path = calculator.calculate(
+                    str(TMP_DIR / "filled_data.json"),
+                    str(TMP_DIR / f"calc_result_{survey_key}.json")
+                )
+
+                # 加载计算结果
+                calc_result = TestHelper.load_json(Path(calc_result_path))
+
+                if "energy_saving_rate" not in calc_result:
+                    survey_result["status"] = "FAILED"
+                    survey_result["error"] = "计算结果缺少节能率字段"
+                    results.append(survey_result)
+                    print(f"✗ {survey_key}: 计算结果缺少节能率")
+                    continue
+
+                # === 成功完成 ===
+                actual_rate = calc_result["energy_saving_rate"] * 100  # 转换为百分比
+                expected_rate = config["expected_rate"]
+
+                survey_result["status"] = "PASSED"
+                survey_result["saving_rate"] = round(actual_rate, 2)
+                survey_result["expected_rate"] = expected_rate
+                survey_result["deviation"] = round(abs(actual_rate - expected_rate), 2) if expected_rate else None
+                survey_result["total_saving"] = round(calc_result.get("total_saving", 0), 2)
+
+                results.append(survey_result)
+                print(f"✓ {survey_key}: 节能率 {actual_rate:.2f}% (期望 {expected_rate}%)")
+
+            except FileNotFoundError as e:
+                results.append({
+                    "survey": survey_key,
+                    "status": "ERROR",
+                    "error": f"文件未找到: {str(e)}",
+                    "description": config["description"]
+                })
+                print(f"✗ {survey_key}: 文件未找到 - {e}")
+
+            except Exception as e:
+                results.append({
+                    "survey": survey_key,
+                    "status": "ERROR",
+                    "error": str(e),
+                    "description": config["description"]
+                })
+                print(f"✗ {survey_key}: 异常 - {e}")
+
+        # === 生成测试报告 ===
+        print(f"\n{'='*80}")
+        print("测试摘要报告")
+        print(f"{'='*80}")
+
+        for result in results:
+            print(f"\n【{result['survey']}】 - {result.get('description', '')}")
+            print(f"  状态: {result['status']}")
+            print(f"  完整率: {result.get('completeness', 'N/A')}%")
+            print(f"  置信度: {result.get('confidence', 'N/A')} (期望: {result.get('expected_confidence', 'N/A')})")
+
+            if result['status'] == 'PASSED':
+                print(f"  节能率: {result['saving_rate']}% (期望: {result['expected_rate']}%)")
+                print(f"  偏差: {result['deviation']:.2f}%")
+                print(f"  总节能量: {result['total_saving']} kWh")
+            elif result['status'] == 'BLOCKED':
+                print(f"  备注: {result.get('note', '')}")
+            elif result['status'] in ['FAILED', 'ERROR']:
+                print(f"  错误: {result.get('error', '')}")
+
+        # === 统计信息 ===
+        total = len(results)
+        passed = len([r for r in results if r['status'] == 'PASSED'])
+        blocked = len([r for r in results if r['status'] == 'BLOCKED'])
+        failed = len([r for r in results if r['status'] in ['FAILED', 'ERROR']])
+
+        print(f"\n{'='*80}")
+        print(f"统计: 总计 {total}, 通过 {passed}, 阻止 {blocked}, 失败 {failed}")
+        print(f"通过率: {passed}/{total-blocked} ({100*passed/(total-blocked):.1f}%) (排除阻止的案例)")
+        print(f"{'='*80}")
+
+        # === 保存报告到文件 ===
+        report_path = TMP_DIR / "test_summary_report.json"
+        report_data = {
+            "summary": {
+                "total": total,
+                "passed": passed,
+                "blocked": blocked,
+                "failed": failed,
+                "pass_rate": round(100 * passed / (total - blocked), 1) if (total - blocked) > 0 else 0
+            },
+            "details": results
+        }
+
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(report_data, f, ensure_ascii=False, indent=2)
+
+        print(f"\n报告已保存到: {report_path}")
+
+        # === 验证断言 ===
+        # 验证至少有一个测试通过
+        assert passed > 0, f"应至少有一个测试通过，但实际通过数为 {passed}"
+
+        # 验证至少有一个阻止的案例
+        assert blocked > 0, f"应至少有一个低置信度阻止的案例，但实际阻止数为 {blocked}"
+
+        # 验证失败率不超过允许范围（允许最多1个失败）
+        assert failed <= 1, f"失败案例过多: {failed} 个（允许最多1个）"
+
+        print(f"\n{'='*80}")
+        print("✓ 批量测试验证通过")
+        print(f"  - 至少1个通过: {passed} ≥ 1")
+        print(f"  - 至少1个阻止: {blocked} ≥ 1")
+        print(f"  - 失败数可接受: {failed} ≤ 1")
+        print(f"{'='*80}")
