@@ -461,3 +461,112 @@ class TestNoSummerSurvey:
         print(f"  - 置信度: {quality_report['confidence_level']}")
         print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
         print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
+
+
+@pytest.mark.integration
+class TestIrregularSurvey:
+    """测试【参差不齐】数据场景"""
+
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        TestHelper.setup_tmp_dir()
+        yield
+
+    def test_full_workflow_irregular_survey(self):
+        """测试【参差不齐】数据的完整工作流"""
+        survey_path = get_survey_path("irregular")
+
+        # === 阶段1: 提取和质量检查 ===
+        caller = SkillCaller(timeout=300)
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+        assert extract_result["success"], "提取失败"
+
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        quality_report = extract_check["quality_report"]
+
+        # 验证置信度应为"中等"（参差不齐但仍可用）
+        expected_conf = SAMPLE_SURVEYS["irregular"]["expected_confidence"]
+        assert quality_report["confidence_level"] == expected_conf, \
+            f"置信度应为 {expected_conf}，实际为 {quality_report['confidence_level']}"
+
+        # 验证完整率应在50-80%之间
+        completeness = quality_report["completeness_rate"]
+        assert 50.0 <= completeness < 80.0, \
+            f"完整率应在50-80%之间，实际为 {completeness}%"
+
+        # === 特殊验证1: 检测间隔填写问题 ===
+        issues = quality_report.get("issues", [])
+        assert len(issues) > 0, "应检测到数据间隔填写的问题"
+
+        # 可能的问题描述关键词：间隔、缺失、不完整等
+        issue_messages = [issue.get("message", "") for issue in issues]
+        print(f"  检测到 {len(issues)} 个数据质量问题")
+        print(f"  问题示例: {issue_messages[:3] if issue_messages else '无'}")
+
+        # === 阶段2: 生成填充建议 ===
+        # 保存单独文件
+        with open(TMP_DIR / "extracted_data.json", 'w', encoding='utf-8') as f:
+            json.dump(extract_check["extracted_data"], f, ensure_ascii=False, indent=2)
+        with open(TMP_DIR / "quality_report.json", 'w', encoding='utf-8') as f:
+            json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+        # 生成填充建议
+        suggest_result = caller.call_skill(
+            "suggest-data-filling",
+            str(TMP_DIR / "quality_report.json"),
+            str(TMP_DIR / "filling_suggestions.json")
+        )
+        assert suggest_result["success"], "生成填充建议失败"
+
+        # 加载填充建议
+        filling_suggestions = TestHelper.load_json(TMP_DIR / "filling_suggestions.json")
+
+        # === 特殊验证2: 应生成插值填充建议 ===
+        assert len(filling_suggestions.get("suggestions", [])) > 0, \
+            "参差不齐的数据应生成填充建议"
+
+        # 检查是否有可填充的建议
+        fillable_suggestions = filling_suggestions.get("fillable_suggestions", [])
+        print(f"  生成 {len(fillable_suggestions)} 条可填充建议")
+
+        # === 阶段3: 应用填充建议 ===
+        filler = DataFiller()
+        filled_data_path = filler.fill_data(
+            str(TMP_DIR / "extracted_data.json"),
+            str(TMP_DIR / "filling_suggestions.json"),
+            str(TMP_DIR / "filled_data.json")
+        )
+
+        # === 阶段4: 计算节能率 ===
+        template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
+        calculator = ExcelCalculator(str(template_path))
+        calc_result_path = calculator.calculate(
+            str(TMP_DIR / "filled_data.json"),
+            str(TMP_DIR / "calc_result.json")
+        )
+
+        # 加载计算结果
+        calc_result = TestHelper.load_json(Path(calc_result_path))
+
+        # 验证计算结果
+        assert "energy_saving_rate" in calc_result, "缺少节能率"
+
+        # 验证节能率
+        expected_rate = SAMPLE_SURVEYS["irregular"]["expected_rate"]
+        actual_rate = calc_result["energy_saving_rate"] * 100  # 转换为百分比
+        tolerance = TestHelper.calculate_rate_tolerance(expected_rate)
+
+        assert abs(actual_rate - expected_rate) <= tolerance, \
+            f"节能率偏差: 期望 {expected_rate}%, 实际 {actual_rate:.2f}%"
+
+        print(f"✓ 【参差不齐】数据测试通过")
+        print(f"  - 完整率: {completeness}%")
+        print(f"  - 置信度: {quality_report['confidence_level']}")
+        print(f"  - 检测到问题数: {len(issues)}")
+        print(f"  - 填充建议数: {len(fillable_suggestions)}")
+        print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
+        print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
