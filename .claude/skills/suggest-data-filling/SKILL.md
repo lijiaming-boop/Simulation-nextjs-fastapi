@@ -1,85 +1,206 @@
 ---
 name: suggest-data-filling
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: 基于季节模式和插值法为中央空调冷站运行数据生成智能填充建议。当调研表数据不完整,需要推荐缺失数据的合理填充值时使用此技能。
 ---
 
-# Suggest Data Filling
+# Data Filling Suggestion Generator
 
 ## Overview
 
-[TODO: 1-2 sentences explaining what this skill enables]
+为中央空调节能调研表的缺失数据生成智能填充建议。该技能基于季节模式、线性插值和物理模型,为缺失的冷站运行参数推荐合理的填充值,帮助用户快速补充完整数据以进行节能率计算。
 
-## Structuring This Skill
+**使用场景:**
+- 调研表部分月份运行数据缺失
+- 需要为缺失数据提供合理的估算值
+- 希望基于已有数据和季节特征推断缺失值
+- 自动从调研表提取项目地区信息（配合 extract-and-check-data skill）
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+## 填充策略
 
-**1. Workflow-Based** (best for sequential processes)
-- Works well when there are clear step-by-step procedures
-- Example: DOCX skill with "Workflow Decision Tree" → "Reading" → "Creating" → "Editing"
-- Structure: ## Overview → ## Workflow Decision Tree → ## Step 1 → ## Step 2...
+### 1. 能耗数据 (total_energy)
 
-**2. Task-Based** (best for tool collections)
-- Works well when the skill offers different operations/capabilities
-- Example: PDF skill with "Quick Start" → "Merge PDFs" → "Split PDFs" → "Extract Text"
-- Structure: ## Overview → ## Quick Start → ## Task Category 1 → ## Task Category 2...
+**策略层次:**
+1. **基于运行参数估算**(高置信度):如果当月有泵频率、供水温度等参数,使用简化物理模型估算
+   - 基准能耗 × 季节系数 × 泵频率因子 × 温度因子
+   - 公式: `E = E_base × S_season × (freq/45)^2.5 × (1 - (T_supply-7)×0.04)`
 
-**3. Reference/Guidelines** (best for standards or specifications)
-- Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" → "Colors" → "Typography" → "Features"
-- Structure: ## Overview → ## Guidelines → ## Specifications → ## Usage...
+2. **季节模式推算**(中置信度):基于季节系数插值
+   - 夏季(6-8月):系数1.0(高峰)
+   - 春秋季(4-5月,9-10月):系数0.7-0.9
+   - 冬季(12-2月):系数0.4-0.5(低谷)
 
-**4. Capabilities-Based** (best for integrated systems)
-- Works well when the skill provides multiple interrelated features
-- Example: Product Management with "Core Capabilities" → numbered capability list
-- Structure: ## Overview → ## Core Capabilities → ### 1. Feature → ### 2. Feature...
+3. **需要基准值**(低置信度):如果没有历史数据,需要用户提供至少一个月的能耗作为基准
 
-Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
+### 2. 运行参数(温度、频率、温差)
 
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
+**策略层次:**
+1. **线性插值**(高置信度):基于相邻月份数据插值
+   ```
+   例如:1月=7.0℃, 3月=9.0℃ → 2月≈8.0℃
+   ```
 
-## [TODO: Replace with the first main section based on chosen structure]
+2. **同季节复制**(中置信度):使用同季节代表月数据
+   - 冬季用1月,春季用5月,夏季用7月,秋季用10月
 
-[TODO: Add content here. See examples in existing skills:
-- Code samples for technical skills
-- Decision trees for complex workflows
-- Concrete examples with realistic user requests
-- References to scripts/templates/references as needed]
+3. **典型值**(低置信度):使用行业经验值范围
+   - 冷机供水温度:7.0℃ (范围5-12℃)
+   - 冷却/冷冻泵频率:42.5Hz (范围30-50Hz)
+   - 冷却/冷冻水温差:4.0℃ (范围3-6℃)
+   - 冷却塔出水温度:28.0℃ (范围24-32℃)
 
-## Resources
+### 3. 项目地区
 
-This skill includes example resource directories that demonstrate how to organize different types of bundled resources:
+**策略:**
+1. **自动提取**(高置信度): 从 `extracted_data.json` 的 `project_region` 字段自动读取
+2. **手动输入**(无置信度): 如果提取数据中不包含项目地区，需要用户手动输入
+
+## 使用方法
+
+### 直接调用脚本
+
+```bash
+# 确保输入文件存在
+ls tmp/extracted_data.json
+ls tmp/quality_report.json
+
+# 运行填充建议生成器
+python .claude/skills/suggest-data-filling/scripts/generate_suggestions.py
+
+# 查看输出
+cat tmp/filling_suggestions.json
+```
+
+### 输出格式
+
+```json
+{
+  "project_region": {
+    "suggested_value": "华南",
+    "method": "auto_extracted",
+    "confidence": "high",
+    "reason": "从调研表中自动提取的项目地区"
+  },
+  "monthly_suggestions": [
+    {
+      "month": 2,
+      "fields": {
+        "total_energy": {
+          "suggested_value": 50000.0,
+          "method": "seasonal_pattern",
+          "confidence": "low",
+          "reason": "基于季节模式估算"
+        },
+        "chiller_supply_temp": {
+          "suggested_value": 7.0,
+          "method": "interpolation",
+          "confidence": "medium",
+          "reason": "基于可用数据线性插值(数据点: 1个)"
+        }
+      }
+    }
+  ]
+}
+```
+
+### 置信度说明
+
+- **high**: 有2个以上数据点支撑的线性插值
+- **medium**: 有1个数据点或基于物理模型的估算
+- **low**: 基于季节模式或典型值的推断
+- **none**: 无法自动推断,需要用户输入
+
+### 方法说明
+
+- **auto_extracted**: 从提取的数据中自动获取（适用于项目地区）
+- **manual_input**: 需要用户手动输入（当自动提取失败时）
+- **interpolation**: 线性插值（基于相邻数据点）
+- **seasonal_pattern**: 季节模式估算（基于季节系数）
+- **param_based_estimation**: 基于运行参数的物理模型估算
+- **typical_value**: 使用行业典型值
+
+## 示例场景
+
+### 场景1:只有1月数据,填充2-12月
+
+```
+输入:
+- 1月: total_energy=35000, chiller_supply_temp=7.0, cooling_pump_freq=42.5
+
+输出建议:
+- 2-3月(冬季):使用1月数据,能耗季节系数×1.2
+- 4-5月(春季):插值1月→7月,能耗季节系数×0.8
+- 6-8月(夏季):使用7月典型值,能耗季节系数×1.0
+- 9-10月(秋季):插值7月→1月,能耗季节系数×0.8
+- 11-12月(冬季):使用1月数据,能耗季节系数×0.7
+```
+
+### 场景2:只有夏季数据,填充其他季节
+
+```
+输入:
+- 7月: total_energy=100000, chiller_supply_temp=7.0, cooling_pump_freq=45.0
+
+输出建议:
+- 冬季(12-2月):能耗按0.4-0.5比例折算
+- 春秋季(4-5月,9-10月):能耗按0.7-0.9比例折算
+- 运行参数:根据季节调整(如冬季供水温度可提高至8-9℃)
+```
+
+## 依赖文件
+
+### 输入文件
+- `tmp/extracted_data.json`: 从调研表提取的原始数据
+- `tmp/quality_report.json`: 数据质量检查报告
+
+### 输出文件
+- `tmp/filling_suggestions.json`: 填充建议,包含建议值、方法、置信度和原因
+
+## 技术细节
+
+### 季节分组
+```python
+SEASON_GROUPS = {
+    "winter": [12, 1, 2],    # 冬季
+    "spring": [3, 4, 5],     # 春季
+    "summer": [6, 7, 8],     # 夏季
+    "autumn": [9, 10, 11]    # 秋季
+}
+```
+
+### 能耗季节系数
+```python
+ENERGY_SEASONAL_FACTORS = {
+    1: 0.4,   # 1月:冬季最低
+    7: 1.0,   # 7月:夏季高峰(基准)
+    ...
+}
+```
+
+### 典型值范围
+- 基于《中央空调系统节能评估规范》
+- 参考《公共建筑节能设计标准》
+
+## 注意事项
+
+1. **置信度判断**: 建议仅供参考,高置信度建议优先采用
+2. **物理合理性**: 所有建议值均符合物理约束(如温度不能为负)
+3. **数据质量**: 如果原始数据质量低,填充建议置信度也会降低
+4. **人工审核**: 关键字段(如能耗)建议人工审核后再使用
+
+## 后续处理
+
+填充建议生成后,可以:
+1. 使用 `DataFiller` 应用建议到原始数据
+2. 使用 `ExcelCalculator` 计算节能率
+3. 对比不同填充策略对结果的影响
+
+## 资源
 
 ### scripts/
-Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
+- `generate_suggestions.py`: 核心填充建议生成器
 
-**Examples from other skills:**
-- PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
-- DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
-
-**Appropriate for:** Python scripts, shell scripts, or any executable code that performs automation, data processing, or specific operations.
-
-**Note:** Scripts may be executed without loading into context, but can still be read by Claude for patching or environment adjustments.
-
-### references/
-Documentation and reference material intended to be loaded into context to inform Claude's process and thinking.
-
-**Examples from other skills:**
-- Product management: `communication.md`, `context_building.md` - detailed workflow guides
-- BigQuery: API reference documentation and query examples
-- Finance: Schema documentation, company policies
-
-**Appropriate for:** In-depth documentation, API references, database schemas, comprehensive guides, or any detailed information that Claude should reference while working.
-
-### assets/
-Files not intended to be loaded into context, but rather used within the output Claude produces.
-
-**Examples from other skills:**
-- Brand styling: PowerPoint template files (.pptx), logo files
-- Frontend builder: HTML/React boilerplate project directories
-- Typography: Font files (.ttf, .woff2)
-
-**Appropriate for:** Templates, boilerplate code, document templates, images, icons, fonts, or any files meant to be copied or used in the final output.
-
----
-
-**Any unneeded directories can be deleted.** Not every skill requires all three types of resources.
+该脚本包含:
+- 数据加载和保存函数
+- 季节分组和插值算法
+- 能耗估算物理模型
+- 典型值范围定义
