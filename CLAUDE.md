@@ -224,6 +224,29 @@ except ImportError:
 3. **Excel模板依赖**：集成测试需要 `00_sample/机房智能化节能评估表-按冷站电量数据.xlsx` 存在
 4. **Skill测试隔离**：单元测试应mock Skill调用，避免依赖Claude CLI
 
+### 示例调研表端到端测试
+
+项目包含6份不同质量等级的示例调研表，用于全面测试系统功能：
+
+**运行示例调研表测试：**
+```bash
+# 使用测试脚本（推荐）
+./scripts/run_sample_survey_tests.sh
+
+# 或手动运行
+export PYTHONPATH=/home/zack/lingzhi_apps/conditioner_saving:$PYTHONPATH
+export ANTHROPIC_API_KEY='your-api-key'
+pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
+```
+
+**测试覆盖场景：**
+- 齐全数据（高置信度）
+- 仅有夏季/缺冬季/缺夏季（中等置信度，需填充）
+- 参差不齐（中等置信度，插值填充）
+- 数据缺失过多（低置信度，流程中断）
+
+详见：`docs/testing/sample-surveys-testing-guide.md`
+
 ## 部署要点
 
 **生产环境检查清单**：
