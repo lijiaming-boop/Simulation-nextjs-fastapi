@@ -9,6 +9,9 @@ from typing import Dict, List
 class CellMapping:
     """Excel 单元格映射器"""
 
+    # 工作表名称
+    SHEET_NAME = "【2】按冷站电量数据 "  # 注意末尾空格
+
     # 列号映射: 月份(0-11) -> Excel列(D-O)
     MONTH_COLS = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
 
@@ -35,7 +38,7 @@ class CellMapping:
         "freezing_pump_saving_total": "P21",
         "tower_saving_total": "P25",
         "total_saving": "P28",
-        "saving_rate": "P29",
+        "saving_rate": "O30",  # 修正：实际位置是 O30 而非 P29
     }
 
     def get_cell(self, data_type: str, month_index: int, field: str) -> str:
