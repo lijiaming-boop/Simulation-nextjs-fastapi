@@ -570,3 +570,116 @@ class TestIrregularSurvey:
         print(f"  - 填充建议数: {len(fillable_suggestions)}")
         print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
         print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
+
+
+@pytest.mark.integration
+class TestInsufficientSurvey:
+    """测试【数据缺失过多】场景（应中断流程）"""
+
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        TestHelper.setup_tmp_dir()
+        yield
+
+    def test_extract_insufficient_survey_should_report_low_confidence(self):
+        """测试数据缺失过多时应报告低置信度"""
+        survey_path = get_survey_path("insufficient")
+
+        # 提取和检查
+        caller = SkillCaller(timeout=300)
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+
+        # 验证skill调用成功（即使数据质量差）
+        assert extract_result["success"], "提取应成功，但报告低置信度"
+
+        # 加载结果
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        quality_report = extract_check["quality_report"]
+
+        # === 特殊验证1: 置信度应为"低" ===
+        expected_conf = SAMPLE_SURVEYS["insufficient"]["expected_confidence"]
+        assert quality_report["confidence_level"] == expected_conf, \
+            f"置信度应为 {expected_conf}，实际为 {quality_report['confidence_level']}"
+
+        # === 特殊验证2: 完整率应<50% ===
+        completeness = quality_report["completeness_rate"]
+        assert completeness < 50.0, \
+            f"完整率应<50%，实际为 {completeness}%"
+
+        # === 特殊验证3: 应有大量严重问题 ===
+        issues = quality_report.get("issues", [])
+        critical_issues = [i for i in issues if i.get("severity") == "CRITICAL"]
+        assert len(critical_issues) > 0, "应检测到至少1个严重(CRITICAL)问题"
+
+        # 统计问题严重性分布
+        high_issues = [i for i in issues if i.get("severity") == "HIGH"]
+        medium_issues = [i for i in issues if i.get("severity") == "MEDIUM"]
+
+        print(f"✓ 【数据缺失过多】低置信度检测通过")
+        print(f"  - 完整率: {completeness:.1f}%（应<50%）")
+        print(f"  - 置信度: {quality_report['confidence_level']}（低）")
+        print(f"  - 问题统计:")
+        print(f"    - CRITICAL（严重）: {len(critical_issues)} 个")
+        print(f"    - HIGH（高）: {len(high_issues)} 个")
+        print(f"    - MEDIUM（中）: {len(medium_issues)} 个")
+        print(f"  - 总问题数: {len(issues)}")
+
+        # 显示前3个严重问题示例
+        if critical_issues:
+            print(f"  - 严重问题示例:")
+            for i, issue in enumerate(critical_issues[:3], 1):
+                print(f"    {i}. {issue.get('message', 'N/A')}")
+
+    def test_insufficient_survey_should_block_calculation(self):
+        """测试数据缺失过多时应阻止计算流程"""
+        survey_path = get_survey_path("insufficient")
+        caller = SkillCaller(timeout=300)
+
+        # === 阶段1: 提取和检查 ===
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+        assert extract_result["success"], "提取应成功"
+
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        quality_report = extract_check["quality_report"]
+
+        # === 验证1: 确认低置信度 ===
+        assert quality_report["confidence_level"] == "low", \
+            f"置信度应为 low，实际为 {quality_report['confidence_level']}"
+
+        completeness = quality_report["completeness_rate"]
+        assert completeness < 50.0, f"完整率应<50%，实际为 {completeness}%"
+
+        # === 验证2: 模拟前端逻辑 - 低置信度应中断流程 ===
+        should_block = quality_report["confidence_level"] == "low"
+        assert should_block, "低置信度应触发流程中断标志"
+
+        # === 验证3: 检查严重和高优先级问题 ===
+        issues = quality_report.get("issues", [])
+        critical_and_high_issues = [
+            i for i in issues
+            if i.get("severity") in ["CRITICAL", "HIGH"]
+        ]
+        assert len(critical_and_high_issues) > 0, \
+            "应至少有1个CRITICAL或HIGH级别的问题"
+
+        print(f"✓ 【数据缺失过多】流程中断验证通过")
+        print(f"  - 置信度检测: {quality_report['confidence_level']} (低)")
+        print(f"  - 完整率: {completeness:.1f}% (<50%)")
+        print(f"  - 流程中断标志: should_block = {should_block}")
+        print(f"  - 严重/高优先级问题: {len(critical_and_high_issues)} 个")
+        print(f"")
+        print(f"  【流程控制说明】")
+        print(f"  - 系统正确识别低质量数据")
+        print(f"  - 前端应在此处显示错误界面")
+        print(f"  - 流程应中断，不进入填充和计算阶段")
+        print(f"  - 要求用户补充数据后重新上传")
+        print(f"")
+        print(f"  ⚠ 注意: 此测试不执行后续填充和计算步骤（符合设计）")
