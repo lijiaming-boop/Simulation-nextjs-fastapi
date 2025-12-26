@@ -59,3 +59,38 @@ def test_calculate_energy_saving(template_path, filled_data_path, tmp_dir):
 
     # 验证节能率在合理范围 (5%-35%)
     assert 0.05 <= result["energy_saving_rate"] <= 0.35
+
+
+def test_calculate_with_formulas_engine(template_path, filled_data_path, tmp_dir):
+    """测试使用 formulas 库进行计算"""
+    if not Path(template_path).exists():
+        pytest.skip("Excel template not found")
+
+    calc = ExcelCalculator(template_path)
+
+    # 读取填充数据
+    with open(filled_data_path) as f:
+        data = json.load(f)
+
+    # 创建临时 Excel 文件
+    temp_excel = tmp_dir / "test_calc.xlsx"
+    import shutil
+    shutil.copy(template_path, temp_excel)
+
+    # 调用新的计算方法
+    result = calc._calculate_with_formulas(data, temp_excel)
+
+    # 验证结果结构
+    assert "energy_saving_rate" in result
+    assert "chiller_saving" in result
+    assert "pump_saving" in result
+    assert "tower_saving" in result
+    assert "total_saving" in result
+    assert "completeness" in result
+    assert "filled_count" in result
+
+    # 验证节能率在合理范围
+    assert 0 <= result["energy_saving_rate"] <= 1.0
+
+    # 打印结果用于调试
+    print(f"\n计算结果: {result}")

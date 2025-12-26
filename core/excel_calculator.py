@@ -134,6 +134,93 @@ class ExcelCalculator:
             wb.close()
             app.quit()
 
+    def _calculate_with_formulas(
+        self,
+        data: Dict[str, Any],
+        excel_path: Path
+    ) -> Dict[str, Any]:
+        """使用 formulas 库执行计算
+
+        Args:
+            data: 填充后的数据字典
+            excel_path: Excel 文件路径
+
+        Returns:
+            计算结果字典
+        """
+        try:
+            import formulas
+        except ImportError:
+            raise RuntimeError("formulas library not installed")
+
+        # 加载 Excel 文件
+        xl_model = formulas.ExcelModel().loads(str(excel_path)).finish()
+
+        # 获取工作簿名称
+        book_name = list(xl_model.books.keys())[0]
+
+        # 准备输入数据字典（使用正确的单元格引用格式）
+        inputs = {}
+
+        # 1. 回填项目地区到 Sheet2
+        region_cell = self.mapper.get_basic_info_cell("project_region")
+        # formulas 库使用格式: '[workbook]sheet'!cell
+        cell_id = f"'[{book_name}]{self.mapper.SHEET_NAME}'!{region_cell}"
+        inputs[cell_id] = data["project_region"]
+
+        # 2. 回填月度数据到 Sheet1（使用 SHEET_NAME）
+        for month_data in data["monthly_data"]:
+            month_idx = month_data["month"] - 1  # 转换为 0-based 索引
+
+            for field in self.mapper.get_monthly_fields():
+                value = month_data.get(field)
+                if value is not None:
+                    cell = self.mapper.get_cell("monthly_data", month_idx, field)
+                    cell_id = f"'[{book_name}]{self.mapper.SHEET_NAME}'!{cell}"
+                    inputs[cell_id] = value
+
+        # 3. 触发计算并传入输入值
+        result_data = xl_model.calculate(inputs=inputs)
+
+        # 4. 提取计算结果
+        def get_result_value(result_field: str) -> float:
+            """提取结果单元格的值"""
+            cell = self.mapper.get_result_cell(result_field)
+            # 读取结果时使用小写工作簿名称
+            cell_id = f"'[{book_name.lower()}]{self.mapper.SHEET_NAME}'!{cell}"
+
+            if cell_id in result_data:
+                value = result_data[cell_id]
+                # Ranges 对象的值存储在 .value 属性的嵌套列表中
+                if hasattr(value, 'value'):
+                    value = value.value[0][0]
+                return float(value) if value is not None else 0.0
+            else:
+                return 0.0
+
+        result = {
+            "chiller_saving": get_result_value("chiller_saving_total"),
+            "pump_saving": (
+                get_result_value("cooling_pump_saving_total") +
+                get_result_value("freezing_pump_saving_total")
+            ),
+            "tower_saving": get_result_value("tower_saving_total"),
+            "total_saving": get_result_value("total_saving"),
+            "energy_saving_rate": get_result_value("saving_rate"),
+        }
+
+        # 计算节能率范围 (±20%)
+        rate = result["energy_saving_rate"]
+        result["energy_saving_rate_min"] = rate * 0.8
+        result["energy_saving_rate_max"] = rate * 1.2
+
+        # 添加元数据
+        result["completeness"] = data["_metadata"]["final_completeness"]
+        result["filled_count"] = data["_metadata"]["fill_count"]
+        result["calculation_timestamp"] = datetime.now().isoformat()
+
+        return result
+
     def _mock_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """生成 mock 结果用于测试 (xlwings 不可用时)"""
         return {
