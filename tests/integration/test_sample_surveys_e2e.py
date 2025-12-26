@@ -122,3 +122,73 @@ class TestCompleteSurvey:
             f"完整率应≥80%，实际为 {completeness}%"
 
         print(f"✓ 【齐全】数据提取完成，完整率: {completeness}%，置信度: {quality['confidence_level']}")
+
+    def test_full_workflow_complete_survey(self):
+        """测试【齐全】数据的完整工作流：提取→填充→计算"""
+        survey_path = get_survey_path("complete")
+
+        # === 阶段1: 提取和质量检查 ===
+        caller = SkillCaller(timeout=300)
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+        assert extract_result["success"], "提取失败"
+
+        # 加载提取结果
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        extracted_data = extract_check["extracted_data"]
+        quality_report = extract_check["quality_report"]
+
+        # === 阶段2: 生成填充建议 ===
+        # 保存单独的文件供 suggest-data-filling 使用
+        with open(TMP_DIR / "extracted_data.json", 'w', encoding='utf-8') as f:
+            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+
+        with open(TMP_DIR / "quality_report.json", 'w', encoding='utf-8') as f:
+            json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+        # 调用 suggest-data-filling skill
+        suggest_result = caller.call_skill(
+            "suggest-data-filling",
+            str(TMP_DIR / "quality_report.json"),
+            str(TMP_DIR / "filling_suggestions.json")
+        )
+        assert suggest_result["success"], "生成填充建议失败"
+
+        # 加载填充建议
+        filling_suggestions = TestHelper.load_json(TMP_DIR / "filling_suggestions.json")
+        TestHelper.validate_filling_suggestions(filling_suggestions)
+
+        # === 阶段3: 应用填充建议 ===
+        filler = DataFiller()
+        filled_data = filler.apply_suggestions(extracted_data, filling_suggestions)
+
+        # 保存填充后的数据
+        with open(TMP_DIR / "filled_data.json", 'w', encoding='utf-8') as f:
+            json.dump(filled_data, f, ensure_ascii=False, indent=2)
+
+        # === 阶段4: 计算节能率 ===
+        template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
+        output_path = TMP_DIR / "result_complete.xlsx"
+
+        calculator = ExcelCalculator(str(template_path))
+        calc_result = calculator.calculate(filled_data, str(output_path))
+
+        # 验证计算结果
+        assert calc_result["success"], f"计算失败: {calc_result.get('error')}"
+        assert "total_saving_rate" in calc_result, "缺少总节能率"
+
+        # 验证节能率在预期范围内（±0.5%）
+        expected_rate = SAMPLE_SURVEYS["complete"]["expected_rate"]
+        actual_rate = calc_result["total_saving_rate"]
+        tolerance = TestHelper.calculate_rate_tolerance(expected_rate)
+
+        assert abs(actual_rate - expected_rate) <= tolerance, \
+            f"节能率偏差过大: 期望 {expected_rate}%, 实际 {actual_rate}%, 容差 ±{tolerance}%"
+
+        print(f"✓ 【齐全】数据完整流程测试通过")
+        print(f"  - 完整率: {quality_report['completeness_rate']}%")
+        print(f"  - 置信度: {quality_report['confidence_level']}")
+        print(f"  - 节能率: {actual_rate}% (期望 {expected_rate}%)")
