@@ -287,3 +287,177 @@ class TestSummerOnlySurvey:
         print(f"  - 置信度: {quality_report['confidence_level']}")
         print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
         print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
+
+
+@pytest.mark.integration
+class TestNoWinterSurvey:
+    """测试【缺冬季】数据场景"""
+
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        TestHelper.setup_tmp_dir()
+        yield
+
+    def test_full_workflow_no_winter_survey(self):
+        """测试【缺冬季】数据的完整工作流"""
+        survey_path = get_survey_path("no_winter")
+
+        # === 阶段1: 提取和质量检查 ===
+        caller = SkillCaller(timeout=300)
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+        assert extract_result["success"], "提取失败"
+
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        quality_report = extract_check["quality_report"]
+
+        # 验证置信度应为"中等"
+        expected_conf = SAMPLE_SURVEYS["no_winter"]["expected_confidence"]
+        assert quality_report["confidence_level"] == expected_conf, \
+            f"置信度应为 {expected_conf}，实际为 {quality_report['confidence_level']}"
+
+        # 验证完整率应在50-80%之间
+        completeness = quality_report["completeness_rate"]
+        assert 50.0 <= completeness < 80.0, \
+            f"完整率应在50-80%之间，实际为 {completeness}%"
+
+        # === 阶段2: 生成填充建议 ===
+        # 保存单独文件
+        with open(TMP_DIR / "extracted_data.json", 'w', encoding='utf-8') as f:
+            json.dump(extract_check["extracted_data"], f, ensure_ascii=False, indent=2)
+        with open(TMP_DIR / "quality_report.json", 'w', encoding='utf-8') as f:
+            json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+        # 生成填充建议
+        suggest_result = caller.call_skill(
+            "suggest-data-filling",
+            str(TMP_DIR / "quality_report.json"),
+            str(TMP_DIR / "filling_suggestions.json")
+        )
+        assert suggest_result["success"], "生成填充建议失败"
+
+        # === 阶段3: 应用填充建议 ===
+        filler = DataFiller()
+        filled_data_path = filler.fill_data(
+            str(TMP_DIR / "extracted_data.json"),
+            str(TMP_DIR / "filling_suggestions.json"),
+            str(TMP_DIR / "filled_data.json")
+        )
+
+        # === 阶段4: 计算节能率 ===
+        template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
+        calculator = ExcelCalculator(str(template_path))
+        calc_result_path = calculator.calculate(
+            str(TMP_DIR / "filled_data.json"),
+            str(TMP_DIR / "calc_result.json")
+        )
+
+        # 加载计算结果
+        calc_result = TestHelper.load_json(Path(calc_result_path))
+
+        # 验证计算结果
+        assert "energy_saving_rate" in calc_result, "缺少节能率"
+
+        # 验证节能率
+        expected_rate = SAMPLE_SURVEYS["no_winter"]["expected_rate"]
+        actual_rate = calc_result["energy_saving_rate"] * 100  # 转换为百分比
+        tolerance = TestHelper.calculate_rate_tolerance(expected_rate)
+
+        assert abs(actual_rate - expected_rate) <= tolerance, \
+            f"节能率偏差: 期望 {expected_rate}%, 实际 {actual_rate:.2f}%"
+
+        print(f"✓ 【缺冬季】数据测试通过")
+        print(f"  - 完整率: {completeness}%")
+        print(f"  - 置信度: {quality_report['confidence_level']}")
+        print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
+        print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
+
+
+@pytest.mark.integration
+class TestNoSummerSurvey:
+    """测试【缺夏季】数据场景"""
+
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        TestHelper.setup_tmp_dir()
+        yield
+
+    def test_full_workflow_no_summer_survey(self):
+        """测试【缺夏季】数据的完整工作流"""
+        survey_path = get_survey_path("no_summer")
+
+        # === 阶段1: 提取和质量检查 ===
+        caller = SkillCaller(timeout=300)
+        extract_result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+        assert extract_result["success"], "提取失败"
+
+        extract_check = TestHelper.load_json(TMP_DIR / "extract_check_result.json")
+        quality_report = extract_check["quality_report"]
+
+        # 验证置信度应为"中等"
+        expected_conf = SAMPLE_SURVEYS["no_summer"]["expected_confidence"]
+        assert quality_report["confidence_level"] == expected_conf, \
+            f"置信度应为 {expected_conf}，实际为 {quality_report['confidence_level']}"
+
+        # 验证完整率应在50-80%之间
+        completeness = quality_report["completeness_rate"]
+        assert 50.0 <= completeness < 80.0, \
+            f"完整率应在50-80%之间，实际为 {completeness}%"
+
+        # === 阶段2: 生成填充建议 ===
+        # 保存单独文件
+        with open(TMP_DIR / "extracted_data.json", 'w', encoding='utf-8') as f:
+            json.dump(extract_check["extracted_data"], f, ensure_ascii=False, indent=2)
+        with open(TMP_DIR / "quality_report.json", 'w', encoding='utf-8') as f:
+            json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+        # 生成填充建议
+        suggest_result = caller.call_skill(
+            "suggest-data-filling",
+            str(TMP_DIR / "quality_report.json"),
+            str(TMP_DIR / "filling_suggestions.json")
+        )
+        assert suggest_result["success"], "生成填充建议失败"
+
+        # === 阶段3: 应用填充建议 ===
+        filler = DataFiller()
+        filled_data_path = filler.fill_data(
+            str(TMP_DIR / "extracted_data.json"),
+            str(TMP_DIR / "filling_suggestions.json"),
+            str(TMP_DIR / "filled_data.json")
+        )
+
+        # === 阶段4: 计算节能率 ===
+        template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
+        calculator = ExcelCalculator(str(template_path))
+        calc_result_path = calculator.calculate(
+            str(TMP_DIR / "filled_data.json"),
+            str(TMP_DIR / "calc_result.json")
+        )
+
+        # 加载计算结果
+        calc_result = TestHelper.load_json(Path(calc_result_path))
+
+        # 验证计算结果
+        assert "energy_saving_rate" in calc_result, "缺少节能率"
+
+        # 验证节能率
+        expected_rate = SAMPLE_SURVEYS["no_summer"]["expected_rate"]
+        actual_rate = calc_result["energy_saving_rate"] * 100  # 转换为百分比
+        tolerance = TestHelper.calculate_rate_tolerance(expected_rate)
+
+        assert abs(actual_rate - expected_rate) <= tolerance, \
+            f"节能率偏差: 期望 {expected_rate}%, 实际 {actual_rate:.2f}%"
+
+        print(f"✓ 【缺夏季】数据测试通过")
+        print(f"  - 完整率: {completeness}%")
+        print(f"  - 置信度: {quality_report['confidence_level']}")
+        print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
+        print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
