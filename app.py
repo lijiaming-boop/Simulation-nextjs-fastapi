@@ -222,10 +222,62 @@ def render_extract_check_stage():
             # 总结
             st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
 
+            # 检查置信度级别
+            confidence = quality_report.get("confidence_level", "unknown")
+
+            if confidence == "low":
+                # 低置信度,中断流程
+                st.markdown("---")
+                st.error("⛔ **数据质量不达标,无法继续计算**")
+
+                st.warning(
+                    "⚠️ 当前数据完整率过低(< 50%),无法保证计算结果的可靠性。\n\n"
+                    "**建议操作:**\n"
+                    "1. 在原始调研表中补充缺失的关键数据\n"
+                    "2. 确保至少填写 6 个月以上的运行数据\n"
+                    "3. 重点补充月度总能耗和冷机供水温度\n"
+                    "4. 补充完成后重新上传调研表"
+                )
+
+                # 展示必须修复的问题
+                critical_and_high = [
+                    i for i in issues
+                    if i.get("severity") in ["critical", "high"]
+                ]
+
+                if critical_and_high:
+                    st.subheader("🔴 必须修复的问题")
+                    st.info(f"共 {len(critical_and_high)} 个严重/高优先级问题需要解决")
+
+                    for idx, issue in enumerate(critical_and_high[:20], 1):  # 最多显示20个
+                        st.error(
+                            f"**{idx}. {issue.get('field')}**\n\n"
+                            f"{issue.get('message')}"
+                        )
+
+                    if len(critical_and_high) > 20:
+                        st.warning(f"... 还有 {len(critical_and_high) - 20} 个问题未显示")
+
+                # 提供重新上传按钮
+                if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+                    reset_flow()
+                    st.rerun()
+
+                # 终止函数执行,不进入下一阶段
+                return
+
+            # 中等/高置信度,展示提示但允许继续
+            if confidence == "medium":
+                st.warning(
+                    "⚠️ 数据完整率适中(50%-80%),部分数据需要智能填充,请谨慎使用计算结果"
+                )
+            elif confidence == "high":
+                st.success("✅ 数据质量良好,可以继续计算")
+
             with st.expander("查看提取的原始数据"):
                 st.json(extracted_data)
 
-            # 自动进入下一阶段
+            # 自动进入下一阶段(仅当置信度不是 low 时)
             time.sleep(1.5)
             st.session_state.stage = 'filling'
             st.rerun()
