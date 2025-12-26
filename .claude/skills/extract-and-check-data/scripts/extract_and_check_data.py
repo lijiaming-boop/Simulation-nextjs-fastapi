@@ -179,12 +179,6 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
     """从 Excel 文件提取数据"""
     xls = pd.ExcelFile(survey_excel_path)
 
-    # 提取项目地区
-    project_region = None
-    if '项目总体情况' in xls.sheet_names:
-        df_overview = pd.read_excel(xls, sheet_name='项目总体情况', header=None)
-        project_region = extract_region(df_overview)
-
     # 读取冷站数据
     if '冷站' not in xls.sheet_names:
         return {
@@ -193,6 +187,23 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
         }
 
     df = pd.read_excel(xls, sheet_name='冷站', header=None)
+
+    # 提取项目地区（三级优先级）
+    project_region = None
+
+    # 优先级1: 从站房名称推断地区
+    station_name = extract_station_name(df)
+    if station_name:
+        project_region = infer_region_from_text(station_name)
+
+    # 优先级2: 如果优先级1失败，从文件名推断地区
+    if not project_region:
+        project_region = extract_region_from_filename(survey_excel_path)
+
+    # 优先级3: 如果优先级1和2都失败，从项目总体情况表提取
+    if not project_region and '项目总体情况' in xls.sheet_names:
+        df_overview = pd.read_excel(xls, sheet_name='项目总体情况', header=None)
+        project_region = extract_region(df_overview)
 
     # 查找关键行
     row_mappings = {

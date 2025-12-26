@@ -112,3 +112,130 @@ class TestExtractRegionFromFilename:
         """测试从文件名提取地区"""
         result = extract_region_from_filename(filename)
         assert result == expected_region
+
+
+class TestExtractDataWithPriorityLogic:
+    """测试完整的地区提取流程（三级优先级）"""
+
+    def test_priority_1_station_name(self, tmp_path):
+        """优先级1: 从站房名称提取地区"""
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+
+        # 创建"项目总体情况"sheet（不包含地区）
+        ws_overview = wb.active
+        ws_overview.title = '项目总体情况'
+        ws_overview['A1'] = '项目名称'
+        ws_overview['B1'] = '某公司冷站项目'
+
+        # 创建"冷站"sheet（站房名称包含地区）
+        ws_station = wb.create_sheet('冷站')
+        ws_station['B2'] = '站房名称'
+        ws_station['D2'] = '深圳工业园区F栋制冷站'
+
+        # 添加月份行和能耗数据（12个月）
+        ws_station['C35'] = '月份'  # 月份标识
+        months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+        for i, month in enumerate(months):
+            col_letter = chr(ord('D') + i)  # D, E, F, ..., O
+            ws_station[f'{col_letter}35'] = month
+
+        ws_station['C47'] = '整个冷站'  # 能耗标识
+        # 只为前3个月添加数据，其他月份留空
+        ws_station['D47'] = 10.5
+        ws_station['E47'] = 12.3
+        ws_station['F47'] = 15.8
+
+        # 保存测试文件（文件名也不包含地区）
+        test_file = tmp_path / 'test.xlsx'
+        wb.save(test_file)
+
+        # 执行提取
+        from extract_and_check_data import extract_data_from_excel
+        result = extract_data_from_excel(str(test_file))
+
+        # 断言地区从站房名称提取成功
+        assert result['project_region'] == '华南'
+
+    def test_priority_2_filename(self, tmp_path):
+        """优先级2: 站房名称失败，从文件名提取地区"""
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+
+        # 创建"项目总体情况"sheet（不包含地区）
+        ws_overview = wb.active
+        ws_overview.title = '项目总体情况'
+        ws_overview['A1'] = '项目名称'
+        ws_overview['B1'] = '某公司冷站项目'
+
+        # 创建"冷站"sheet（站房名称不包含地区）
+        ws_station = wb.create_sheet('冷站')
+        ws_station['B2'] = '站房名称'
+        ws_station['D2'] = 'F栋制冷站'
+
+        # 添加月份行和能耗数据（12个月）
+        ws_station['C35'] = '月份'  # 月份标识
+        months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+        for i, month in enumerate(months):
+            col_letter = chr(ord('D') + i)  # D, E, F, ..., O
+            ws_station[f'{col_letter}35'] = month
+
+        ws_station['C47'] = '整个冷站'  # 能耗标识
+        # 只为前3个月添加数据，其他月份留空
+        ws_station['D47'] = 10.5
+        ws_station['E47'] = 12.3
+        ws_station['F47'] = 15.8
+
+        # 保存测试文件（文件名包含地区）
+        test_file = tmp_path / '北京某公司调研表.xlsx'
+        wb.save(test_file)
+
+        # 执行提取
+        from extract_and_check_data import extract_data_from_excel
+        result = extract_data_from_excel(str(test_file))
+
+        # 断言地区从文件名提取成功
+        assert result['project_region'] == '华北'
+
+    def test_priority_3_overview_sheet(self, tmp_path):
+        """优先级3: 站房名称和文件名都失败，从项目总体情况提取"""
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+
+        # 创建"项目总体情况"sheet（包含地区）
+        ws_overview = wb.active
+        ws_overview.title = '项目总体情况'
+        ws_overview['A1'] = '项目名称'
+        ws_overview['B1'] = '武汉市某公司冷站项目'
+
+        # 创建"冷站"sheet（站房名称不包含地区）
+        ws_station = wb.create_sheet('冷站')
+        ws_station['B2'] = '站房名称'
+        ws_station['D2'] = 'F栋制冷站'
+
+        # 添加月份行和能耗数据（12个月）
+        ws_station['C35'] = '月份'  # 月份标识
+        months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+        for i, month in enumerate(months):
+            col_letter = chr(ord('D') + i)  # D, E, F, ..., O
+            ws_station[f'{col_letter}35'] = month
+
+        ws_station['C47'] = '整个冷站'  # 能耗标识
+        # 只为前3个月添加数据，其他月份留空
+        ws_station['D47'] = 10.5
+        ws_station['E47'] = 12.3
+        ws_station['F47'] = 15.8
+
+        # 保存测试文件（文件名不包含地区）
+        test_file = tmp_path / 'test.xlsx'
+        wb.save(test_file)
+
+        # 执行提取
+        from extract_and_check_data import extract_data_from_excel
+        result = extract_data_from_excel(str(test_file))
+
+        # 断言地区从项目总体情况提取成功
+        assert result['project_region'] == '华中'
