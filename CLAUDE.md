@@ -131,10 +131,14 @@ Skills 位于 `.claude/skills/` 目录，采用目录结构组织：
    - 输入：质量报告 + 提取数据
    - 输出：`tmp/filling_suggestions.json`
    - 关键功能：
-     - **自动读取项目地区**：从 extracted_data.json 的 project_region 字段获取（高置信度）
-     - 能耗数据估算：季节代表月法（夏季用7月、春秋用5/10月、冬季用1月）
-     - 运行参数插值：线性插值、季节复制、典型值兜底
-   - 填充策略：季节代表月法、线性插值
+     - **流程控制**：通过 `can_proceed` 字段决定是否可继续计算
+     - **不可填充检测**：识别 project_region 缺失、能耗数据 < 6个月等情况
+     - **智能填充**：线性插值（高置信度）、季节代表值（中）、行业默认值（低）
+   - 填充策略：线性插值（优先）→ 季节代表值 → 相邻均值 → 行业默认值
+   - 输出格式：
+     - `can_proceed` (bool): 是否可继续计算
+     - `unfillable_fields` (array): 不可填充字段列表
+     - `fillable_suggestions` (array): 可填充建议列表
 
 ### Excel计算模板
 
@@ -155,18 +159,27 @@ Skills 位于 `.claude/skills/` 目录，采用目录结构组织：
 
 ## 关键技术约束
 
-### Excel引擎优先级
-1. **xlwings**（首选）：需要LibreOffice/Excel，支持公式重算，精度高
-2. **openpyxl**（降级）：纯Python，不需外部依赖，但公式需手动触发
+### Excel 计算引擎
 
-代码中会自动检测并降级：
+**当前实现：** 使用 `formulas` 库（纯 Python）
+
+- **formulas 库**：Excel 公式解析和计算引擎
+  - 无需外部依赖（不需要 Excel/LibreOffice）
+  - 纯 Python 实现，跨平台兼容
+  - 支持大部分 Excel 公式和函数
+  - 适合服务器端自动化部署
+
+**代码位置：** `core/excel_calculator.py`
+
+**关键方法：**
+- `_calculate_with_formulas()`: 使用 formulas 库执行计算
+- `_mock_result()`: 降级方案（当 formulas 不可用时）
+
+**使用示例：**
 ```python
-# core/excel_calculator.py
-try:
-    import xlwings as xw
-    use_xlwings = True
-except ImportError:
-    use_xlwings = False
+# core/excel_calculator.py 会自动使用 formulas 引擎
+calc = ExcelCalculator(template_path)
+result_path = calc.calculate(filled_data_path, output_path)
 ```
 
 ### Streamlit配置要求
