@@ -143,6 +143,22 @@ def infer_region_from_text(text):
     return None
 
 
+def extract_region_from_filename(filepath):
+    """从文件名提取项目地区
+
+    Args:
+        filepath: 文件路径字符串
+
+    Returns:
+        地区字符串（华南/华东/华中/西南/西北/华北/东北），如果无法推断则返回 None
+    """
+    if not filepath:
+        return None
+
+    # 从完整路径中提取文件名（包括目录名，因为目录名可能也包含地区信息）
+    return infer_region_from_text(filepath)
+
+
 def find_row_by_keyword(df, keywords, start_row=0, end_row=None):
     """根据关键词查找行号"""
     if end_row is None:

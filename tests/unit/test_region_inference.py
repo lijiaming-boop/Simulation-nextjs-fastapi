@@ -10,7 +10,7 @@ import sys
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / '.claude/skills/extract-and-check-data/scripts'))
 
-from extract_and_check_data import extract_station_name, infer_region_from_text
+from extract_and_check_data import extract_station_name, infer_region_from_text, extract_region_from_filename
 
 
 class TestExtractStationName:
@@ -94,3 +94,21 @@ class TestInferRegionFromText:
         """测试不包含地区关键词的文本"""
         result = infer_region_from_text(text)
         assert result is None
+
+
+class TestExtractRegionFromFilename:
+    """测试从文件名提取地区"""
+
+    @pytest.mark.parametrize("filename,expected_region", [
+        ('【齐全】15.2%惠州光弘-中央空调节能调研表.xlsx', '华南'),
+        ('【缺冬季】10.4%石家庄仁和药业中央空调节能调研表.xlsx', '华北'),
+        ('【仅有夏季】6.5%和光同程-机房智能化调研表2023年5月版.xlsx', None),
+        ('【缺夏季】12.1%上海和元-机房智能化调研表模板（深度调研）.xlsx', '华东'),
+        ('/path/to/北京某公司调研表.xlsx', '华北'),
+        ('/path/to/深圳工业园区/调研表.xlsx', '华南'),
+        ('test.xlsx', None),
+    ])
+    def test_extract_region_from_filename(self, filename, expected_region):
+        """测试从文件名提取地区"""
+        result = extract_region_from_filename(filename)
+        assert result == expected_region
