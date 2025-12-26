@@ -132,3 +132,75 @@ def test_calculate_uses_formulas_engine(template_path, filled_data_path, tmp_dir
     assert 0.05 <= result["energy_saving_rate"] <= 0.35
 
     print(f"\n使用 formulas 引擎的计算结果: {result}")
+
+
+def test_end_to_end_calculation(template_path, tmp_dir):
+    """端到端测试：完整计算流程"""
+    if not Path(template_path).exists():
+        pytest.skip("Excel template not found")
+
+    # 准备测试数据
+    test_data = {
+        "project_region": "华南",
+        "monthly_data": [
+            {
+                "month": i + 1,
+                "total_energy": 80 + i * 5,
+                "chiller_supply_temp": 7.0,
+                "cooling_pump_freq": 45,
+                "cooling_water_temp_diff": 4.5,
+                "freezing_pump_freq": 50,
+                "freezing_water_temp_diff": 4.5,
+                "cooling_tower_outlet_temp": 20 + i,
+                "_filled_fields": []
+            }
+            for i in range(12)
+        ],
+        "_metadata": {
+            "fill_timestamp": "2025-12-26T10:00:00",
+            "fill_count": 0,
+            "original_completeness": 1.0,
+            "final_completeness": 1.0
+        }
+    }
+
+    # 保存测试数据
+    filled_data_path = tmp_dir / "filled_data.json"
+    with open(filled_data_path, 'w', encoding='utf-8') as f:
+        json.dump(test_data, f, ensure_ascii=False, indent=2)
+
+    # 执行计算
+    calc = ExcelCalculator(template_path)
+    result_path = tmp_dir / "result.json"
+
+    output = calc.calculate(str(filled_data_path), str(result_path))
+
+    # 验证结果
+    assert Path(output).exists()
+
+    with open(output) as f:
+        result = json.load(f)
+
+    # 验证所有必需字段
+    required_fields = [
+        "energy_saving_rate",
+        "energy_saving_rate_min",
+        "energy_saving_rate_max",
+        "chiller_saving",
+        "pump_saving",
+        "tower_saving",
+        "total_saving",
+        "completeness",
+        "filled_count",
+        "calculation_timestamp"
+    ]
+
+    for field in required_fields:
+        assert field in result, f"Missing field: {field}"
+
+    # 验证计算逻辑
+    assert result["completeness"] == 1.0
+    assert result["filled_count"] == 0
+    assert 0 <= result["energy_saving_rate"] <= 1.0
+
+    print(f"\n端到端计算结果: {result}")

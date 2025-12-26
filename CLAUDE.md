@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 这是一个基于 AI + Excel 计算引擎的中央空调节能率智能测算工具，采用混合架构：
 - **AI 辅助层**：使用 Claude Skills 进行数据提取、质量检查、填充建议
-- **计算引擎层**：使用 xlwings/openpyxl 调用 Excel 模板中的物理公式计算节能率
+- **计算引擎层**：使用 formulas 库（纯 Python）调用 Excel 模板中的物理公式计算节能率
 - **前端展示层**：Streamlit Web UI，提供5阶段工作流
 
 ## 常用命令
@@ -105,7 +105,7 @@ rm -rf ./tmp/*
 | **UI流程编排** | `app.py` | 5阶段流程控制（上传→提取+质量检查→填充建议→计算→结果）、用户交互 | Streamlit session state |
 | **Skill调用器** | `core/skill_caller.py` | 封装subprocess调用Claude CLI | 处理超时、错误重试 |
 | **数据填充器** | `core/data_filler.py` | 应用填充建议生成完整数据 | Pandas JSON处理 |
-| **Excel计算器** | `core/excel_calculator.py` | 写入数据、调用Excel公式、提取结果 | xlwings(优先)/openpyxl(降级) |
+| **Excel计算器** | `core/excel_calculator.py` | 写入数据、调用Excel公式、提取结果 | formulas 库（纯 Python） |
 | **单元格映射** | `config/cell_mapping.py` | JSON字段→Excel单元格位置映射 | 硬编码的行列映射表 |
 
 ### Claude Skills（AI辅助层）
@@ -276,7 +276,6 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 2. 依赖安装：`pip install -r requirements.txt`
 3. `.streamlit/secrets.toml` 配置管理员密码
 4. 防火墙开放8501端口（仅内网）
-5. （可选）安装 LibreOffice 以启用 xlwings
 
 详见 `DEPLOYMENT.md`。
 
@@ -320,7 +319,8 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 见 `requirements.txt`：
 - streamlit >= 1.28.0
 - pandas >= 2.0.0
-- xlwings >= 0.30.0（可选）
 - openpyxl >= 3.1.0
+- formulas >= 1.3.0（Excel 公式计算）
 - plotly >= 5.0.0（用于可视化）
 - pytest >= 7.0.0（测试）
+- claude-agent-sdk >= 0.1.0
