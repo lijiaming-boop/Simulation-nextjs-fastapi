@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""测试地区推断和站房名称提取功能"""
+
+import pytest
+import pandas as pd
+from pathlib import Path
+import sys
+
+# 添加项目根目录到 Python 路径
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root / '.claude/skills/extract-and-check-data/scripts'))
+
+from extract_and_check_data import extract_station_name, infer_region_from_text
+
+
+class TestExtractStationName:
+    """测试站房名称提取"""
+
+    def test_extract_station_name_from_df(self):
+        """测试从 DataFrame 提取站房名称"""
+        # 模拟冷站 sheet 的前几行
+        data = {
+            0: [None, None, None],
+            1: [None, '站房名称', None],
+            2: [None, None, None],
+            3: [None, 'F栋制冷站', None]
+        }
+        df = pd.DataFrame(data)
+
+        result = extract_station_name(df)
+        assert result == 'F栋制冷站'
+
+    def test_extract_station_name_not_found(self):
+        """测试站房名称字段不存在"""
+        df = pd.DataFrame({
+            0: [None, None],
+            1: ['其他', '内容']
+        })
+
+        result = extract_station_name(df)
+        assert result is None
+
+    def test_extract_station_name_empty_value(self):
+        """测试站房名称值为空"""
+        data = {
+            0: [None, None],
+            1: [None, '站房名称'],
+            2: [None, None],
+            3: [None, None]
+        }
+        df = pd.DataFrame(data)
+
+        result = extract_station_name(df)
+        assert result is None
+
+
+class TestInferRegionFromText:
+    """测试从文本推断地区"""
+
+    @pytest.mark.parametrize("text,expected_region", [
+        # 站房名称示例
+        ('北京总部冷站', '华北'),
+        ('上海分公司机房', '华东'),
+        ('深圳工业园区站房', '华南'),
+        ('杭州研发中心空调机房', '华东'),
+        ('武汉生产基地冷站', '华中'),
+        ('成都办公楼制冷站', '西南'),
+        ('西安厂区空调站', '西北'),
+        ('沈阳冷站', '东北'),
+        ('广州天河冷站', '华南'),
+        ('石家庄仁和药业', '华北'),
+        ('惠州光弘', '华南'),
+        # 文件名示例
+        ('【齐全】15.2%惠州光弘-中央空调节能调研表.xlsx', '华南'),
+        ('【缺冬季】10.4%石家庄仁和药业中央空调节能调研表.xlsx', '华北'),
+        ('【仅有夏季】6.5%和光同程-机房智能化调研表2023年5月版.xlsx', None),  # 无地区关键词
+        ('上海和元-机房智能化调研表模板.xlsx', '华东'),
+        ('北京某公司调研表.xlsx', '华北'),
+    ])
+    def test_infer_region_with_city_keywords(self, text, expected_region):
+        """测试包含城市关键词的文本"""
+        result = infer_region_from_text(text)
+        assert result == expected_region
+
+    @pytest.mark.parametrize("text", [
+        'F栋制冷站',
+        '1号冷站',
+        '中央空调机房',
+        '某公司调研表.xlsx',
+        None,
+        '',
+    ])
+    def test_infer_region_no_keywords(self, text):
+        """测试不包含地区关键词的文本"""
+        result = infer_region_from_text(text)
+        assert result is None

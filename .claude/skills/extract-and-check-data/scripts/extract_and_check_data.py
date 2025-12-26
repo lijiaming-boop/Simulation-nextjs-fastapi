@@ -84,6 +84,65 @@ def extract_region(df):
     return None
 
 
+def extract_station_name(df):
+    """从冷站工作表中提取站房名称
+
+    Args:
+        df: 冷站工作表的 DataFrame
+
+    Returns:
+        站房名称字符串，如果未找到则返回 None
+    """
+    # 在前10行查找"站房名称"字段
+    for idx in range(min(10, len(df))):
+        row = df.iloc[idx]
+        for col_idx, val in enumerate(row):
+            if pd.isna(val):
+                continue
+            val_str = str(val).strip()
+            if '站房名称' in val_str:
+                # 站房名称的值通常在右侧第2列（跳过1列）
+                if col_idx + 2 < len(row):
+                    station_name = df.iloc[idx, col_idx + 2]
+                    if pd.notna(station_name):
+                        return str(station_name).strip()
+                return None
+    return None
+
+
+def infer_region_from_text(text):
+    """从文本（站房名称或文件名）推断项目地区
+
+    Args:
+        text: 文本字符串（站房名称、文件名等）
+
+    Returns:
+        地区字符串（华南/华东/华中/西南/西北/华北/东北），如果无法推断则返回 None
+    """
+    if not text or pd.isna(text):
+        return None
+
+    text_str = str(text)
+
+    # 地区关键词映射（扩展了城市列表以提高识别率）
+    regions = {
+        '华南': ['广东', '广西', '海南', '福建', '深圳', '广州', '厦门', '珠海', '东莞', '佛山', '惠州', '中山', '江门', '湛江', '汕头'],
+        '华东': ['上海', '江苏', '浙江', '安徽', '江西', '南京', '杭州', '苏州', '无锡', '宁波', '合肥', '南昌', '温州', '常州', '徐州'],
+        '华中': ['湖北', '湖南', '河南', '武汉', '长沙', '郑州', '洛阳', '株洲', '岳阳'],
+        '西南': ['四川', '重庆', '贵州', '云南', '西藏', '成都', '贵阳', '昆明', '拉萨'],
+        '西北': ['陕西', '甘肃', '青海', '宁夏', '新疆', '西安', '兰州', '银川', '乌鲁木齐', '西宁'],
+        '华北': ['北京', '天津', '河北', '山西', '内蒙古', '石家庄', '太原', '呼和浩特', '唐山', '保定', '廊坊'],
+        '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨', '鞍山', '抚顺']
+    }
+
+    # 查找匹配的地区
+    for region, keywords in regions.items():
+        if any(keyword in text_str for keyword in keywords):
+            return region
+
+    return None
+
+
 def find_row_by_keyword(df, keywords, start_row=0, end_row=None):
     """根据关键词查找行号"""
     if end_row is None:
@@ -181,12 +240,8 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
 
         monthly_data.append(month_record)
 
-    # 验证数据质量
-    if valid_energy_count < 3:
-        return {
-            "error": True,
-            "message": f"有效能耗数据月份不足3个月(仅找到{valid_energy_count}个月),请确认上传了正确的文件"
-        }
+    # 注意：不再强制要求至少3个月数据，让质量检查报告来反馈数据完整性问题
+    # 这样即使是空白模板也能返回提取结果和详细的质量报告
 
     return {
         "project_region": project_region,
