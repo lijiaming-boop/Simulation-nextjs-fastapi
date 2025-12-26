@@ -63,3 +63,62 @@ class TestHelper:
     def calculate_rate_tolerance(expected_rate: float) -> float:
         """计算节能率容差（允许±0.5%的误差）"""
         return 0.5
+
+
+@pytest.mark.integration
+class TestCompleteSurvey:
+    """测试【齐全】数据场景"""
+
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        """测试前后的设置和清理"""
+        TestHelper.setup_tmp_dir()
+        yield
+        # 保留临时文件以便检查，不清理
+
+    def test_extract_and_check_complete_survey(self):
+        """测试提取和检查齐全的调研表数据"""
+        # 获取调研表路径
+        survey_path = get_survey_path("complete")
+
+        # 调用 extract-and-check-data skill
+        caller = SkillCaller(timeout=300)
+        result = caller.call_skill(
+            "extract-and-check-data",
+            str(survey_path),
+            str(TMP_DIR / "extract_check_result.json")
+        )
+
+        # 验证调用成功
+        assert result["success"], f"Skill调用失败: {result.get('error')}"
+
+        # 验证输出文件存在
+        extract_check_file = TMP_DIR / "extract_check_result.json"
+        assert extract_check_file.exists(), "未生成 extract_check_result.json"
+
+        # 加载结果
+        result_data = TestHelper.load_json(extract_check_file)
+
+        # 验证结果结构
+        assert "extracted_data" in result_data, "缺少提取的数据"
+        assert "quality_report" in result_data, "缺少质量报告"
+
+        # 验证提取的数据
+        extracted = result_data["extracted_data"]
+        TestHelper.validate_extracted_data(extracted)
+
+        # 验证质量报告
+        quality = result_data["quality_report"]
+        TestHelper.validate_quality_report(quality)
+
+        # 验证置信度应为"高"
+        expected_conf = SAMPLE_SURVEYS["complete"]["expected_confidence"]
+        assert quality["confidence_level"] == expected_conf, \
+            f"置信度应为 {expected_conf}，实际为 {quality['confidence_level']}"
+
+        # 验证完整率应≥80%
+        completeness = quality["completeness_rate"]
+        assert completeness >= 80.0, \
+            f"完整率应≥80%，实际为 {completeness}%"
+
+        print(f"✓ 【齐全】数据提取完成，完整率: {completeness}%，置信度: {quality['confidence_level']}")
