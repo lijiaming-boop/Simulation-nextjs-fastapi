@@ -1,6 +1,6 @@
 """Excel 计算引擎
 
-使用 xlwings 调用 Excel/LibreOffice 计算引擎执行节能率计算
+使用 formulas 库执行 Excel 公式计算（纯 Python 实现，无需外部依赖）
 """
 import json
 import shutil
@@ -45,11 +45,11 @@ class ExcelCalculator:
         shutil.copy(self.template_path, temp_excel)
 
         try:
-            # 使用 xlwings 回填数据和提取结果
-            result = self._calculate_with_xlwings(data, temp_excel)
+            # 优先使用 formulas 库（纯 Python，无需外部依赖）
+            result = self._calculate_with_formulas(data, temp_excel)
         except Exception as e:
-            # 如果 xlwings 不可用,返回 mock 结果用于测试
-            print(f"Warning: xlwings calculation failed: {e}")
+            # 如果 formulas 不可用，返回 mock 结果用于测试
+            print(f"Warning: formulas calculation failed: {e}")
             result = self._mock_result(data)
 
         # 保存结果
