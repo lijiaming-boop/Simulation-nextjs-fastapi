@@ -163,32 +163,40 @@ class TestCompleteSurvey:
 
         # === 阶段3: 应用填充建议 ===
         filler = DataFiller()
-        filled_data = filler.apply_suggestions(extracted_data, filling_suggestions)
+        filled_data_path = filler.fill_data(
+            str(TMP_DIR / "extracted_data.json"),
+            str(TMP_DIR / "filling_suggestions.json"),
+            str(TMP_DIR / "filled_data.json")
+        )
 
-        # 保存填充后的数据
-        with open(TMP_DIR / "filled_data.json", 'w', encoding='utf-8') as f:
-            json.dump(filled_data, f, ensure_ascii=False, indent=2)
+        # 加载填充后的数据供验证使用
+        filled_data = TestHelper.load_json(Path(filled_data_path))
 
         # === 阶段4: 计算节能率 ===
         template_path = Path("00_sample/机房智能化节能评估表-按冷站电量数据.xlsx")
-        output_path = TMP_DIR / "result_complete.xlsx"
-
         calculator = ExcelCalculator(str(template_path))
-        calc_result = calculator.calculate(filled_data, str(output_path))
+        calc_result_path = calculator.calculate(
+            str(TMP_DIR / "filled_data.json"),
+            str(TMP_DIR / "calc_result.json")
+        )
+
+        # 加载计算结果供验证使用
+        calc_result = TestHelper.load_json(Path(calc_result_path))
 
         # 验证计算结果
-        assert calc_result["success"], f"计算失败: {calc_result.get('error')}"
-        assert "total_saving_rate" in calc_result, "缺少总节能率"
+        assert "energy_saving_rate" in calc_result, "缺少节能率"
+        assert "total_saving" in calc_result, "缺少总节能量"
 
         # 验证节能率在预期范围内（±0.5%）
         expected_rate = SAMPLE_SURVEYS["complete"]["expected_rate"]
-        actual_rate = calc_result["total_saving_rate"]
+        actual_rate = calc_result["energy_saving_rate"] * 100  # 转换为百分比
         tolerance = TestHelper.calculate_rate_tolerance(expected_rate)
 
         assert abs(actual_rate - expected_rate) <= tolerance, \
-            f"节能率偏差过大: 期望 {expected_rate}%, 实际 {actual_rate}%, 容差 ±{tolerance}%"
+            f"节能率偏差过大: 期望 {expected_rate}%, 实际 {actual_rate:.2f}%, 容差 ±{tolerance}%"
 
         print(f"✓ 【齐全】数据完整流程测试通过")
         print(f"  - 完整率: {quality_report['completeness_rate']}%")
         print(f"  - 置信度: {quality_report['confidence_level']}")
-        print(f"  - 节能率: {actual_rate}% (期望 {expected_rate}%)")
+        print(f"  - 节能率: {actual_rate:.2f}% (期望 {expected_rate}%)")
+        print(f"  - 总节能量: {calc_result['total_saving']:.2f} kWh")
