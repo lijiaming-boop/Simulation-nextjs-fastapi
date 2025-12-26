@@ -550,7 +550,7 @@ def render_result_stage():
 
     # 置信度说明
     if result.get("mock"):
-        st.warning("⚠️ 注意: 此结果为模拟数据 (xlwings环境未配置)")
+        st.warning("⚠️ 注意: 此结果为模拟数据 (formulas 库不可用)")
 
     completeness = result.get("completeness", 0)
     if completeness >= 0.9:

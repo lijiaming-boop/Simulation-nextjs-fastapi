@@ -149,7 +149,7 @@ class ExcelCalculator:
         return result
 
     def _mock_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """生成 mock 结果用于测试 (xlwings 不可用时)"""
+        """生成 mock 结果用于测试 (formulas 库不可用时)"""
         return {
             "energy_saving_rate": 0.15,
             "energy_saving_rate_min": 0.12,
