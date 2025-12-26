@@ -242,6 +242,10 @@ def generate_suggestions(
 
     monthly_data = extracted_data.get("monthly_data", [])
 
+    # 确保有12个月的数据，补齐缺失的月份
+    while len(monthly_data) < 12:
+        monthly_data.append({"month": len(monthly_data) + 1})
+
     # 先估算能耗(如果有的话)
     energy_estimates = estimate_energy_from_params(monthly_data)
 
