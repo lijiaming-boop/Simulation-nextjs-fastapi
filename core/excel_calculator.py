@@ -77,25 +77,19 @@ class ExcelCalculator:
         """
         try:
             import formulas
-        except ImportError:
-            raise RuntimeError("formulas library not installed")
+            import openpyxl
+        except ImportError as e:
+            raise RuntimeError(f"Required library not installed: {e}")
 
-        # 加载 Excel 文件
-        xl_model = formulas.ExcelModel().loads(str(excel_path)).finish()
-
-        # 获取工作簿名称
-        book_name = list(xl_model.books.keys())[0]
-
-        # 准备输入数据字典（使用正确的单元格引用格式）
-        inputs = {}
+        # 阶段1: 使用 openpyxl 将数据写入 Excel 文件
+        wb = openpyxl.load_workbook(excel_path)
+        sheet = wb[self.mapper.SHEET_NAME]
 
         # 1. 回填项目地区到 Sheet2
         region_cell = self.mapper.get_basic_info_cell("project_region")
-        # formulas 库使用格式: '[workbook]sheet'!cell
-        cell_id = f"'[{book_name}]{self.mapper.SHEET_NAME}'!{region_cell}"
-        inputs[cell_id] = data["project_region"]
+        sheet[region_cell] = data["project_region"]
 
-        # 2. 回填月度数据到 Sheet1（使用 SHEET_NAME）
+        # 2. 回填月度数据到 Sheet1
         for month_data in data["monthly_data"]:
             month_idx = month_data["month"] - 1  # 转换为 0-based 索引
 
@@ -103,13 +97,22 @@ class ExcelCalculator:
                 value = month_data.get(field)
                 if value is not None:
                     cell = self.mapper.get_cell("monthly_data", month_idx, field)
-                    cell_id = f"'[{book_name}]{self.mapper.SHEET_NAME}'!{cell}"
-                    inputs[cell_id] = value
+                    sheet[cell] = value
 
-        # 3. 触发计算并传入输入值
-        result_data = xl_model.calculate(inputs=inputs)
+        # 3. 保存写入的数据
+        wb.save(excel_path)
+        wb.close()
 
-        # 4. 提取计算结果
+        # 阶段2: 使用 formulas 库加载并计算
+        xl_model = formulas.ExcelModel().loads(str(excel_path)).finish()
+
+        # 获取工作簿名称（用于结果提取）
+        book_name = list(xl_model.books.keys())[0]
+
+        # 触发计算（不需要传入 inputs，数据已在文件中）
+        result_data = xl_model.calculate()
+
+        # 阶段3: 提取计算结果
         def get_result_value(result_field: str) -> float:
             """提取结果单元格的值"""
             cell = self.mapper.get_result_cell(result_field)
