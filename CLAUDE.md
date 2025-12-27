@@ -157,6 +157,25 @@ Skills 位于 `.claude/skills/` 目录，采用目录结构组织：
 - 水泵变频优化：能耗 ∝ 频率^2.5
 - 冷却塔优化：1.5%/℃
 
+### 数据回填机制
+
+**实现方法**（`core/excel_calculator.py::_calculate_with_formulas`）:
+
+1. **阶段1 - 数据写入**：使用 openpyxl 将 filled_data.json 的数据写入 Excel 文件
+   - 项目地区 → Sheet2 H4
+   - 月度数据（12个月 × 7个字段）→ Sheet1 D-O 列对应行
+
+2. **阶段2 - 公式计算**：使用 formulas 库加载已写入数据的文件并计算
+   - `xl_model = formulas.ExcelModel().loads(excel_path).finish()`
+   - `result_data = xl_model.calculate()`
+
+3. **阶段3 - 结果提取**：从 result_data 提取计算结果
+
+**重要**: 早期实现尝试使用 `calculate(inputs={...})`，但 formulas 库会忽略 inputs 参数。
+当前实现通过先写入文件再计算解决了这个问题。
+
+**验证**: `tests/unit/test_excel_data_filling.py` 确保数据回填准确性
+
 ## 关键技术约束
 
 ### Excel 计算引擎
