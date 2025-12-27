@@ -175,6 +175,34 @@ def find_row_by_keyword(df, keywords, start_row=0, end_row=None):
     return None
 
 
+def detect_month_column_start(df, row_idx):
+    """检测指定行的月份列起始位置
+
+    通过在该行查找 '1月' 关键字来确定月份数据的起始列。
+    这样可以处理不同部分的列结构差异：
+    - 设备运行规律：月份从D列开始（有备注列C）
+    - 用电情况统计：月份从C列开始（无备注列）
+
+    Args:
+        df: DataFrame
+        row_idx: 月份标题行的行号
+
+    Returns:
+        月份数据起始列索引（0-based），如果未找到则返回 None
+    """
+    if row_idx is None or row_idx >= len(df):
+        return None
+
+    # 在该行查找 '1月' 关键字
+    row = df.iloc[row_idx]
+    for col_idx in range(len(row)):
+        cell_value = row.iloc[col_idx]
+        if pd.notna(cell_value) and '1月' in str(cell_value):
+            return col_idx
+
+    return None
+
+
 def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
     """从 Excel 文件提取数据"""
     xls = pd.ExcelFile(survey_excel_path)
@@ -216,32 +244,62 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
         'total_energy': ['整个冷站', '万kWh']
     }
 
-    # 从第30行开始查找，避免误识别到设备清单部分
-    month_row_idx = find_row_by_keyword(df, ['月份', '备注'], start_row=30)
-    if month_row_idx is None:
+    # 从第30行开始查找设备运行规律部分的月份行
+    equipment_month_row_idx = find_row_by_keyword(df, ['月份', '备注'], start_row=30, end_row=45)
+    if equipment_month_row_idx is None:
         return {
             "error": True,
-            "message": "未能识别调研表中的月度数据行,请确认上传了正确的文件"
+            "message": "未能识别调研表中的设备运行规律月度数据行,请确认上传了正确的文件"
         }
+
+    # 检测设备运行规律部分的月份列起始位置
+    equipment_col_start = detect_month_column_start(df, equipment_month_row_idx)
+    if equipment_col_start is None:
+        equipment_col_start = 3  # 默认 D 列
+
+    # 查找用电情况统计部分的月份行（通常在设备运行规律之后）
+    energy_month_row_idx = find_row_by_keyword(df, ['月份'], start_row=equipment_month_row_idx + 5, end_row=equipment_month_row_idx + 20)
+
+    # 检测用电情况部分的月份列起始位置
+    energy_col_start = None
+    if energy_month_row_idx is not None:
+        energy_col_start = detect_month_column_start(df, energy_month_row_idx)
+    if energy_col_start is None:
+        energy_col_start = 2  # 默认 C 列（用电情况通常从C列开始）
 
     # 查找各数据行
     data_rows = {}
     for key, keywords in row_mappings.items():
-        row_idx = find_row_by_keyword(df, keywords, start_row=month_row_idx, end_row=month_row_idx + 20)
-        if row_idx is not None:
-            data_rows[key] = row_idx
-
-    if 'total_energy' not in data_rows and len(df) > 46:
-        data_rows['total_energy'] = 46
+        # 设备运行规律字段：从设备运行规律部分开始查找
+        if key != 'total_energy':
+            row_idx = find_row_by_keyword(df, keywords, start_row=equipment_month_row_idx, end_row=equipment_month_row_idx + 15)
+            if row_idx is not None:
+                data_rows[key] = row_idx
+        # 用电情况字段：从用电情况统计部分开始查找
+        else:
+            if energy_month_row_idx is not None:
+                row_idx = find_row_by_keyword(df, keywords, start_row=energy_month_row_idx, end_row=energy_month_row_idx + 5)
+                if row_idx is not None:
+                    # 检查找到的行数据是否合理（万kWh应该<100）
+                    # 如果第一个月份列的值>100，说明这是kWh单位的行，需要跳到下一行
+                    if energy_col_start is not None and energy_col_start < len(df.columns):
+                        first_month_val = df.iloc[row_idx, energy_col_start]
+                        if pd.notna(first_month_val) and first_month_val > 100:
+                            # 当前行是kWh，检查下一行
+                            if row_idx + 1 < len(df):
+                                next_row_val = df.iloc[row_idx + 1, energy_col_start]
+                                if pd.notna(next_row_val) and next_row_val < 100:
+                                    row_idx = row_idx + 1
+                    data_rows[key] = row_idx
+            # 兜底：使用硬编码行号
+            if 'total_energy' not in data_rows and len(df) > 43:
+                data_rows['total_energy'] = 43  # 修正：用电量通常在第44行（索引43）
 
     # 提取月度数据
     monthly_data = []
     valid_energy_count = 0
-    month_col_start = 3  # D列
 
     for month in range(1, 13):
-        month_col_idx = month_col_start + (month - 1)
-
         month_record = {
             "month": month,
             "total_energy": None,
@@ -259,11 +317,21 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
             if field in data_rows:
                 row_idx = data_rows[field]
                 if row_idx < len(df):
-                    value = df.iloc[row_idx, month_col_idx]
-                    parsed = parse_value(value)
-                    month_record[field] = parsed
-                    if field == 'total_energy' and parsed is not None:
-                        valid_energy_count += 1
+                    # 根据字段类型使用不同的列起始位置
+                    if field == 'total_energy':
+                        # 用电情况：使用 energy_col_start
+                        month_col_idx = energy_col_start + (month - 1)
+                    else:
+                        # 设备运行规律：使用 equipment_col_start
+                        month_col_idx = equipment_col_start + (month - 1)
+
+                    # 确保列索引在有效范围内
+                    if month_col_idx < len(df.columns):
+                        value = df.iloc[row_idx, month_col_idx]
+                        parsed = parse_value(value)
+                        month_record[field] = parsed
+                        if field == 'total_energy' and parsed is not None:
+                            valid_energy_count += 1
 
         monthly_data.append(month_record)
 
