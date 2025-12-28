@@ -326,6 +326,33 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 | 文件名 | "石家庄仁和药业中央空调节能调研表.xlsx" | 华北 |
 | 项目总体情况 | 单元格包含"武汉市" | 华中 |
 
+## 已修复的关键问题
+
+### 月份列错位问题（已修复）
+
+**问题描述：**
+调研表的"用电情况统计"和"设备运行规律"两个部分的列结构不同：
+- **设备运行规律**：有"备注"列（C列），月份从D列开始（D=1月, E=2月, ..., N=11月）
+- **用电情况统计**：无备注列，月份从C列开始（C=1月, D=2月, ..., N=12月）
+
+早期实现使用硬编码 `month_col_start = 3`（D列）处理所有字段，导致：
+- ❌ 用电情况的1月数据（C列）被漏读
+- ❌ 2月数据（D列）被错当成1月
+- ❌ 后续所有月份向左错位一个月
+- ❌ 12月数据可能超出范围
+
+**解决方案：**
+- 添加 `detect_month_column_start()` 函数，通过查找"1月"关键字动态检测每个部分的月份列起始位置
+- 分别处理设备运行规律（equipment_col_start）和用电情况（energy_col_start）
+- 根据字段类型使用正确的列偏移量
+
+**验证：**
+- 测试文件：`tests/unit/test_extract_column_offset.py`
+- 验证脚本：`scripts/verify_column_offset_bug.py`
+
+**相关 Commit:**
+- `fix: correct column offset for energy vs equipment data`
+
 ## 相关文档
 
 - **产品需求**：`02_prd/PRD-空调节能率智能测算工具.md`
