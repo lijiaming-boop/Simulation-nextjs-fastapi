@@ -196,3 +196,55 @@ def test_parse_range_value_seasonal():
 
     # 温差 - 夏季取上限
     assert parse_range_value_seasonal("3-5", 8, 'freezing_water_temp_diff') == 5.0
+
+
+def test_get_season_edge_cases():
+    """测试 get_season 函数的边界情况"""
+    from extract_and_check_data import get_season
+
+    # 测试无效月份 - 小于1
+    with pytest.raises(ValueError, match="Invalid month: 0. Must be between 1 and 12."):
+        get_season(0)
+
+    # 测试无效月份 - 大于12
+    with pytest.raises(ValueError, match="Invalid month: 13. Must be between 1 and 12."):
+        get_season(13)
+
+    # 测试无效月份 - 负数
+    with pytest.raises(ValueError, match="Invalid month: -1. Must be between 1 and 12."):
+        get_season(-1)
+
+    # 测试无效月份 - 超大值
+    with pytest.raises(ValueError, match="Invalid month: 100. Must be between 1 and 12."):
+        get_season(100)
+
+
+def test_parse_range_value_seasonal_edge_cases():
+    """测试 parse_range_value_seasonal 函数的边界情况"""
+    from extract_and_check_data import parse_range_value_seasonal
+
+    # 测试颠倒的范围值（50-30 应该被处理为 30-50）
+    # 水泵频率 - 冬季应取最小值（30），即使范围是倒序的
+    assert parse_range_value_seasonal("50-30", 1, 'cooling_pump_freq') == 30.0
+
+    # 水泵频率 - 夏季应取最大值（50），即使范围是倒序的
+    assert parse_range_value_seasonal("50-30", 7, 'cooling_pump_freq') == 50.0
+
+    # 供水温度 - 冬季应取最大值（10），即使范围是倒序的
+    assert parse_range_value_seasonal("10-7", 1, 'chiller_supply_temp') == 10.0
+
+    # 供水温度 - 夏季应取最小值（7），即使范围是倒序的
+    assert parse_range_value_seasonal("10-7", 7, 'chiller_supply_temp') == 7.0
+
+    # 测试秋季月份
+    # 水泵频率 - 秋季取平均
+    assert parse_range_value_seasonal("30-50", 9, 'cooling_pump_freq') == 40.0
+    assert parse_range_value_seasonal("30-50", 11, 'cooling_pump_freq') == 40.0
+
+    # 供水温度 - 秋季取平均
+    assert parse_range_value_seasonal("7-10", 9, 'chiller_supply_temp') == 8.5
+
+    # 测试字段名精确匹配（不应匹配包含 'supply_temp' 子串的其他字段）
+    # 假设有个字段叫 'some_supply_temp_other'，不应该被当作供水温度
+    # 冬季应取最小值，而不是最大值
+    assert parse_range_value_seasonal("30-50", 1, 'some_supply_temp_other') == 30.0

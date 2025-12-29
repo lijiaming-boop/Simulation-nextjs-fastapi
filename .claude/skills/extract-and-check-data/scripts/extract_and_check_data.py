@@ -28,7 +28,13 @@ def get_season(month: int) -> str:
 
     Returns:
         季节字符串: 'winter', 'spring', 'summer', 'autumn'
+
+    Raises:
+        ValueError: 如果月份不在 1-12 范围内
     """
+    if not 1 <= month <= 12:
+        raise ValueError(f"Invalid month: {month}. Must be between 1 and 12.")
+
     if month in [12, 1, 2]:
         return 'winter'
     elif month in [3, 4, 5]:
@@ -62,18 +68,23 @@ def parse_range_value_seasonal(value_str: str, month: int, field_name: str) -> f
     start = float(range_match.group(1))
     end = float(range_match.group(2))
 
+    # 确保 start 是最小值，end 是最大值
+    min_val = min(start, end)
+    max_val = max(start, end)
+
     # 判断季节
     season = get_season(month)
 
-    # 供水温度字段使用相反逻辑
-    is_supply_temp = 'supply_temp' in field_name
+    # 供水温度字段白名单：使用精确匹配而非子串匹配
+    SUPPLY_TEMP_FIELDS = {'chiller_supply_temp', 'supply_temp'}
+    is_supply_temp = field_name in SUPPLY_TEMP_FIELDS
 
     if season == 'winter':
-        return end if is_supply_temp else start
+        return max_val if is_supply_temp else min_val
     elif season == 'summer':
-        return start if is_supply_temp else end
+        return min_val if is_supply_temp else max_val
     else:  # spring or autumn
-        return (start + end) / 2
+        return (min_val + max_val) / 2
 
 
 def parse_value(value):
