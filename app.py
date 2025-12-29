@@ -174,11 +174,52 @@ def render_extract_check_stage():
             # 展示提取结果
             st.success("✅ 数据提取成功")
 
-            col1, col2 = st.columns(2)
+            # 新增：展示站房类型（3列布局）
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("项目地区", extracted_data.get("project_region", "未识别"))
             with col2:
+                station_type = extracted_data.get("station_type", "unknown")
+                station_type_names = {
+                    "standard": "标准站房",
+                    "secondary_pump": "二次泵站房",
+                    "unsupported": "⚠️ 不支持类型"
+                }
+                st.metric("站房类型", station_type_names.get(station_type, station_type))
+            with col3:
                 st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
+
+            # 新增：展示站房类型识别详情
+            station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
+            station_type_reason = extracted_data.get("station_type_reason", "")
+
+            if station_type_confidence != "high":
+                st.info(
+                    f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
+                    f"**识别依据**: {station_type_reason}"
+                )
+
+            # 新增：检查是否为不支持类型（在质量检查之前）
+            if station_type == "unsupported":
+                st.markdown("---")
+                st.error("⛔ **该类型站房不支持自动节能评估**")
+
+                st.warning(
+                    "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
+                    "- 热水泵\n"
+                    "- 水蓄冷/冰蓄冷\n"
+                    "- 中低温机组\n\n"
+                    "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
+                    f"**识别依据**: {station_type_reason}"
+                )
+
+                # 提供重新上传按钮
+                if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+                    reset_flow()
+                    st.rerun()
+
+                # 终止函数执行
+                return
 
             # 展示质量报告
             st.success("✅ 质量检查完成")
@@ -427,17 +468,41 @@ def render_calculate_stage():
     status_text = st.empty()
 
     try:
-        # 步骤1: 数据填充
-        status_text.text("正在填充数据...")
-        progress_bar.progress(20)
+        # 步骤0: 检查站房类型（防御性编程）
+        filled_data_path = Path("tmp/filled_data.json")
 
-        filler = DataFiller()
-        filled_path = filler.fill_data(
-            "tmp/extracted_data.json",
-            "tmp/filling_suggestions.json",
-            "tmp/filled_data.json"
-        )
+        # 检查文件是否存在
+        if not filled_data_path.exists():
+            # 如果填充数据不存在，先执行填充
+            status_text.text("正在填充数据...")
+            progress_bar.progress(10)
 
+            filler = DataFiller()
+            filled_path = filler.fill_data(
+                "tmp/extracted_data.json",
+                "tmp/filling_suggestions.json",
+                "tmp/filled_data.json"
+            )
+            progress_bar.progress(20)
+        else:
+            filled_path = str(filled_data_path)
+            progress_bar.progress(20)
+
+        # 读取数据检查站房类型
+        with open(filled_path, 'r', encoding='utf-8') as f:
+            filled_data = json.load(f)
+
+        station_type = filled_data.get("station_type", "standard")
+
+        # 再次检查是否为不支持类型（防御性编程）
+        if station_type == "unsupported":
+            st.error("❌ 该站房类型不支持自动计算")
+            if st.button("🔄 返回重新上传", use_container_width=True):
+                reset_flow()
+                st.rerun()
+            return
+
+        # 步骤1: 数据填充完成确认
         st.success("✅ 数据填充完成")
         progress_bar.progress(40)
 
@@ -468,6 +533,18 @@ def render_calculate_stage():
         st.session_state.stage = 'result'
         st.rerun()
 
+    except ValueError as e:
+        # 捕获 unsupported 类型异常
+        if "不支持的站房类型" in str(e):
+            st.error(f"❌ {str(e)}")
+            if st.button("🔄 返回重新上传", use_container_width=True):
+                reset_flow()
+                st.rerun()
+        else:
+            st.error(f"❌ 计算失败: {str(e)}")
+            if st.button("🔄 返回重试", use_container_width=True):
+                st.session_state.stage = 'filling'
+                st.rerun()
     except Exception as e:
         st.error(f"❌ 计算失败: {str(e)}")
         if st.button("🔄 返回重试", use_container_width=True):
