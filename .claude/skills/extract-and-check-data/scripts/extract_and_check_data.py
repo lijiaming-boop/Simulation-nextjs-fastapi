@@ -20,6 +20,62 @@ except ImportError:
 
 # ============= 数据提取部分 (来自 extract_survey_data.py) =============
 
+def get_season(month: int) -> str:
+    """根据月份判断季节
+
+    Args:
+        month: 月份 (1-12)
+
+    Returns:
+        季节字符串: 'winter', 'spring', 'summer', 'autumn'
+    """
+    if month in [12, 1, 2]:
+        return 'winter'
+    elif month in [3, 4, 5]:
+        return 'spring'
+    elif month in [6, 7, 8]:
+        return 'summer'
+    else:  # 9, 10, 11
+        return 'autumn'
+
+
+def parse_range_value_seasonal(value_str: str, month: int, field_name: str) -> float:
+    """根据季节和字段类型智能解析范围值
+
+    Args:
+        value_str: 范围值字符串 (如 "30-50", "7-10℃")
+        month: 月份 (1-12)
+        field_name: 字段名称
+
+    Returns:
+        解析后的数值
+
+    策略:
+        - 水泵频率/温差: 冬季取下限, 夏季取上限, 春秋取平均
+        - 供水温度: 冬季取上限, 夏季取下限, 春秋取平均 (相反)
+    """
+    # 提取范围值
+    range_match = re.search(r'(\d+\.?\d*)\s*[-~]\s*(\d+\.?\d*)', value_str)
+    if not range_match:
+        return None
+
+    start = float(range_match.group(1))
+    end = float(range_match.group(2))
+
+    # 判断季节
+    season = get_season(month)
+
+    # 供水温度字段使用相反逻辑
+    is_supply_temp = 'supply_temp' in field_name
+
+    if season == 'winter':
+        return end if is_supply_temp else start
+    elif season == 'summer':
+        return start if is_supply_temp else end
+    else:  # spring or autumn
+        return (start + end) / 2
+
+
 def parse_value(value):
     """解析文本值为数值"""
     if pd.isna(value):

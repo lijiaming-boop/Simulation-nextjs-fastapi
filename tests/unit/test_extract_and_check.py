@@ -142,3 +142,57 @@ def test_data_quality_checker():
     assert 'monthly_data[0].cooling_pump_freq' in issue_fields
     assert 'monthly_data[1].total_energy' in issue_fields
     assert 'monthly_data[1].chiller_supply_temp' in issue_fields
+
+
+def test_get_season():
+    """测试季节判断函数"""
+    from extract_and_check_data import get_season
+
+    # 冬季
+    assert get_season(12) == 'winter'
+    assert get_season(1) == 'winter'
+    assert get_season(2) == 'winter'
+
+    # 春季
+    assert get_season(3) == 'spring'
+    assert get_season(4) == 'spring'
+    assert get_season(5) == 'spring'
+
+    # 夏季
+    assert get_season(6) == 'summer'
+    assert get_season(7) == 'summer'
+    assert get_season(8) == 'summer'
+
+    # 秋季
+    assert get_season(9) == 'autumn'
+    assert get_season(10) == 'autumn'
+    assert get_season(11) == 'autumn'
+
+
+def test_parse_range_value_seasonal():
+    """测试季节性范围值解析"""
+    from extract_and_check_data import parse_range_value_seasonal
+
+    # 水泵频率 - 冬季取下限
+    assert parse_range_value_seasonal("30-50", 1, 'cooling_pump_freq') == 30.0
+
+    # 水泵频率 - 夏季取上限
+    assert parse_range_value_seasonal("30-50", 7, 'cooling_pump_freq') == 50.0
+
+    # 水泵频率 - 春季取平均
+    assert parse_range_value_seasonal("30-50", 4, 'cooling_pump_freq') == 40.0
+
+    # 供水温度 - 冬季取上限（相反）
+    assert parse_range_value_seasonal("7-10", 1, 'chiller_supply_temp') == 10.0
+
+    # 供水温度 - 夏季取下限（相反）
+    assert parse_range_value_seasonal("7-10", 7, 'chiller_supply_temp') == 7.0
+
+    # 供水温度 - 秋季取平均
+    assert parse_range_value_seasonal("7-10", 10, 'chiller_supply_temp') == 8.5
+
+    # 温差 - 冬季取下限
+    assert parse_range_value_seasonal("3-5", 2, 'cooling_water_temp_diff') == 3.0
+
+    # 温差 - 夏季取上限
+    assert parse_range_value_seasonal("3-5", 8, 'freezing_water_temp_diff') == 5.0
