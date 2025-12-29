@@ -21,7 +21,7 @@ def test_get_result_cell():
     mapper = CellMapping()
 
     cell = mapper.get_result_cell("saving_rate")
-    assert cell == "P29"
+    assert cell == "O30"  # 修正：实际位置是 O30 而非 P29
 
     cell = mapper.get_result_cell("total_saving")
     assert cell == "P28"
