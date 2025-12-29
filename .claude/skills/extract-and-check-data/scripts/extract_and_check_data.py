@@ -17,6 +17,13 @@ except ImportError:
     print("请运行: pip install pandas")
     sys.exit(1)
 
+try:
+    import openpyxl
+except ImportError:
+    print("错误: 需要安装 openpyxl 库")
+    print("请运行: pip install openpyxl")
+    sys.exit(1)
+
 
 # ============= 数据提取部分 (来自 extract_survey_data.py) =============
 
@@ -327,6 +334,9 @@ def detect_station_type(workbook) -> dict:
     """
     基于调研表内容推断站房类型
 
+    Args:
+        workbook: openpyxl.Workbook 对象
+
     Returns:
         {
             "station_type": "standard" | "secondary_pump" | "unsupported",
@@ -335,12 +345,11 @@ def detect_station_type(workbook) -> dict:
         }
     """
     try:
-        # 获取所有sheet
+        # 获取所有sheet的文本内容
         all_sheets_text = []
-        for sheet in workbook.sheet_names:
-            df = pd.read_excel(workbook, sheet_name=sheet, header=None)
-            for row in df.values:
-                all_sheets_text.extend([str(cell) for cell in row if pd.notna(cell)])
+        for sheet in workbook.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                all_sheets_text.extend([str(cell) for cell in row if cell])
 
         # 合并所有文本用于匹配
         full_text = " ".join(all_sheets_text).lower()
@@ -539,8 +548,18 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     # 注意：不再强制要求至少3个月数据，让质量检查报告来反馈数据完整性问题
     # 这样即使是空白模板也能返回提取结果和详细的质量报告
 
-    # 新增：提取站房类型
-    station_type_info = detect_station_type(xls)
+    # 新增：提取站房类型（使用 openpyxl.Workbook）
+    try:
+        wb_openpyxl = openpyxl.load_workbook(survey_excel_path, read_only=True, data_only=True)
+        station_type_info = detect_station_type(wb_openpyxl)
+        wb_openpyxl.close()
+    except Exception as e:
+        # 如果加载失败（如测试中的 mock 文件），使用默认值
+        station_type_info = {
+            "station_type": "standard",
+            "confidence": "low",
+            "reason": f"无法加载工作簿进行站房类型检测: {str(e)}"
+        }
 
     return {
         "project_region": project_region,
