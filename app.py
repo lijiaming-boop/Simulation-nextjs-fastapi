@@ -126,11 +126,15 @@ def render_extract_check_stage():
             upload_path = Path("tmp/upload_survey.xlsx")
             output_path = Path("tmp/extract_check_result.json")
 
-            # 调用合并的 Skill: 提取和质量检查
+            # 获取原始文件名
+            original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
+
+            # 调用合并的 Skill: 提取和质量检查,传递原始文件名
             skill_result = caller.call_skill(
                 "extract-and-check-data",
                 str(upload_path),
-                str(output_path)
+                str(output_path),
+                original_filename  # 新增: 传递原始文件名
             )
 
             # 展示 AI 响应过程

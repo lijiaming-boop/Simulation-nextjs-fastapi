@@ -179,7 +179,23 @@ class SkillCaller:
 
         根据不同的 skill 构建合适的提示词
         """
-        if skill_name == "extract-survey-data":
+        if skill_name == "extract-and-check-data":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-and-check-data 需要至少2个参数: 输入Excel路径, 输出JSON路径, [原始文件名]"
+                )
+            prompt = (
+                f"请使用 extract-and-check-data skill 从调研表中提取数据并进行质量检查。\n"
+                f"输入文件: {args[0]}\n"
+                f"输出文件: {args[1]}\n"
+            )
+            # 如果提供了原始文件名,添加到提示词中
+            if len(args) >= 3:
+                prompt += f"原始文件名: {args[2]}\n"
+            prompt += "请确保输出包含 extracted_data 和 quality_report 两部分。"
+            return prompt
+
+        elif skill_name == "extract-survey-data":
             if len(args) < 2:
                 raise SkillError(
                     "extract-survey-data 需要2个参数: 输入Excel路径, 输出JSON路径"
