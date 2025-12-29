@@ -89,13 +89,17 @@ rm -rf ./tmp/*
 
 ### 数据流向
 ```
-调研表Excel → extract-and-check-data Skill → JSON数据 + 质量报告
-                ↓
-        suggest-data-filling Skill → 填充建议
-                ↓
-        DataFiller → 完整数据集
-                ↓
-        ExcelCalculator → 节能率结果
+用户上传调研表Excel (保留原始文件名)
+        ↓
+extract-and-check-data Skill (使用原始文件名进行地区推断)
+        ↓
+JSON数据 + 质量报告
+        ↓
+suggest-data-filling Skill → 填充建议
+        ↓
+DataFiller → 完整数据集
+        ↓
+ExcelCalculator → 节能率结果
 ```
 
 ### 核心模块职责
@@ -342,7 +346,10 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 
 **识别方法（按优先级）：**
 1. **站房名称推断（优先级1）**：从"冷站"sheet的"站房名称"字段提取城市关键词
-2. **文件名推断（优先级2）**：从调研表文件名或路径提取城市关键词
+2. **文件名推断（优先级2）**：从用户上传的**原始文件名**提取城市关键词
+   - ✅ 现在会保留用户上传时的原始文件名（如"惠州光弘-调研表.xlsx"）
+   - ✅ 即使文件被临时保存为 `tmp/upload_survey.xlsx`，原始文件名仍会用于地区推断
+   - ✅ 原始文件名通过 session state 传递给 extract-and-check-data skill
 3. **项目总体情况扫描（优先级3，兜底）**：从"项目总体情况"sheet扫描所有单元格匹配省市关键词
 
 **支持的地区和关键词：**
@@ -360,8 +367,8 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 |--------|------|----------|
 | 站房名称 | "深圳工业园区F栋制冷站" | 华南 |
 | 站房名称 | "北京总部冷站" | 华北 |
-| 文件名 | "惠州光弘-调研表.xlsx" | 华南 |
-| 文件名 | "石家庄仁和药业中央空调节能调研表.xlsx" | 华北 |
+| **原始文件名** | **"惠州光弘-调研表.xlsx"** | **华南** |
+| **原始文件名** | **"石家庄仁和药业中央空调节能调研表.xlsx"** | **华北** |
 | 项目总体情况 | 单元格包含"武汉市" | 华中 |
 
 ## 已修复的关键问题
