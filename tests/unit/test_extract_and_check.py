@@ -373,3 +373,9 @@ def test_extract_with_seasonal_range_values():
             assert apr_data['cooling_pump_freq'] == 40.0  # 平均
             assert apr_data['chiller_supply_temp'] == 8.5  # 平均
             assert apr_data['cooling_water_temp_diff'] == 4.0  # 平均
+
+            # 验证10月（秋季）- 所有范围值取平均
+            oct_data = monthly_data[9]  # month=10
+            assert oct_data['cooling_pump_freq'] == 40.0  # 平均
+            assert oct_data['chiller_supply_temp'] == 8.5  # 平均
+            assert oct_data['cooling_water_temp_diff'] == 4.0  # 平均
