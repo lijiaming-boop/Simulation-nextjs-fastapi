@@ -445,8 +445,7 @@ def render_calculate_stage():
         status_text.text("正在调用Excel计算引擎...")
         progress_bar.progress(60)
 
-        template_path = "00_sample/机房智能化节能评估表-按冷站电量数据.xlsx"
-        calculator = ExcelCalculator(template_path)
+        calculator = ExcelCalculator()  # 不传 template_path，自动根据 station_type 选择
 
         result_path = calculator.calculate(
             filled_path,
