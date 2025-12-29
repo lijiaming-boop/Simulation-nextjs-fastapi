@@ -323,6 +323,75 @@ def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
     return cold_station_sheets[0]
 
 
+def detect_station_type(workbook) -> dict:
+    """
+    基于调研表内容推断站房类型
+
+    Returns:
+        {
+            "station_type": "standard" | "secondary_pump" | "unsupported",
+            "confidence": "high" | "medium" | "low",
+            "reason": "识别原因描述"
+        }
+    """
+    try:
+        # 获取所有sheet
+        all_sheets_text = []
+        for sheet in workbook.sheet_names:
+            df = pd.read_excel(workbook, sheet_name=sheet, header=None)
+            for row in df.values:
+                all_sheets_text.extend([str(cell) for cell in row if pd.notna(cell)])
+
+        # 合并所有文本用于匹配
+        full_text = " ".join(all_sheets_text).lower()
+
+        # 检测不支持的特殊类型（优先级最高）
+        unsupported_keywords = {
+            "热水泵": ["热水泵", "热水循环泵"],
+            "水蓄冷": ["蓄冷", "蓄冰", "冰蓄冷", "水蓄冷"],
+            "中低温机组": ["中温机组", "低温机组", "中低温"]
+        }
+
+        for feature, keywords in unsupported_keywords.items():
+            for keyword in keywords:
+                if keyword in full_text:
+                    return {
+                        "station_type": "unsupported",
+                        "confidence": "high",
+                        "reason": f"检测到{feature}特征: '{keyword}'，该类型站房不在自动评估范围内"
+                    }
+
+        # 检测二次泵特征
+        secondary_pump_keywords = [
+            "一次冷冻泵", "二次冷冻泵",
+            "一次泵", "二次泵",
+            "冷冻一次泵", "冷冻二次泵"
+        ]
+
+        has_secondary_pump = any(kw in full_text for kw in secondary_pump_keywords)
+
+        if has_secondary_pump:
+            return {
+                "station_type": "secondary_pump",
+                "confidence": "high",
+                "reason": "检测到一次泵/二次泵分离特征"
+            }
+
+        # 默认为标准站房
+        return {
+            "station_type": "standard",
+            "confidence": "medium",
+            "reason": "未检测到二次泵或特殊类型特征，默认为标准站房"
+        }
+
+    except Exception as e:
+        # 检测失败，默认标准版（低置信度）
+        return {
+            "station_type": "standard",
+            "confidence": "low",
+            "reason": f"站房类型检测失败: {str(e)}，默认使用标准版"
+        }
+
 
 def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[str] = None) -> Dict[str, Any]:
     """从 Excel 文件提取数据
@@ -470,8 +539,14 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     # 注意：不再强制要求至少3个月数据，让质量检查报告来反馈数据完整性问题
     # 这样即使是空白模板也能返回提取结果和详细的质量报告
 
+    # 新增：提取站房类型
+    station_type_info = detect_station_type(xls)
+
     return {
         "project_region": project_region,
+        "station_type": station_type_info["station_type"],
+        "station_type_confidence": station_type_info["confidence"],
+        "station_type_reason": station_type_info["reason"],
         "monthly_data": monthly_data
     }
 
@@ -730,6 +805,8 @@ def extract_and_check_data(survey_excel_path: str, output_json_path: str, origin
 
     print(f"✅ 数据提取和质量检查完成: {output_json_path}")
     print(f"项目地区: {extracted_data.get('project_region')}")
+    print(f"站房类型: {extracted_data.get('station_type')} (置信度: {extracted_data.get('station_type_confidence')})")
+    print(f"识别依据: {extracted_data.get('station_type_reason')}")
     print(f"\n{quality_report['summary']}")
 
 

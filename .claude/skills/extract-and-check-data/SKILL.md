@@ -23,6 +23,26 @@ description: 从中央空调节能调研表 Excel 文件中提取月度运行数
   - **提取方法2（次优先）**: 从调研表文件名推断（如"惠州光弘-调研表.xlsx" → 华南）
   - **提取方法3（兜底）**: 从"项目总体情况"sheet扫描所有单元格，匹配省市关键词
 
+- `station_type`: 站房类型 (standard/secondary_pump/unsupported)
+  - **识别方法**: 基于调研表内容AI智能推断
+  - **standard（标准版）**:
+    - 仅有一次冷冻泵，无二次泵
+    - 不包含热水泵、水蓄冷、中低温机组
+    - 典型调研表特征: "冷冻泵"字段只有一行数据，无"一次泵"/"二次泵"分开描述
+  - **secondary_pump（二次泵版）**:
+    - 冷冻系统包含一次泵和二次泵
+    - 典型调研表特征: 冷冻泵分为"一次泵"和"二次泵"两个部分
+    - 表格中可能有"一次冷冻泵"/"二次冷冻泵"标签
+  - **unsupported（不支持）**:
+    - 包含热水泵: 调研表中有"热水泵"相关字段
+    - 包含水蓄冷: 调研表中有"蓄冷"/"蓄冰"相关字段
+    - 包含中低温机组: 调研表中有"中温"/"低温"机组描述
+
+- `station_type_confidence`: 站房类型识别置信度 (high/medium/low)
+  - high: 明确特征，如明确标注"一次泵"/"二次泵"
+  - medium: 特征不明显，需推断
+  - low: 无法判断，默认为 standard
+
 **月度运行数据** (1-12月):
 - `month`: 月份 (1-12)
 - `total_energy`: 冷站月度总能耗 (万kWh)
@@ -112,6 +132,9 @@ description: 从中央空调节能调研表 Excel 文件中提取月度运行数
 {
   "extracted_data": {
     "project_region": "华北",
+    "station_type": "standard",
+    "station_type_confidence": "medium",
+    "station_type_reason": "未检测到二次泵或特殊类型特征，默认为标准站房",
     "monthly_data": [
       {
         "month": 1,
