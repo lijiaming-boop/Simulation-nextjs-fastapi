@@ -4,6 +4,8 @@ import json
 import time
 import pandas as pd
 from pathlib import Path
+import plotly.graph_objects as go
+import plotly.express as px
 from core.skill_caller import SkillCaller, SkillError
 from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
@@ -577,8 +579,8 @@ def render_result_stage():
             help="基于上限和下限两种估算方法"
         )
 
-        # 详细展示上限和下限
-        col1, col2, col3, col4 = st.columns(4)
+        # 详细展示：5个核心指标
+        col1, col2, col3, col4, col5 = st.columns(5)
 
         with col1:
             st.metric(
@@ -593,10 +595,20 @@ def render_result_stage():
             )
 
         with col3:
+            # P0修复：添加总节能量范围
+            total_min = result.get('total_saving_min', 0)
+            total_max = result.get('total_saving_max', 0)
+            st.metric(
+                "总节能量范围",
+                f"{total_min:.1f} - {total_max:.1f} 万kWh",
+                help="预估的年度总节能量范围"
+            )
+
+        with col4:
             completeness = result.get("completeness", 0)
             st.metric("数据完整度", f"{completeness * 100:.1f}%")
 
-        with col4:
+        with col5:
             filled_count = result.get("filled_count", 0)
             st.metric("填充字段数", filled_count)
     else:
@@ -605,10 +617,21 @@ def render_result_stage():
 
         with col1:
             rate = result.get("energy_saving_rate", 0)
-            st.metric(
-                "预估节能率",
-                f"{rate * 100:.2f}%"
-            )
+            rate_min = result.get("energy_saving_rate_min", 0)
+            rate_max = result.get("energy_saving_rate_max", 0)
+
+            # P1修复：恢复delta显示（如果min/max存在）
+            if rate_min > 0 and rate_max > 0:
+                st.metric(
+                    "预估节能率",
+                    f"{rate * 100:.2f}%",
+                    delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+                )
+            else:
+                st.metric(
+                    "预估节能率",
+                    f"{rate * 100:.2f}%"
+                )
 
         with col2:
             total_saving = result.get("total_saving", 0)
@@ -656,8 +679,6 @@ def render_result_stage():
         st.dataframe(df_savings, use_container_width=True, hide_index=True)
 
         # 柱状图 - 展示范围
-        import plotly.graph_objects as go
-
         devices = ["冷机", "水泵", "冷却塔"]
         min_values = [
             result.get("chiller_saving_min", 0),
@@ -723,7 +744,6 @@ def render_result_stage():
         st.dataframe(df_savings, use_container_width=True, hide_index=True)
 
         # 柱状图
-        import plotly.express as px
         fig = px.bar(
             df_savings[df_savings["设备类型"] != "合计"],
             x="设备类型",
