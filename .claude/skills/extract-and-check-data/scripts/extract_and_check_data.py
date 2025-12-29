@@ -87,8 +87,17 @@ def parse_range_value_seasonal(value_str: str, month: int, field_name: str) -> f
         return (min_val + max_val) / 2
 
 
-def parse_value(value):
-    """解析文本值为数值"""
+def parse_value(value, month=None, field_name=None):
+    """解析文本值为数值，支持季节性范围值处理
+
+    Args:
+        value: 单元格值
+        month: 月份 (1-12)，用于季节性范围值解析
+        field_name: 字段名称，用于判断是否需要相反逻辑
+
+    Returns:
+        解析后的数值，或 None
+    """
     if pd.isna(value):
         return None
 
@@ -102,12 +111,17 @@ def parse_value(value):
     except ValueError:
         pass
 
-    # 处理范围格式
+    # 处理范围格式 - 如果提供了月份和字段名，使用季节性解析
     range_match = re.search(r'(\d+\.?\d*)\s*[-~]\s*(\d+\.?\d*)', value_str)
     if range_match:
-        start = float(range_match.group(1))
-        end = float(range_match.group(2))
-        return (start + end) / 2
+        if month is not None and field_name is not None:
+            # 使用季节性解析
+            return parse_range_value_seasonal(value_str, month, field_name)
+        else:
+            # 向后兼容：默认取平均值
+            start = float(range_match.group(1))
+            end = float(range_match.group(2))
+            return (start + end) / 2
 
     # 处理频率格式
     freq_match = re.search(r'(\d+\.?\d*)\s*(?:Hz|HZ|hz)', value_str)
