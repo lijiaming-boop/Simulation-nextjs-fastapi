@@ -60,8 +60,8 @@ def parse_range_value_seasonal(value_str: str, month: int, field_name: str) -> f
         - 水泵频率/温差: 冬季取下限, 夏季取上限, 春秋取平均
         - 供水温度: 冬季取上限, 夏季取下限, 春秋取平均 (相反)
     """
-    # 提取范围值
-    range_match = re.search(r'(\d+\.?\d*)\s*[-~]\s*(\d+\.?\d*)', value_str)
+    # 提取范围值（支持多种分隔符：- / , | ~）
+    range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
     if not range_match:
         return None
 
@@ -112,7 +112,8 @@ def parse_value(value, month=None, field_name=None):
         pass
 
     # 处理范围格式 - 如果提供了月份和字段名，使用季节性解析
-    range_match = re.search(r'(\d+\.?\d*)\s*[-~]\s*(\d+\.?\d*)', value_str)
+    # 支持多种分隔符：- / , | ~
+    range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
     if range_match:
         if month is not None and field_name is not None:
             # 使用季节性解析

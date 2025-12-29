@@ -249,6 +249,23 @@ def test_parse_range_value_seasonal_edge_cases():
     # 冬季应取最小值，而不是最大值
     assert parse_range_value_seasonal("30-50", 1, 'some_supply_temp_other') == 30.0
 
+    # 测试斜杠分隔符
+    # 水泵频率 - 冬季取下限
+    assert parse_range_value_seasonal("30/50", 1, 'cooling_pump_freq') == 30.0
+    assert parse_range_value_seasonal("6.5/6", 7, 'chiller_supply_temp') == 6.0
+
+    # 测试逗号分隔符
+    # 供水温度 - 冬季取上限
+    assert parse_range_value_seasonal("7,10", 1, 'chiller_supply_temp') == 10.0
+    # 水泵频率 - 夏季取上限
+    assert parse_range_value_seasonal("30,50", 7, 'cooling_pump_freq') == 50.0
+
+    # 测试竖线分隔符
+    # 温差 - 春季取平均
+    assert parse_range_value_seasonal("3|5", 4, 'cooling_water_temp_diff') == 4.0
+    # 供水温度 - 夏季取下限
+    assert parse_range_value_seasonal("7|10", 7, 'chiller_supply_temp') == 7.0
+
 
 def test_parse_value_with_season_and_field():
     """测试增强的 parse_value() 函数（支持季节和字段类型）"""
@@ -284,6 +301,24 @@ def test_parse_value_with_season_and_field():
     # 测试向后兼容 - 没有月份参数时默认取平均值
     result = parse_value("30-50")
     assert result == 40.0
+
+    # 测试斜杠分隔符
+    result = parse_value("6.5/6℃", month=1, field_name='chiller_supply_temp')
+    assert result == 6.5  # 冬季取上限
+    result = parse_value("30/50Hz", month=7, field_name='cooling_pump_freq')
+    assert result == 50.0  # 夏季取上限
+
+    # 测试逗号分隔符
+    result = parse_value("7,10℃", month=7, field_name='chiller_supply_temp')
+    assert result == 7.0  # 夏季取下限
+    result = parse_value("3,5℃", month=4, field_name='cooling_water_temp_diff')
+    assert result == 4.0  # 春季取平均
+
+    # 测试竖线分隔符
+    result = parse_value("30|50Hz", month=1, field_name='cooling_pump_freq')
+    assert result == 30.0  # 冬季取下限
+    result = parse_value("7|10℃", month=1, field_name='chiller_supply_temp')
+    assert result == 10.0  # 冬季取上限
 
 
 def test_parse_value_edge_cases():
