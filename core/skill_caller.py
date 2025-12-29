@@ -146,6 +146,8 @@ class SkillCaller:
                     if isinstance(message, AssistantMessage):
                         for block in message.content:
                             if isinstance(block, TextBlock):
+                                # 打印AI响应内容到console（方便调试）
+                                print(f"[AI Response] {block.text}")
                                 ai_responses.append(block.text)
 
         except asyncio.TimeoutError as e:
@@ -160,7 +162,9 @@ class SkillCaller:
 
         # 检查输出文件(如果需要)
         if check_output and len(args) >= 2:
-            output_file = Path(args[-1])
+            # 输出文件总是第二个参数(args[1])，不是最后一个
+            # 因为某些skill可能有可选的第三个参数(如extract-and-check-data的original_filename)
+            output_file = Path(args[1])
             if not output_file.exists():
                 raise SkillError(
                     f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
