@@ -91,15 +91,22 @@ rm -rf ./tmp/*
 ```
 用户上传调研表Excel (保留原始文件名)
         ↓
-extract-and-check-data Skill (使用原始文件名进行地区推断)
+extract-and-check-data Skill
+  - 提取数据（使用原始文件名进行地区推断）
+  - 识别站房类型（standard/secondary_pump/unsupported）
+  - 质量检查
         ↓
-JSON数据 + 质量报告
+JSON数据 + 质量报告 + 站房类型
+        ↓
+[如果 station_type == unsupported] → 流程中断，提示用户
         ↓
 suggest-data-filling Skill → 填充建议
         ↓
-DataFiller → 完整数据集
+DataFiller → 完整数据集（包含 station_type）
         ↓
-ExcelCalculator → 节能率结果
+ExcelCalculator（自动选择模板）→ 节能率结果
+  - standard → 标准版模板
+  - secondary_pump → 二次泵版模板
 ```
 
 ### 核心模块职责
@@ -370,6 +377,57 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 | **原始文件名** | **"惠州光弘-调研表.xlsx"** | **华南** |
 | **原始文件名** | **"石家庄仁和药业中央空调节能调研表.xlsx"** | **华北** |
 | 项目总体情况 | 单元格包含"武汉市" | 华中 |
+
+## 站房类型识别规则
+
+系统支持三种站房类型，通过 AI 智能分析调研表内容自动识别：
+
+### 支持的类型
+
+1. **standard（标准站房）**
+   - 特征：仅有一次冷冻泵，无二次泵分离
+   - 使用模板：`00_sample/模板测算表/节能评估表-按冷站电量数据-标准版.xlsx`
+   - 典型调研表特征：
+     - "冷冻泵"字段只有一行数据
+     - 无"一次泵"/"二次泵"分开描述
+
+2. **secondary_pump（二次泵站房）**
+   - 特征：冷冻系统包含一次泵和二次泵
+   - 使用模板：`00_sample/模板测算表/节能评估表-按冷站电量数据-二次泵版.xlsx`
+   - 典型调研表特征：
+     - 冷冻泵分为"一次冷冻泵"和"二次冷冻泵"两个部分
+     - 表格中有"一次泵"/"二次泵"标签
+
+### 不支持的类型
+
+**unsupported（特殊类型站房）**
+- 包含以下任一特征：
+  - 热水泵：调研表中有"热水泵"相关字段
+  - 水蓄冷：调研表中有"蓄冷"/"蓄冰"相关字段
+  - 中低温机组：调研表中有"中温"/"低温"机组描述
+- **处理方式**：在数据提取阶段自动拦截，不进入计算流程
+- **原因**：这些特殊类型的节能计算逻辑复杂，需要专门的评估方法
+
+### 识别置信度
+
+- **high**: 明确特征，如明确标注"一次泵"/"二次泵"或"热水泵"
+- **medium**: 特征不明显，基于推断
+- **low**: 无法判断，默认为 standard
+
+### 流程拦截机制
+
+系统在以下两个阶段检查站房类型：
+
+1. **提取检查阶段**：
+   - 识别到 `unsupported` 类型后立即中断流程
+   - 展示识别依据和原因
+   - 提供"返回重新上传"按钮
+
+2. **计算阶段**（防御性检查）：
+   - 再次检查 `station_type` 字段
+   - 如果为 `unsupported` 则抛出 ValueError
+
+详见：`config/template_config.py` 和 `.claude/skills/extract-and-check-data/`
 
 ## 已修复的关键问题
 
