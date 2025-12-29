@@ -567,67 +567,172 @@ def render_result_stage():
 
     # 核心指标卡
     st.subheader("🎯 核心指标")
-    col1, col2, col3, col4 = st.columns(4)
 
-    with col1:
-        rate = result.get("energy_saving_rate", 0)
-        rate_min = result.get("energy_saving_rate_min", 0)
-        rate_max = result.get("energy_saving_rate_max", 0)
+    # 检查是否为范围计算结果
+    if "energy_saving_rate_range" in result:
+        # 新版：展示范围
         st.metric(
-            "预估节能率",
-            f"{rate * 100:.2f}%",
-            delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+            "节能率范围",
+            result["energy_saving_rate_range"],
+            help="基于上限和下限两种估算方法"
         )
 
-    with col2:
-        total_saving = result.get("total_saving", 0)
-        st.metric("总节能量", f"{total_saving:.2f} 万kWh")
+        # 详细展示上限和下限
+        col1, col2, col3, col4 = st.columns(4)
 
-    with col3:
-        completeness = result.get("completeness", 0)
-        st.metric("数据完整度", f"{completeness * 100:.1f}%")
+        with col1:
+            st.metric(
+                "下限（保守估计）",
+                f"{result['energy_saving_rate_min'] * 100:.1f}%"
+            )
 
-    with col4:
-        filled_count = result.get("filled_count", 0)
-        st.metric("填充字段数", filled_count)
+        with col2:
+            st.metric(
+                "上限（理想情况）",
+                f"{result['energy_saving_rate_max'] * 100:.1f}%"
+            )
+
+        with col3:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+        with col4:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
+    else:
+        # 旧版：单一值（向后兼容）
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            rate = result.get("energy_saving_rate", 0)
+            st.metric(
+                "预估节能率",
+                f"{rate * 100:.2f}%"
+            )
+
+        with col2:
+            total_saving = result.get("total_saving", 0)
+            st.metric("总节能量", f"{total_saving:.2f} 万kWh")
+
+        with col3:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+        with col4:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
 
     st.markdown("---")
 
     # 分项节能明细
     st.subheader("📊 分项节能明细")
 
-    savings_data = {
-        "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
-        "节能量 (万kWh)": [
-            result.get("chiller_saving", 0),
-            result.get("pump_saving", 0),
-            result.get("tower_saving", 0),
-            result.get("total_saving", 0)
+    # 检查是否为范围计算结果
+    if "chiller_saving_min" in result:
+        # 新版：展示范围
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量范围 (万kWh)": [
+                f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
+                f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
+                f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
+                f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
+            ],
+            "下限 (万kWh)": [
+                result.get("chiller_saving_min", 0),
+                result.get("pump_saving_min", 0),
+                result.get("tower_saving_min", 0),
+                result.get("total_saving_min", 0)
+            ],
+            "上限 (万kWh)": [
+                result.get("chiller_saving_max", 0),
+                result.get("pump_saving_max", 0),
+                result.get("tower_saving_max", 0),
+                result.get("total_saving_max", 0)
+            ]
+        }
+
+        df_savings = pd.DataFrame(savings_data)
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图 - 展示范围
+        import plotly.graph_objects as go
+
+        devices = ["冷机", "水泵", "冷却塔"]
+        min_values = [
+            result.get("chiller_saving_min", 0),
+            result.get("pump_saving_min", 0),
+            result.get("tower_saving_min", 0)
         ]
-    }
+        max_values = [
+            result.get("chiller_saving_max", 0),
+            result.get("pump_saving_max", 0),
+            result.get("tower_saving_max", 0)
+        ]
 
-    df_savings = pd.DataFrame(savings_data)
+        fig = go.Figure()
 
-    # 计算百分比
-    total = result.get("total_saving", 0)
-    if total > 0:
-        df_savings["占比"] = df_savings["节能量 (万kWh)"].apply(
-            lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+        # 添加下限柱
+        fig.add_trace(go.Bar(
+            name='下限（保守估计）',
+            x=devices,
+            y=min_values,
+            text=[f"{v:.1f}" for v in min_values],
+            textposition='outside'
+        ))
+
+        # 添加上限柱
+        fig.add_trace(go.Bar(
+            name='上限（理想情况）',
+            x=devices,
+            y=max_values,
+            text=[f"{v:.1f}" for v in max_values],
+            textposition='outside'
+        ))
+
+        fig.update_layout(
+            title="分项节能量范围分布",
+            xaxis_title="设备类型",
+            yaxis_title="节能量 (万kWh)",
+            barmode='group'
         )
 
-    st.dataframe(df_savings, use_container_width=True, hide_index=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-    # 柱状图
-    import plotly.express as px
-    fig = px.bar(
-        df_savings[df_savings["设备类型"] != "合计"],
-        x="设备类型",
-        y="节能量 (万kWh)",
-        title="分项节能量分布",
-        text="节能量 (万kWh)"
-    )
-    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-    st.plotly_chart(fig, use_container_width=True)
+    else:
+        # 旧版：单一值（向后兼容）
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量 (万kWh)": [
+                result.get("chiller_saving", 0),
+                result.get("pump_saving", 0),
+                result.get("tower_saving", 0),
+                result.get("total_saving", 0)
+            ]
+        }
+
+        df_savings = pd.DataFrame(savings_data)
+
+        # 计算百分比
+        total = result.get("total_saving", 0)
+        if total > 0:
+            df_savings["占比"] = df_savings["节能量 (万kWh)"].apply(
+                lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+            )
+
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图
+        import plotly.express as px
+        fig = px.bar(
+            df_savings[df_savings["设备类型"] != "合计"],
+            x="设备类型",
+            y="节能量 (万kWh)",
+            title="分项节能量分布",
+            text="节能量 (万kWh)"
+        )
+        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+        st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
 
@@ -644,6 +749,15 @@ def render_result_stage():
         confidence_msg = "🔴 低置信度 - 较多数据缺失,结果仅供参考"
 
     st.info(confidence_msg)
+
+    # 添加范围计算说明
+    if result.get("calculation_method") == "dual_sheet":
+        st.info(
+            "📊 **节能率范围说明**\n\n"
+            "- **下限（保守估计）**: 基于常规优化参数，考虑实际约束\n"
+            "- **上限（理想情况）**: 基于最优运行条件，理想化假设\n"
+            "- **实际节能效果**: 通常在此范围内，具体取决于项目实施情况"
+        )
 
     st.markdown("---")
 
