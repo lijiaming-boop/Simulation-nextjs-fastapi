@@ -14,6 +14,7 @@ def init_session_state():
     if 'stage' not in st.session_state:
         st.session_state.stage = 'upload'
         st.session_state.uploaded_file = None
+        st.session_state.original_filename = None  # 新增: 保存原始文件名
         st.session_state.extracted_data = None
         st.session_state.quality_report = None
         st.session_state.filling_suggestions = None
@@ -24,6 +25,7 @@ def reset_flow():
     """重置流程"""
     st.session_state.stage = 'upload'
     st.session_state.uploaded_file = None
+    st.session_state.original_filename = None  # 新增
     st.session_state.extracted_data = None
     st.session_state.quality_report = None
     st.session_state.filling_suggestions = None
@@ -95,6 +97,7 @@ def render_upload_stage():
 
     if uploaded_file:
         st.session_state.uploaded_file = uploaded_file
+        st.session_state.original_filename = uploaded_file.name  # 新增: 保存原始文件名
 
         # 保存到临时目录
         tmp_dir = Path("tmp")
