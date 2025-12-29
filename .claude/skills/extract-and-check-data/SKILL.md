@@ -13,6 +13,7 @@ description: 从中央空调节能调研表 Excel 文件中提取月度运行数
 
 1. `survey_excel_path`: 调研表 Excel 文件路径
 2. `output_json_path`: 输出 JSON 文件路径
+3. `original_filename` (可选): 原始上传文件名,用于地区推断优先级2
 
 ## 提取字段
 

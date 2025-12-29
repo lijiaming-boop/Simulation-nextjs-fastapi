@@ -285,18 +285,63 @@ def detect_month_column_start(df, row_idx):
     return None
 
 
-def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
-    """从 Excel 文件提取数据"""
+
+def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
+    """查找包含冷站数据的工作表
+
+    支持多种命名模式：
+    - '冷站'
+    - '1#冷站', '2#冷站' 等带编号的冷站
+    - 任何包含'冷站'关键字的工作表
+
+    优先级：
+    1. 如果只有一个冷站工作表，直接使用
+    2. 如果有多个冷站，优先使用'1#冷站'
+    3. 如果没有1#冷站，使用第一个冷站
+
+    Args:
+        xls: Excel文件对象
+
+    Returns:
+        工作表名称，如果未找到则返回 None
+    """
+    # 查找所有包含"冷站"关键字的工作表
+    cold_station_sheets = [sheet for sheet in xls.sheet_names if '冷站' in sheet]
+
+    if not cold_station_sheets:
+        return None
+
+    # 如果只有一个冷站，直接返回
+    if len(cold_station_sheets) == 1:
+        return cold_station_sheets[0]
+
+    # 如果有多个冷站，优先使用"1#冷站"
+    if '1#冷站' in cold_station_sheets:
+        return '1#冷站'
+
+    # 否则使用第一个冷站
+    return cold_station_sheets[0]
+
+
+
+def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[str] = None) -> Dict[str, Any]:
+    """从 Excel 文件提取数据
+
+    Args:
+        survey_excel_path: Excel 文件路径
+        original_filename: 原始文件名(优先用于地区推断)
+    """
     xls = pd.ExcelFile(survey_excel_path)
 
-    # 读取冷站数据
-    if '冷站' not in xls.sheet_names:
+    # 查找冷站工作表
+    cold_station_sheet = find_cold_station_sheet(xls)
+    if not cold_station_sheet:
         return {
             "error": True,
-            "message": "找不到'冷站'工作表,请确认上传了正确的文件"
+            "message": "找不到包含冷站数据的工作表,请确认上传了正确的文件"
         }
 
-    df = pd.read_excel(xls, sheet_name='冷站', header=None)
+    df = pd.read_excel(xls, sheet_name=cold_station_sheet, header=None)
 
     # 提取项目地区（三级优先级）
     project_region = None
@@ -306,11 +351,15 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
     if station_name:
         project_region = infer_region_from_text(station_name)
 
-    # 优先级2: 如果优先级1失败，从文件名推断地区
+    # 优先级2: 从原始文件名推断地区 (使用传入的 original_filename)
+    if not project_region and original_filename:
+        project_region = extract_region_from_filename(original_filename)
+
+    # 优先级2备选: 如果没有提供 original_filename,使用当前文件路径
     if not project_region:
         project_region = extract_region_from_filename(survey_excel_path)
 
-    # 优先级3: 如果优先级1和2都失败，从项目总体情况表提取
+    # 优先级3: 从项目总体情况表提取
     if not project_region and '项目总体情况' in xls.sheet_names:
         df_overview = pd.read_excel(xls, sheet_name='项目总体情况', header=None)
         project_region = extract_region(df_overview)
@@ -642,11 +691,17 @@ class DataQualityChecker:
 
 # ============= 主函数 =============
 
-def extract_and_check_data(survey_excel_path: str, output_json_path: str):
-    """提取数据并进行质量检查"""
+def extract_and_check_data(survey_excel_path: str, output_json_path: str, original_filename: Optional[str] = None):
+    """提取数据并进行质量检查
 
-    # 步骤 1: 提取数据
-    extracted_data = extract_data_from_excel(survey_excel_path)
+    Args:
+        survey_excel_path: 调研表路径
+        output_json_path: 输出路径
+        original_filename: 原始文件名(用于地区推断)
+    """
+
+    # 步骤 1: 提取数据,传递原始文件名
+    extracted_data = extract_data_from_excel(survey_excel_path, original_filename)
 
     # 如果提取失败，直接返回错误
     if extracted_data.get("error"):
@@ -680,15 +735,16 @@ def extract_and_check_data(survey_excel_path: str, output_json_path: str):
 
 def main():
     """命令行入口"""
-    if len(sys.argv) != 3:
-        print('用法: python extract_and_check_data.py <调研表Excel路径> <输出JSON路径>')
+    if len(sys.argv) < 3:
+        print('用法: python extract_and_check_data.py <调研表Excel路径> <输出JSON路径> [原始文件名]')
         sys.exit(1)
 
     survey_excel_path = sys.argv[1]
     output_json_path = sys.argv[2]
+    original_filename = sys.argv[3] if len(sys.argv) > 3 else None
 
     try:
-        extract_and_check_data(survey_excel_path, output_json_path)
+        extract_and_check_data(survey_excel_path, output_json_path, original_filename)
     except Exception as e:
         print(f'错误: {e}')
         import traceback

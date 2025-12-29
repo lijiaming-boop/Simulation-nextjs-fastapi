@@ -272,7 +272,26 @@ class DataFillingSuggester:
         return self.use_industry_default(month_idx, field)
 
     def run(self) -> Dict[str, Any]:
-        """执行填充建议生成"""
+        """执行填充建议生成
+
+        Returns:
+            Dict[str, Any]: 填充建议结果，包含以下字段：
+                - can_proceed (bool): 是否可以继续计算
+                    - True: 所有缺失字段都可以通过算法填充
+                    - False: 存在关键字段无法填充，需要用户补充数据
+                - unfillable_fields (List[Dict]): 不可填充字段列表
+                    - field (str): 字段路径
+                    - reason (str): 不可填充的原因说明
+                - fillable_suggestions (List[Dict]): 可填充建议列表
+                    - field (str): 字段路径 (格式: "monthly_data[索引].字段名")
+                    - original_value: 原始值 (通常为 null)
+                    - suggested_value: 建议填充值
+                    - method (str): 填充方法 (linear_interpolation/season_default/adjacent_average/industry_default)
+                    - confidence (str): 置信度 (high/medium/low)
+                    - reasoning (str): 推理说明
+
+        输出格式详见: .claude/skills/suggest-data-filling/SKILL.md
+        """
         # 检查不可填充字段
         has_unfillable = self.check_unfillable_fields()
 

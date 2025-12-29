@@ -33,7 +33,7 @@ def test_calculator_initialization(template_path):
     reason="Excel template not found"
 )
 def test_calculate_energy_saving(template_path, filled_data_path, tmp_dir):
-    """测试节能率计算 (需要 Excel 模板和 xlwings 环境)"""
+    """测试节能率计算 (使用 formulas 引擎)"""
     calc = ExcelCalculator(template_path)
 
     result_path = tmp_dir / "result.json"
