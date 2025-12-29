@@ -409,7 +409,8 @@ def extract_data_from_excel(survey_excel_path: str) -> Dict[str, Any]:
                     # 确保列索引在有效范围内
                     if month_col_idx < len(df.columns):
                         value = df.iloc[row_idx, month_col_idx]
-                        parsed = parse_value(value)
+                        # 传递月份和字段名以支持季节性范围值解析
+                        parsed = parse_value(value, month=month, field_name=field)
                         month_record[field] = parsed
                         if field == 'total_energy' and parsed is not None:
                             valid_energy_count += 1

@@ -299,3 +299,77 @@ def test_parse_value_edge_cases():
     # 工频格式
     result = parse_value("工频50HZ", month=1, field_name='cooling_pump_freq')
     assert result == 50.0
+
+
+def test_extract_with_seasonal_range_values():
+    """测试完整提取流程中的季节性范围值解析（集成测试）"""
+    from extract_and_check_data import extract_data_from_excel
+    from unittest.mock import patch, MagicMock
+    import pandas as pd
+
+    # 创建模拟的 DataFrame，包含范围值数据
+    # 模拟调研表的结构
+    mock_df_rows = []
+
+    # 前30行为项目信息（跳过）
+    for i in range(30):
+        mock_df_rows.append([''] * 20)
+
+    # 第31行：设备运行规律的月份行（带"备注"列）
+    mock_df_rows.append(['', '', '月份', '备注', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'])
+
+    # 第32行：冷却泵运行频率
+    mock_df_rows.append(['', '', '冷却泵运行频率', ''] + ['30-50Hz'] * 12)
+
+    # 第33行：冷机供水温度
+    mock_df_rows.append(['', '', '冷机供水温度', ''] + ['7-10℃'] * 12)
+
+    # 第34行：冷却侧供回水温差
+    mock_df_rows.append(['', '', '冷却侧供回水温差', ''] + ['3-5℃'] * 12)
+
+    # 再填充一些行
+    for i in range(10):
+        mock_df_rows.append([''] * 20)
+
+    # 第45行：用电情况统计的月份行（无"备注"列）
+    mock_df_rows.append(['', '', '月份', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'])
+
+    # 第46行：整个冷站用电（万kWh）
+    mock_df_rows.append(['', '', '整个冷站', 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0])
+    mock_df_rows.append(['', '', '万kWh', 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0])
+
+    mock_df = pd.DataFrame(mock_df_rows)
+
+    # Mock Excel 读取
+    with patch('pandas.ExcelFile') as mock_excel:
+        mock_xls = MagicMock()
+        mock_xls.sheet_names = ['冷站']
+        mock_excel.return_value = mock_xls
+
+        with patch('pandas.read_excel', return_value=mock_df):
+            # 调用底层提取函数
+            result = extract_data_from_excel('dummy.xlsx')
+
+            # 验证返回结果不是错误
+            assert 'error' not in result or not result.get('error')
+
+            monthly_data = result['monthly_data']
+            assert len(monthly_data) == 12
+
+            # 验证1月（冬季）- 水泵频率取下限，供水温度取上限，温差取下限
+            jan_data = monthly_data[0]  # month=1
+            assert jan_data['cooling_pump_freq'] == 30.0  # 下限
+            assert jan_data['chiller_supply_temp'] == 10.0  # 上限（相反）
+            assert jan_data['cooling_water_temp_diff'] == 3.0  # 下限
+
+            # 验证7月（夏季）- 水泵频率取上限，供水温度取下限，温差取上限
+            jul_data = monthly_data[6]  # month=7
+            assert jul_data['cooling_pump_freq'] == 50.0  # 上限
+            assert jul_data['chiller_supply_temp'] == 7.0  # 下限（相反）
+            assert jul_data['cooling_water_temp_diff'] == 5.0  # 上限
+
+            # 验证4月（春季）- 所有范围值取平均
+            apr_data = monthly_data[3]  # month=4
+            assert apr_data['cooling_pump_freq'] == 40.0  # 平均
+            assert apr_data['chiller_supply_temp'] == 8.5  # 平均
+            assert apr_data['cooling_water_temp_diff'] == 4.0  # 平均
