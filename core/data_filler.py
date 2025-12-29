@@ -42,10 +42,25 @@ class DataFiller:
         total_fields = len(data["monthly_data"]) * 7  # 12个月 × 7个字段
         filled_count = 0
 
+        # 定义受保护字段（不允许填充建议修改）
+        protected_fields = [
+            "project_region",           # 项目地区（由提取阶段确定）
+            "station_type",             # 站房类型（由提取阶段检测）
+            "station_type_confidence",  # 站房类型置信度
+            "station_type_reason"       # 站房类型识别依据
+        ]
+
         # 执行填充
         for suggestion in suggestions.get("fillable_suggestions", []):
             field_path = suggestion["field"]
             suggested_value = suggestion["suggested_value"]
+
+            # 跳过受保护字段（防止错误修改关键信息）
+            if field_path in protected_fields:
+                print(f"Warning: Skipping protected field: {field_path}")
+                print(f"  Suggested value: {suggested_value}")
+                print(f"  Reason: This field should only be set by extract-and-check-data skill")
+                continue
 
             # 解析字段路径: "monthly_data[1].chiller_supply_temp"
             if field_path.startswith("monthly_data["):
