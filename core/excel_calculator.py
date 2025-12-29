@@ -89,12 +89,14 @@ class ExcelCalculator:
     ) -> Dict[str, Any]:
         """使用 formulas 库执行计算
 
+        计算上限和下限两个sheet，返回节能率范围
+
         Args:
             data: 填充后的数据字典
             excel_path: Excel 文件路径
 
         Returns:
-            计算结果字典
+            计算结果字典（包含范围）
         """
         try:
             import formulas
@@ -102,17 +104,84 @@ class ExcelCalculator:
         except ImportError as e:
             raise RuntimeError(f"Required library not installed: {e}")
 
+        # 计算下限（保守估计）
+        result_lower = self._calculate_single_sheet(data, excel_path, "lower")
+
+        # 计算上限（理想情况）
+        result_upper = self._calculate_single_sheet(data, excel_path, "upper")
+
+        # 合并结果，构建范围
+        result = {
+            # 节能率范围
+            "energy_saving_rate_min": result_lower["saving_rate"],
+            "energy_saving_rate_max": result_upper["saving_rate"],
+            "energy_saving_rate_range": (
+                f"{result_lower['saving_rate']*100:.1f}% - "
+                f"{result_upper['saving_rate']*100:.1f}%"
+            ),
+
+            # 向后兼容：保留原有单一值字段（使用下限）
+            "energy_saving_rate": result_lower["saving_rate"],
+
+            # 分项节能量范围
+            "chiller_saving_min": result_lower["chiller_saving"],
+            "chiller_saving_max": result_upper["chiller_saving"],
+            "chiller_saving": result_lower["chiller_saving"],  # 向后兼容
+
+            "pump_saving_min": result_lower["pump_saving"],
+            "pump_saving_max": result_upper["pump_saving"],
+            "pump_saving": result_lower["pump_saving"],  # 向后兼容
+
+            "tower_saving_min": result_lower["tower_saving"],
+            "tower_saving_max": result_upper["tower_saving"],
+            "tower_saving": result_lower["tower_saving"],  # 向后兼容
+
+            "total_saving_min": result_lower["total_saving"],
+            "total_saving_max": result_upper["total_saving"],
+            "total_saving": result_lower["total_saving"],  # 向后兼容
+
+            # 元数据
+            "completeness": data["_metadata"]["final_completeness"],
+            "filled_count": data["_metadata"]["fill_count"],
+            "calculation_timestamp": datetime.now().isoformat(),
+            "calculation_method": "dual_sheet",  # 标记使用双sheet计算
+        }
+
+        return result
+
+    def _calculate_single_sheet(
+        self,
+        data: Dict[str, Any],
+        excel_path: Path,
+        sheet_type: str
+    ) -> Dict[str, Any]:
+        """计算单个sheet（上限或下限）
+
+        Args:
+            data: 填充后的数据字典
+            excel_path: Excel 文件路径
+            sheet_type: sheet类型 ("upper"/"lower")
+
+        Returns:
+            单个sheet的计算结果
+        """
+        import formulas
+        import openpyxl
+
+        # 获取sheet名称
+        sheet_name = self.mapper.get_sheet_name(sheet_type)
+
         # 阶段1: 使用 openpyxl 将数据写入 Excel 文件
         wb = openpyxl.load_workbook(excel_path)
-        sheet = wb[self.mapper.SHEET_NAME]
+        sheet = wb[sheet_name]
 
-        # 1. 回填项目地区到 Sheet2
+        # 1. 回填项目地区
         region_cell = self.mapper.get_basic_info_cell("project_region")
         sheet[region_cell] = data["project_region"]
 
-        # 2. 回填月度数据到 Sheet1
+        # 2. 回填月度数据
         for month_data in data["monthly_data"]:
-            month_idx = month_data["month"] - 1  # 转换为 0-based 索引
+            month_idx = month_data["month"] - 1
 
             for field in self.mapper.get_monthly_fields():
                 value = month_data.get(field)
@@ -126,23 +195,17 @@ class ExcelCalculator:
 
         # 阶段2: 使用 formulas 库加载并计算
         xl_model = formulas.ExcelModel().loads(str(excel_path)).finish()
-
-        # 获取工作簿名称（用于结果提取）
         book_name = list(xl_model.books.keys())[0]
-
-        # 触发计算（不需要传入 inputs，数据已在文件中）
         result_data = xl_model.calculate()
 
         # 阶段3: 提取计算结果
         def get_result_value(result_field: str) -> float:
             """提取结果单元格的值"""
             cell = self.mapper.get_result_cell(result_field)
-            # 读取结果时使用小写工作簿名称
-            cell_id = f"'[{book_name.lower()}]{self.mapper.SHEET_NAME}'!{cell}"
+            cell_id = f"'[{book_name.lower()}]{sheet_name}'!{cell}"
 
             if cell_id in result_data:
                 value = result_data[cell_id]
-                # Ranges 对象的值存储在 .value 属性的嵌套列表中
                 if hasattr(value, 'value'):
                     value = value.value[0][0]
                 return float(value) if value is not None else 0.0
@@ -157,33 +220,41 @@ class ExcelCalculator:
             ),
             "tower_saving": get_result_value("tower_saving_total"),
             "total_saving": get_result_value("total_saving"),
-            "energy_saving_rate": get_result_value("saving_rate"),
+            "saving_rate": get_result_value("saving_rate"),
         }
-
-        # 计算节能率范围 (±20%)
-        rate = result["energy_saving_rate"]
-        result["energy_saving_rate_min"] = rate * 0.8
-        result["energy_saving_rate_max"] = rate * 1.2
-
-        # 添加元数据
-        result["completeness"] = data["_metadata"]["final_completeness"]
-        result["filled_count"] = data["_metadata"]["fill_count"]
-        result["calculation_timestamp"] = datetime.now().isoformat()
 
         return result
 
     def _mock_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """生成 mock 结果用于测试 (formulas 库不可用时)"""
         return {
-            "energy_saving_rate": 0.15,
+            # 节能率范围
+            "energy_saving_rate": 0.15,  # 向后兼容（下限值）
             "energy_saving_rate_min": 0.12,
             "energy_saving_rate_max": 0.18,
+            "energy_saving_rate_range": "12.0% - 18.0%",
+
+            # 分项节能量范围
             "chiller_saving": 12.5,
+            "chiller_saving_min": 10.0,
+            "chiller_saving_max": 15.0,
+
             "pump_saving": 3.2,
+            "pump_saving_min": 2.5,
+            "pump_saving_max": 4.0,
+
             "tower_saving": 1.8,
+            "tower_saving_min": 1.5,
+            "tower_saving_max": 2.2,
+
             "total_saving": 17.5,
+            "total_saving_min": 14.0,
+            "total_saving_max": 21.2,
+
+            # 元数据
             "completeness": data["_metadata"]["final_completeness"],
             "filled_count": data["_metadata"]["fill_count"],
             "calculation_timestamp": datetime.now().isoformat(),
+            "calculation_method": "dual_sheet",
             "mock": True  # 标记为 mock 数据
         }
