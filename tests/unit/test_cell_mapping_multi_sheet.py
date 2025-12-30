@@ -7,7 +7,7 @@ def test_get_sheet_name_upper():
     """测试获取上限sheet名称"""
     mapper = CellMapping()
     sheet_name = mapper.get_sheet_name("upper")
-    assert sheet_name == "【1】按冷站电量数据-上限 "
+    assert sheet_name == "【1】按冷站电量数据-上限"
 
 
 def test_get_sheet_name_lower():
