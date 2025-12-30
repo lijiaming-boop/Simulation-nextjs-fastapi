@@ -385,9 +385,11 @@ def render_filling_stage():
             try:
                 caller = SkillCaller(timeout=300)
 
-                extracted_path = Path("tmp/extracted_data.json")
-                quality_path = Path("tmp/quality_report.json")
-                output_path = Path("tmp/filling_suggestions.json")
+                # 修改: 使用会话目录
+                session_dir = st.session_state.session_dir
+                extracted_path = session_dir / "extracted_data.json"
+                quality_path = session_dir / "quality_report.json"
+                output_path = session_dir / "filling_suggestions.json"
 
                 # 调用 Skill 3: 填充建议
                 skill_result = caller.call_skill(
