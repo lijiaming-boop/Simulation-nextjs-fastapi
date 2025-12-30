@@ -21,6 +21,7 @@ def init_session_state():
         st.session_state.quality_report = None
         st.session_state.filling_suggestions = None
         st.session_state.result = None
+        st.session_state.uploader_key = 0  # 新增: file_uploader的key计数器
 
 
 def reset_flow():
@@ -32,6 +33,8 @@ def reset_flow():
     st.session_state.quality_report = None
     st.session_state.filling_suggestions = None
     st.session_state.result = None
+    # 重要：增加uploader_key强制清空file_uploader缓存
+    st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
 
 
 def main():
@@ -94,7 +97,8 @@ def render_upload_stage():
     uploaded_file = st.file_uploader(
         "选择文件",
         type=['xlsx', 'xls'],
-        help="请使用标准调研表模板"
+        help="请使用标准调研表模板",
+        key=f"file_uploader_{st.session_state.uploader_key}"  # 动态key，reset时强制刷新
     )
 
     if uploaded_file:
@@ -121,227 +125,243 @@ def render_extract_check_stage():
     """阶段2: 数据提取和质量检查 (自动流转)"""
     st.header("🔍 步骤 2: 数据提取和质量检查")
 
-    with st.spinner("正在提取调研表数据并进行质量检查,请稍候..."):
-        try:
-            caller = SkillCaller(timeout=300)
+    # 检查是否已经有缓存的结果（避免重复执行skill）
+    if (st.session_state.get('extracted_data') is not None and
+        st.session_state.get('quality_report') is not None):
+        # 使用缓存的结果
+        extracted_data = st.session_state.extracted_data
+        quality_report = st.session_state.quality_report
+        st.info("ℹ️ 使用缓存的分析结果")
+    else:
+        # 需要执行skill获取新结果
+        with st.spinner("正在提取调研表数据并进行质量检查,请稍候..."):
+            try:
+                caller = SkillCaller(timeout=300)
 
-            upload_path = Path("tmp/upload_survey.xlsx")
-            output_path = Path("tmp/extract_check_result.json")
+                upload_path = Path("tmp/upload_survey.xlsx")
+                output_path = Path("tmp/extract_check_result.json")
 
-            # 获取原始文件名
-            original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
+                # 获取原始文件名
+                original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
 
-            # 调用合并的 Skill: 提取和质量检查,传递原始文件名
-            skill_result = caller.call_skill(
-                "extract-and-check-data",
-                str(upload_path),
-                str(output_path),
-                original_filename  # 新增: 传递原始文件名
-            )
+                # 调用合并的 Skill: 提取和质量检查,传递原始文件名
+                skill_result = caller.call_skill(
+                    "extract-and-check-data",
+                    str(upload_path),
+                    str(output_path),
+                    original_filename  # 新增: 传递原始文件名
+                )
 
-            # 展示 AI 响应过程
-            if skill_result.get("ai_responses"):
-                with st.expander("🤖 查看 AI 分析过程", expanded=False):
-                    for idx, response in enumerate(skill_result["ai_responses"], 1):
-                        st.markdown(f"**步骤 {idx}:**")
-                        st.text(response)
-                        st.markdown("---")
+                # 展示 AI 响应过程
+                if skill_result.get("ai_responses"):
+                    with st.expander("🤖 查看 AI 分析过程", expanded=False):
+                        for idx, response in enumerate(skill_result["ai_responses"], 1):
+                            st.markdown(f"**步骤 {idx}:**")
+                            st.text(response)
+                            st.markdown("---")
 
-            # 读取结果
-            with open(output_path, 'r', encoding='utf-8') as f:
-                result = json.load(f)
+                # 读取结果
+                with open(output_path, 'r', encoding='utf-8') as f:
+                    result = json.load(f)
 
-            # 检查是否有错误
-            if result.get("error"):
-                st.error(f"❌ 数据处理失败: {result.get('message', '未知错误')}")
+                # 检查是否有错误
+                if result.get("error"):
+                    st.error(f"❌ 数据处理失败: {result.get('message', '未知错误')}")
+                    if st.button("🔄 重新上传", use_container_width=True):
+                        reset_flow()
+                        st.rerun()
+                    return
+
+                # 分离提取数据和质量报告
+                extracted_data = result.get("extracted_data", {})
+                quality_report = result.get("quality_report", {})
+
+                # 保存到 session
+                st.session_state.extracted_data = extracted_data
+                st.session_state.quality_report = quality_report
+
+                # 同时保存单独的文件（供后续步骤使用）
+                with open("tmp/extracted_data.json", 'w', encoding='utf-8') as f:
+                    json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+                with open("tmp/quality_report.json", 'w', encoding='utf-8') as f:
+                    json.dump(quality_report, f, ensure_ascii=False, indent=2)
+
+            except SkillError as e:
+                st.error(f"❌ 数据处理失败: {str(e)}")
+                if st.button("🔄 重新上传", use_container_width=True):
+                    reset_flow()
+                    st.rerun()
+                return
+            except Exception as e:
+                st.error(f"❌ 发生未知错误: {str(e)}")
                 if st.button("🔄 重新上传", use_container_width=True):
                     reset_flow()
                     st.rerun()
                 return
 
-            # 分离提取数据和质量报告
-            extracted_data = result.get("extracted_data", {})
-            quality_report = result.get("quality_report", {})
+    # =================================================================
+    # 下面的代码对缓存和新获取的结果都生效
+    # =================================================================
 
-            # 保存到 session
-            st.session_state.extracted_data = extracted_data
-            st.session_state.quality_report = quality_report
+    # 展示提取结果
+    st.success("✅ 数据提取成功")
 
-            # 同时保存单独的文件（供后续步骤使用）
-            with open("tmp/extracted_data.json", 'w', encoding='utf-8') as f:
-                json.dump(extracted_data, f, ensure_ascii=False, indent=2)
-            with open("tmp/quality_report.json", 'w', encoding='utf-8') as f:
-                json.dump(quality_report, f, ensure_ascii=False, indent=2)
+    # 新增：展示站房类型（3列布局）
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("项目地区", extracted_data.get("project_region", "未识别"))
+    with col2:
+        station_type = extracted_data.get("station_type", "unknown")
+        station_type_names = {
+            "standard": "标准站房",
+            "secondary_pump": "二次泵站房",
+            "unsupported": "⚠️ 不支持类型"
+        }
+        st.metric("站房类型", station_type_names.get(station_type, station_type))
+    with col3:
+        st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
 
-            # 展示提取结果
-            st.success("✅ 数据提取成功")
+    # 新增：展示站房类型识别详情
+    station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
+    station_type_reason = extracted_data.get("station_type_reason", "")
 
-            # 新增：展示站房类型（3列布局）
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("项目地区", extracted_data.get("project_region", "未识别"))
-            with col2:
-                station_type = extracted_data.get("station_type", "unknown")
-                station_type_names = {
-                    "standard": "标准站房",
-                    "secondary_pump": "二次泵站房",
-                    "unsupported": "⚠️ 不支持类型"
-                }
-                st.metric("站房类型", station_type_names.get(station_type, station_type))
-            with col3:
-                st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
+    if station_type_confidence != "high":
+        st.info(
+            f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
+            f"**识别依据**: {station_type_reason}"
+        )
 
-            # 新增：展示站房类型识别详情
-            station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
-            station_type_reason = extracted_data.get("station_type_reason", "")
+    # 新增：检查是否为不支持类型（在质量检查之前）
+    if station_type == "unsupported":
+        st.markdown("---")
+        st.error("⛔ **该类型站房不支持自动节能评估**")
 
-            if station_type_confidence != "high":
-                st.info(
-                    f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
-                    f"**识别依据**: {station_type_reason}"
-                )
+        st.warning(
+            "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
+            "- 热水泵\n"
+            "- 水蓄冷/冰蓄冷\n"
+            "- 中低温机组\n\n"
+            "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
+            f"**识别依据**: {station_type_reason}"
+        )
 
-            # 新增：检查是否为不支持类型（在质量检查之前）
-            if station_type == "unsupported":
-                st.markdown("---")
-                st.error("⛔ **该类型站房不支持自动节能评估**")
-
-                st.warning(
-                    "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
-                    "- 热水泵\n"
-                    "- 水蓄冷/冰蓄冷\n"
-                    "- 中低温机组\n\n"
-                    "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
-                    f"**识别依据**: {station_type_reason}"
-                )
-
-                # 提供重新上传按钮
-                if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
-                    reset_flow()
-                    st.rerun()
-
-                # 终止函数执行
-                return
-
-            # 展示质量报告
-            st.success("✅ 质量检查完成")
-
-            # 核心指标卡
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                completeness = quality_report.get("completeness", 0)
-                st.metric(
-                    "数据完整率",
-                    f"{completeness * 100:.1f}%",
-                    delta=None if completeness >= 0.8 else "需要改进"
-                )
-            with col2:
-                confidence = quality_report.get("confidence_level", "unknown")
-                confidence_map = {"high": "高", "medium": "中", "low": "低"}
-                st.metric("置信水平", confidence_map.get(confidence, confidence))
-            with col3:
-                issues = quality_report.get("issues", [])
-                critical_issues = len([i for i in issues if i.get("severity") == "critical"])
-                st.metric("严重问题数", critical_issues)
-
-            # 问题列表
-            if issues:
-                st.subheader("📋 发现的问题")
-
-                severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
-                for issue in issues:
-                    severity = issue.get("severity", "low")
-                    severity_groups.get(severity, []).append(issue)
-
-                severity_labels = {
-                    "critical": "🔴 严重问题",
-                    "high": "🟠 高优先级",
-                    "medium": "🟡 中优先级",
-                    "low": "🔵 低优先级"
-                }
-
-                for severity in ["critical", "high", "medium", "low"]:
-                    group = severity_groups[severity]
-                    if group:
-                        with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
-                            for issue in group:
-                                st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
-            else:
-                st.success("✨ 未发现任何问题,数据质量优秀!")
-
-            # 总结
-            st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
-
-            # 检查置信度级别
-            confidence = quality_report.get("confidence_level", "unknown")
-
-            if confidence == "low":
-                # 低置信度,中断流程
-                st.markdown("---")
-                st.error("⛔ **数据质量不达标,无法继续计算**")
-
-                st.warning(
-                    "⚠️ 当前数据完整率过低(< 50%),无法保证计算结果的可靠性。\n\n"
-                    "**建议操作:**\n"
-                    "1. 在原始调研表中补充缺失的关键数据\n"
-                    "2. 确保至少填写 6 个月以上的运行数据\n"
-                    "3. 重点补充月度总能耗和冷机供水温度\n"
-                    "4. 补充完成后重新上传调研表"
-                )
-
-                # 展示必须修复的问题
-                critical_and_high = [
-                    i for i in issues
-                    if i.get("severity") in ["critical", "high"]
-                ]
-
-                if critical_and_high:
-                    st.subheader("🔴 必须修复的问题")
-                    st.info(f"共 {len(critical_and_high)} 个严重/高优先级问题需要解决")
-
-                    for idx, issue in enumerate(critical_and_high[:20], 1):  # 最多显示20个
-                        st.error(
-                            f"**{idx}. {issue.get('field')}**\n\n"
-                            f"{issue.get('message')}"
-                        )
-
-                    if len(critical_and_high) > 20:
-                        st.warning(f"... 还有 {len(critical_and_high) - 20} 个问题未显示")
-
-                # 提供重新上传按钮
-                if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
-                    reset_flow()
-                    st.rerun()
-
-                # 终止函数执行,不进入下一阶段
-                return
-
-            # 中等/高置信度,展示提示但允许继续
-            if confidence == "medium":
-                st.warning(
-                    "⚠️ 数据完整率适中(50%-80%),部分数据需要智能填充,请谨慎使用计算结果"
-                )
-            elif confidence == "high":
-                st.success("✅ 数据质量良好,可以继续计算")
-
-            with st.expander("查看提取的原始数据"):
-                st.json(extracted_data)
-
-            # 自动进入下一阶段(仅当置信度不是 low 时)
-            time.sleep(1.5)
-            st.session_state.stage = 'filling'
+        # 提供重新上传按钮
+        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+            reset_flow()
             st.rerun()
 
-        except SkillError as e:
-            st.error(f"❌ 数据处理失败: {str(e)}")
-            if st.button("🔄 重新上传", use_container_width=True):
-                reset_flow()
-                st.rerun()
-        except Exception as e:
-            st.error(f"❌ 发生未知错误: {str(e)}")
-            if st.button("🔄 重新上传", use_container_width=True):
-                reset_flow()
-                st.rerun()
+        # 终止函数执行
+        return
+
+    # 展示质量报告
+    st.success("✅ 质量检查完成")
+
+    # 核心指标卡
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        completeness = quality_report.get("completeness", 0)
+        st.metric(
+            "数据完整率",
+            f"{completeness * 100:.1f}%",
+            delta=None if completeness >= 0.8 else "需要改进"
+        )
+    with col2:
+        confidence = quality_report.get("confidence_level", "unknown")
+        confidence_map = {"high": "高", "medium": "中", "low": "低"}
+        st.metric("置信水平", confidence_map.get(confidence, confidence))
+    with col3:
+        issues = quality_report.get("issues", [])
+        critical_issues = len([i for i in issues if i.get("severity") == "critical"])
+        st.metric("严重问题数", critical_issues)
+
+    # 问题列表
+    if issues:
+        st.subheader("📋 发现的问题")
+
+        severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
+        for issue in issues:
+            severity = issue.get("severity", "low")
+            severity_groups.get(severity, []).append(issue)
+
+        severity_labels = {
+            "critical": "🔴 严重问题",
+            "high": "🟠 高优先级",
+            "medium": "🟡 中优先级",
+            "low": "🔵 低优先级"
+        }
+
+        for severity in ["critical", "high", "medium", "low"]:
+            group = severity_groups[severity]
+            if group:
+                with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
+                    for issue in group:
+                        st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
+    else:
+        st.success("✨ 未发现任何问题,数据质量优秀!")
+
+    # 总结
+    st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
+
+    # 检查置信度级别
+    confidence = quality_report.get("confidence_level", "unknown")
+
+    if confidence == "low":
+        # 低置信度,中断流程
+        st.markdown("---")
+        st.error("⛔ **数据质量不达标,无法继续计算**")
+
+        st.warning(
+            "⚠️ 当前数据完整率过低(< 50%),无法保证计算结果的可靠性。\n\n"
+            "**建议操作:**\n"
+            "1. 在原始调研表中补充缺失的关键数据\n"
+            "2. 确保至少填写 6 个月以上的运行数据\n"
+            "3. 重点补充月度总能耗和冷机供水温度\n"
+            "4. 补充完成后重新上传调研表"
+        )
+
+        # 展示必须修复的问题
+        critical_and_high = [
+            i for i in issues
+            if i.get("severity") in ["critical", "high"]
+        ]
+
+        if critical_and_high:
+            st.subheader("🔴 必须修复的问题")
+            st.info(f"共 {len(critical_and_high)} 个严重/高优先级问题需要解决")
+
+            for idx, issue in enumerate(critical_and_high[:20], 1):  # 最多显示20个
+                st.error(
+                    f"**{idx}. {issue.get('field')}**\n\n"
+                    f"{issue.get('message')}"
+                )
+
+            if len(critical_and_high) > 20:
+                st.warning(f"... 还有 {len(critical_and_high) - 20} 个问题未显示")
+
+        # 提供重新上传按钮
+        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+            reset_flow()
+            st.rerun()
+
+        # 终止函数执行,不进入下一阶段
+        return
+
+    # 中等/高置信度,展示提示但允许继续
+    if confidence == "medium":
+        st.warning(
+            "⚠️ 数据完整率适中(50%-80%),部分数据需要智能填充,请谨慎使用计算结果"
+        )
+    elif confidence == "high":
+        st.success("✅ 数据质量良好,可以继续计算")
+
+    with st.expander("查看提取的原始数据"):
+        st.json(extracted_data)
+
+    # 自动进入下一阶段(仅当置信度不是 low 时)
+    time.sleep(1.5)
+    st.session_state.stage = 'filling'
+    st.rerun()
+
 
 
 def render_filling_stage():

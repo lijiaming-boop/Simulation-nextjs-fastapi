@@ -46,7 +46,7 @@ class CellMapping:
         "freezing_pump_saving_total": "P21",
         "tower_saving_total": "P25",
         "total_saving": "P28",
-        "saving_rate": "O30",
+        "saving_rate": "D29",
     }
 
     def get_sheet_name(self, sheet_type: str) -> str:
