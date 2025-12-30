@@ -28,3 +28,4 @@ build/
 
 # Temporary exports
 *_export.txt
+.worktrees/
