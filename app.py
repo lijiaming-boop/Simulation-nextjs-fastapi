@@ -146,8 +146,10 @@ def render_extract_check_stage():
             try:
                 caller = SkillCaller(timeout=300)
 
-                upload_path = Path("tmp/upload_survey.xlsx")
-                output_path = Path("tmp/extract_check_result.json")
+                # 修改: 使用会话目录
+                session_dir = st.session_state.session_dir
+                upload_path = session_dir / "upload_survey.xlsx"
+                output_path = session_dir / "extract_check_result.json"
 
                 # 获取原始文件名
                 original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
@@ -189,9 +191,10 @@ def render_extract_check_stage():
                 st.session_state.quality_report = quality_report
 
                 # 同时保存单独的文件（供后续步骤使用）
-                with open("tmp/extracted_data.json", 'w', encoding='utf-8') as f:
+                # 修改: 保存到会话目录
+                with open(session_dir / "extracted_data.json", 'w', encoding='utf-8') as f:
                     json.dump(extracted_data, f, ensure_ascii=False, indent=2)
-                with open("tmp/quality_report.json", 'w', encoding='utf-8') as f:
+                with open(session_dir / "quality_report.json", 'w', encoding='utf-8') as f:
                     json.dump(quality_report, f, ensure_ascii=False, indent=2)
 
             except SkillError as e:
