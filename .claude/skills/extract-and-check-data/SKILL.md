@@ -189,12 +189,20 @@ description: 从中央空调节能调研表 Excel 文件中提取月度运行数
 推荐使用 `scripts/extract_and_check_data.py` 脚本:
 
 ```bash
+# 基本调用（不包含原始文件名）
 python .claude/skills/extract-and-check-data/scripts/extract_and_check_data.py <survey_excel_path> <output_json_path>
+
+# 完整调用（推荐，包含原始文件名用于地区推断）
+python .claude/skills/extract-and-check-data/scripts/extract_and_check_data.py <survey_excel_path> <output_json_path> <original_filename>
 ```
+
+**重要**: 强烈建议传递第三个参数 `original_filename`（用户上传时的原始文件名），以提高项目地区识别成功率。
+示例: `python ... tmp/upload_survey.xlsx tmp/result.json "惠州光弘-调研表.xlsx"`
 
 脚本会自动完成:
 1. 读取 Excel 文件
 2. 智能识别包含月度数据的工作表
 3. 提取 1-12 月的数据并解析文本值
-4. 执行数据质量检查
-5. 输出包含提取数据和质量报告的 JSON 文件
+4. 使用三级优先级提取项目地区（站房名称 → 原始文件名 → 项目总体情况sheet）
+5. 执行数据质量检查
+6. 输出包含提取数据和质量报告的 JSON 文件

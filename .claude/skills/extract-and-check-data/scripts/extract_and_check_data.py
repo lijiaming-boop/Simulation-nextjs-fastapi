@@ -429,13 +429,11 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     if station_name:
         project_region = infer_region_from_text(station_name)
 
-    # 优先级2: 从原始文件名推断地区 (使用传入的 original_filename)
-    if not project_region and original_filename:
-        project_region = extract_region_from_filename(original_filename)
-
-    # 优先级2备选: 如果没有提供 original_filename,使用当前文件路径
+    # 优先级2: 从文件名推断地区（优先使用原始文件名）
     if not project_region:
-        project_region = extract_region_from_filename(survey_excel_path)
+        # 优先使用 original_filename，如果没有提供则使用 survey_excel_path
+        filename_to_infer = original_filename if original_filename else survey_excel_path
+        project_region = extract_region_from_filename(filename_to_infer)
 
     # 优先级3: 从项目总体情况表提取
     if not project_region and '项目总体情况' in xls.sheet_names:
