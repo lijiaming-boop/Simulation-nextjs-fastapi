@@ -447,6 +447,33 @@ pytest tests/integration/test_sample_surveys_e2e.py::TestAllSurveysBatch -v -s
 
 ## 已修复的关键问题
 
+### Excel计算失败导致前端显示mock默认值（已修复 - 2025-12-29）
+
+**问题描述：**
+1. Sheet1（上限）没有回填数据，也没有用来计算节能率上限值
+2. 前端显示的是mock默认值（15%, 12%-18%），不是实际计算的节能率
+
+**根本原因：**
+- `config/cell_mapping.py:14` 中上限sheet名称配置有末尾空格
+- 配置：`"【1】按冷站电量数据-上限 "` （有空格）
+- 实际：`"【1】按冷站电量数据-上限"` （无空格）
+- 导致 `openpyxl` 抛出 `KeyError`，计算失败降级到mock结果
+
+**解决方案：**
+- 移除 `SHEET_NAMES["upper"]` 末尾的空格
+- 添加sheet名称验证测试
+- 增强错误日志，方便未来调试
+
+**验证：**
+- ✅ 双sheet计算成功
+- ✅ 前端显示真实计算的节能率范围
+- ✅ 所有单元测试和集成测试通过
+
+**相关 Commit:**
+- `fix: remove trailing space from upper sheet name in cell_mapping`
+- `test: add failing test for sheet name mismatch`
+- `feat: add detailed error logging and sheet name validation`
+
 ### 月份列错位问题（已修复）
 
 **问题描述：**
