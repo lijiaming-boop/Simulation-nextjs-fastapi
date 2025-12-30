@@ -490,25 +490,17 @@ def render_calculate_stage():
     status_text = st.empty()
 
     try:
-        # 步骤0: 检查站房类型（防御性编程）
-        filled_data_path = Path("tmp/filled_data.json")
+        # 步骤0: 执行数据填充（每次都重新生成，避免使用旧数据）
+        status_text.text("正在填充数据...")
+        progress_bar.progress(10)
 
-        # 检查文件是否存在
-        if not filled_data_path.exists():
-            # 如果填充数据不存在，先执行填充
-            status_text.text("正在填充数据...")
-            progress_bar.progress(10)
-
-            filler = DataFiller()
-            filled_path = filler.fill_data(
-                "tmp/extracted_data.json",
-                "tmp/filling_suggestions.json",
-                "tmp/filled_data.json"
-            )
-            progress_bar.progress(20)
-        else:
-            filled_path = str(filled_data_path)
-            progress_bar.progress(20)
+        filler = DataFiller()
+        filled_path = filler.fill_data(
+            "tmp/extracted_data.json",
+            "tmp/filling_suggestions.json",
+            "tmp/filled_data.json"
+        )
+        progress_bar.progress(20)
 
         # 读取数据检查站房类型
         with open(filled_path, 'r', encoding='utf-8') as f:
