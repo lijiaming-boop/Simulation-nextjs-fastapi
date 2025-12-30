@@ -23,6 +23,11 @@ def init_session_state():
         st.session_state.result = None
         st.session_state.uploader_key = 0  # 新增: file_uploader的key计数器
 
+        # 新增: 初始化会话管理器
+        from core.session_manager import SessionManager
+        st.session_state.session_manager = SessionManager()
+        st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
+
 
 def reset_flow():
     """重置流程"""
@@ -35,6 +40,9 @@ def reset_flow():
     st.session_state.result = None
     # 重要：增加uploader_key强制清空file_uploader缓存
     st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
+
+    # 新增: 创建新的会话目录
+    st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
 
 
 def main():
@@ -105,16 +113,16 @@ def render_upload_stage():
         st.session_state.uploaded_file = uploaded_file
         st.session_state.original_filename = uploaded_file.name  # 新增: 保存原始文件名
 
-        # 保存到临时目录
-        tmp_dir = Path("tmp")
-        tmp_dir.mkdir(exist_ok=True)
+        # 修改: 保存到会话目录（不再使用硬编码的 tmp 目录）
+        session_dir = st.session_state.session_dir
+        upload_path = session_dir / "upload_survey.xlsx"
 
-        upload_path = tmp_dir / "upload_survey.xlsx"
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
         st.success(f"✅ 文件已上传: {uploaded_file.name}")
         st.info(f"文件大小: {uploaded_file.size / 1024:.2f} KB")
+        st.info(f"📂 会话目录: {session_dir.name}")  # 新增: 显示会话目录名
 
         if st.button("🚀 开始分析", type="primary", use_container_width=True):
             st.session_state.stage = 'extract_check'
