@@ -85,6 +85,22 @@ result_text = result["result_text"]    # 合并的文本（向后兼容）
 rm -rf ./tmp/*
 ```
 
+### 会话管理
+
+```bash
+# 列出所有会话目录（按时间倒序）
+ls -lt tmp/session_*/
+
+# 查看特定会话的内容
+ls -lh tmp/session_20251230_153045/
+
+# 手动清理旧会话（保留最近10个）
+python -c "from core.session_manager import SessionManager; SessionManager().cleanup_old_sessions(keep_count=10)"
+
+# 删除特定会话
+rm -rf tmp/session_20251230_153045/
+```
+
 ## 核心架构
 
 ### 数据流向
@@ -240,15 +256,35 @@ result_path = calc.calculate(filled_data_path, output_path)
 
 ### 临时文件约定
 
-所有中间文件存放在 `./tmp/` 目录：
+**会话目录结构**：
+- 每次上传任务创建独立的会话目录
+- 目录命名格式：`tmp/session_YYYYMMDD_HHMMSS/`
+- 会话目录由 `core.session_manager.SessionManager` 管理
+
+**会话目录中的文件**：
+- `upload_survey.xlsx`：用户上传的调研表
 - `extract_check_result.json`：提取和质量检查的合并结果
 - `extracted_data.json`：提取的原始数据
 - `quality_report.json`：质量检查报告
 - `filling_suggestions.json`：填充建议
 - `filled_data.json`：填充后的完整数据
-- `result_*.xlsx`：计算结果Excel（供下载）
+- `result_data.json`：计算结果JSON
+- `calculation_result.xlsx`：计算结果Excel（供下载）
 
-**重要**：任务执行完后应删除 `./tmp/` 中的临时文件。
+**优势**：
+- ✅ 多用户同时使用时数据隔离
+- ✅ 可以保留历史会话记录
+- ✅ 避免文件覆盖和混乱
+- ✅ 方便调试和问题追溯
+
+**清理策略**（可选）：
+- 自动保留最近 10 个会话
+- 可通过 `SessionManager.cleanup_old_sessions()` 手动清理
+- 建议定期清理避免磁盘占用过多
+
+**向后兼容**：
+- `tmp/.gitkeep` 保留以维护 Git 目录结构
+- 旧代码中的硬编码 `tmp/` 路径已全部迁移到会话目录
 
 ### 数据质量判断标准
 
