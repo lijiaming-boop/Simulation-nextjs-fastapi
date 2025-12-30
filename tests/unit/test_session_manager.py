@@ -10,9 +10,10 @@ def test_create_session_directory():
     manager = SessionManager()
     session_dir = manager.create_session_directory()
 
-    # 验证目录格式: session_YYYYMMDD_HHMMSS
+    # 验证目录格式: session_YYYYMMDD_HHMMSS_mmm (mmm = 毫秒)
     assert session_dir.name.startswith("session_")
-    assert len(session_dir.name) == len("session_20251230_153045")
+    # 格式: session_20251230_153045_123 或 session_20251230_153045_123_1 (带计数器)
+    assert len(session_dir.name) >= len("session_20251230_153045_123")
 
     # 验证目录已创建
     assert session_dir.exists()

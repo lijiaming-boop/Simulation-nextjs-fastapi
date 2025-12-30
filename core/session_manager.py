@@ -35,13 +35,21 @@ class SessionManager:
         Returns:
             会话目录路径
         """
-        # 生成目录名: session_YYYYMMDD_HHMMSS
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dir_name = f"session_{timestamp}"
+        # 生成目录名: session_YYYYMMDD_HHMMSS_microseconds
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        microseconds = now.strftime("%f")[:3]  # 取微秒前3位（毫秒）
+        dir_name = f"session_{timestamp}_{microseconds}"
 
-        # 创建目录
+        # 创建目录（如果存在则添加计数器）
         session_dir = self.base_dir / dir_name
-        session_dir.mkdir(parents=True, exist_ok=True)
+        counter = 0
+        while session_dir.exists():
+            counter += 1
+            dir_name_with_counter = f"session_{timestamp}_{microseconds}_{counter}"
+            session_dir = self.base_dir / dir_name_with_counter
+
+        session_dir.mkdir(parents=True, exist_ok=False)
 
         # 更新当前会话目录
         self._current_session_dir = session_dir
