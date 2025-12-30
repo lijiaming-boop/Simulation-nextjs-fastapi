@@ -451,8 +451,16 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         'total_energy': ['整个冷站', '万kWh']
     }
 
-    # 从第30行开始查找设备运行规律部分的月份行
-    equipment_month_row_idx = find_row_by_keyword(df, ['月份', '备注'], start_row=30, end_row=45)
+    # 动态查找"设备运行规律"标题行（不硬编码起始行号，从头开始查找）
+    equipment_section_row = find_row_by_keyword(df, ['设备运行规律'], start_row=0, end_row=50)
+    if equipment_section_row is None:
+        return {
+            "error": True,
+            "message": "未能识别调研表中的'设备运行规律'部分,请确认上传了正确的文件"
+        }
+
+    # 从"设备运行规律"标题行向下查找月份行
+    equipment_month_row_idx = find_row_by_keyword(df, ['月份', '备注'], start_row=equipment_section_row, end_row=equipment_section_row + 10)
     if equipment_month_row_idx is None:
         return {
             "error": True,
@@ -464,8 +472,13 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     if equipment_col_start is None:
         equipment_col_start = 3  # 默认 D 列
 
-    # 查找用电情况统计部分的月份行（通常在设备运行规律之后）
-    energy_month_row_idx = find_row_by_keyword(df, ['月份'], start_row=equipment_month_row_idx + 5, end_row=equipment_month_row_idx + 20)
+    # 动态查找"用电情况统计"标题行
+    energy_section_row = find_row_by_keyword(df, ['用电情况统计'], start_row=equipment_month_row_idx, end_row=len(df))
+
+    # 从"用电情况统计"标题行向下查找月份行
+    energy_month_row_idx = None
+    if energy_section_row is not None:
+        energy_month_row_idx = find_row_by_keyword(df, ['月份'], start_row=energy_section_row, end_row=energy_section_row + 10)
 
     # 检测用电情况部分的月份列起始位置
     energy_col_start = None
