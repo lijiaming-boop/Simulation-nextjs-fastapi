@@ -820,8 +820,10 @@ def render_result_stage():
         if password == admin_password:
             st.success("✅ 密码验证通过")
 
-            # 读取计算结果Excel
-            excel_path = Path("tmp/calculation_result.xlsx")
+            # 修改: 从会话目录读取计算结果Excel
+            session_dir = st.session_state.session_dir
+            excel_path = session_dir / "calculation_result.xlsx"
+
             if excel_path.exists():
                 with open(excel_path, "rb") as f:
                     excel_data = f.read()
