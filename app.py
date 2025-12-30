@@ -503,15 +503,18 @@ def render_calculate_stage():
     status_text = st.empty()
 
     try:
+        # 修改: 使用会话目录
+        session_dir = st.session_state.session_dir
+
         # 步骤0: 执行数据填充（每次都重新生成，避免使用旧数据）
         status_text.text("正在填充数据...")
         progress_bar.progress(10)
 
         filler = DataFiller()
         filled_path = filler.fill_data(
-            "tmp/extracted_data.json",
-            "tmp/filling_suggestions.json",
-            "tmp/filled_data.json"
+            str(session_dir / "extracted_data.json"),
+            str(session_dir / "filling_suggestions.json"),
+            str(session_dir / "filled_data.json")
         )
         progress_bar.progress(20)
 
@@ -541,7 +544,7 @@ def render_calculate_stage():
 
         result_path = calculator.calculate(
             filled_path,
-            "tmp/result_data.json"
+            str(session_dir / "result_data.json")
         )
 
         progress_bar.progress(80)
