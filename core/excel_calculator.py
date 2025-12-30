@@ -69,8 +69,17 @@ class ExcelCalculator:
             # 优先使用 formulas 库（纯 Python，无需外部依赖）
             result = self._calculate_with_formulas(data, temp_excel)
         except Exception as e:
-            # 如果 formulas 不可用，返回 mock 结果用于测试
-            print(f"Warning: formulas calculation failed: {e}")
+            # 输出详细错误信息
+            import traceback
+            error_details = traceback.format_exc()
+            print("=" * 80)
+            print("❌ Excel计算失败，降级到mock结果")
+            print("=" * 80)
+            print(f"异常类型: {type(e).__name__}")
+            print(f"异常信息: {str(e)}")
+            print(f"\n完整堆栈跟踪:")
+            print(error_details)
+            print("=" * 80)
             result = self._mock_result(data)
 
         # 保存结果
@@ -173,6 +182,18 @@ class ExcelCalculator:
 
         # 阶段1: 使用 openpyxl 将数据写入 Excel 文件
         wb = openpyxl.load_workbook(excel_path)
+
+        # 验证sheet是否存在（添加详细错误信息）
+        if sheet_name not in wb.sheetnames:
+            available_sheets = wb.sheetnames
+            wb.close()
+            raise ValueError(
+                f"Sheet '{sheet_name}' 不存在于Excel模板中。\n"
+                f"可用的sheet名称: {available_sheets}\n"
+                f"提示: 检查sheet名称是否有多余空格或特殊字符\n"
+                f"配置位置: config/cell_mapping.py:SHEET_NAMES['{sheet_type}']"
+            )
+
         sheet = wb[sheet_name]
 
         # 1. 回填项目地区
