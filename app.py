@@ -579,7 +579,7 @@ def render_calculate_stage():
         progress_bar.progress(40)
 
         # 步骤2: Excel计算
-        status_text.text("正在调用Excel计算引擎...")
+        status_text.text("正在调用AI计算引擎...")
         progress_bar.progress(60)
 
         calculator = ExcelCalculator()  # 不传 template_path，自动根据 station_type 选择
