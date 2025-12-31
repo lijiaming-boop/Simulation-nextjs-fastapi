@@ -626,6 +626,10 @@ def render_calculate_stage():
 
 def render_result_stage():
     """阶段5: 结果展示"""
+
+    # 打印提示
+    st.info("📋 **呼叫SR前，请点击右上角打印本页**")
+
     st.header("📈 测算结果")
 
     result = st.session_state.result
