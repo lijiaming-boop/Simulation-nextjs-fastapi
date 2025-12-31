@@ -403,10 +403,11 @@ def render_extract_check_stage():
     with st.expander("查看提取的原始数据"):
         st.json(extracted_data)
 
-    # 自动进入下一阶段(仅当置信度不是 low 时)
-    time.sleep(1.5)
-    st.session_state.stage = 'filling'
-    st.rerun()
+    # 提供确认按钮进入下一阶段(仅当置信度不是 low 时)
+    st.markdown("---")
+    if st.button("✅ 确认", type="primary", use_container_width=True):
+        st.session_state.stage = 'filling'
+        st.rerun()
 
 
 
