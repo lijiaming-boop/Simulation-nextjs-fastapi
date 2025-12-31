@@ -171,7 +171,7 @@ def render_extract_check_stage():
         st.info("ℹ️ 使用缓存的分析结果")
     else:
         # 创建流式日志容器
-        _, log_container = create_streaming_container("🤖 查看 AI 分析过程")
+        _, log_container = create_streaming_container("🤖 查看灵知 AI 分析过程")
 
         # 需要执行skill获取新结果
         with st.spinner("正在提取调研表数据并进行质量检查,请稍候..."):
@@ -417,7 +417,7 @@ def render_filling_stage():
     # 检查是否已经生成填充建议
     if st.session_state.filling_suggestions is None:
         # 创建流式日志容器
-        _, log_container = create_streaming_container("🤖 查看 AI 推理过程")
+        _, log_container = create_streaming_container("🤖 查看灵知 AI 推理过程")
 
         with st.spinner("正在生成智能填充建议..."):
             try:
