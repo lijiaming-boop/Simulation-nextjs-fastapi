@@ -405,7 +405,7 @@ def render_extract_check_stage():
 
     # 提供确认按钮进入下一阶段(仅当置信度不是 low 时)
     st.markdown("---")
-    if st.button("✅ 确认", type="primary", use_container_width=True):
+    if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
         st.session_state.stage = 'filling'
         st.rerun()
 
