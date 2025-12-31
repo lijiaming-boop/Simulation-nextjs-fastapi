@@ -884,7 +884,7 @@ def render_result_stage():
     st.markdown("---")
 
     # 元数据
-    with st.expander("🔍 查看计算元数据"):
+    with st.expander("🔍 查看计算元数据", expanded=True):
         st.json(result)
 
     # 重新开始
