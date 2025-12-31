@@ -11,6 +11,35 @@ from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
 
 
+# ==================== 流式 UI 辅助函数 ====================
+
+def create_streaming_container(title: str = "🤖 查看 AI 分析过程"):
+    """创建流式日志容器
+
+    Args:
+        title: expander 标题
+
+    Returns:
+        (expander, container): expander 对象和用于流式更新的 container
+    """
+    expander = st.expander(title, expanded=True)  # 默认展开
+    with expander:
+        container = st.empty()  # 用于流式更新的容器
+    return expander, container
+
+
+def update_streaming_container(container, texts: list):
+    """更新流式容器显示
+
+    Args:
+        container: st.empty() 容器
+        texts: 文本列表
+    """
+    # 拼接所有文本，使用 Markdown 渲染
+    combined_text = "\n\n".join(texts)  # 段落间用两个换行分隔
+    container.markdown(combined_text)
+
+
 def init_session_state():
     """初始化 session state"""
     if 'stage' not in st.session_state:
@@ -141,9 +170,22 @@ def render_extract_check_stage():
         quality_report = st.session_state.quality_report
         st.info("ℹ️ 使用缓存的分析结果")
     else:
+        # 创建流式日志容器
+        _, log_container = create_streaming_container("🤖 查看 AI 分析过程")
+
         # 需要执行skill获取新结果
         with st.spinner("正在提取调研表数据并进行质量检查,请稍候..."):
             try:
+                # 流式日志累积器
+                streaming_logs = []
+
+                def on_text_received(timestamp: str, text: str):
+                    """接收到 AI 文本时的回调"""
+                    # 添加时间戳前缀
+                    log_entry = f"**[{timestamp}]** {text}"
+                    streaming_logs.append(log_entry)
+                    update_streaming_container(log_container, streaming_logs)
+
                 caller = SkillCaller(timeout=300)
 
                 # 修改: 使用会话目录
@@ -154,21 +196,14 @@ def render_extract_check_stage():
                 # 获取原始文件名
                 original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
 
-                # 调用合并的 Skill: 提取和质量检查,传递原始文件名
+                # 调用合并的 Skill: 提取和质量检查,传递原始文件名和回调
                 skill_result = caller.call_skill(
                     "extract-and-check-data",
                     str(upload_path),
                     str(output_path),
-                    original_filename  # 新增: 传递原始文件名
+                    original_filename,  # 新增: 传递原始文件名
+                    callback=on_text_received  # 新增: 传递流式回调
                 )
-
-                # 展示 AI 响应过程
-                if skill_result.get("ai_responses"):
-                    with st.expander("🤖 查看 AI 分析过程", expanded=False):
-                        for idx, response in enumerate(skill_result["ai_responses"], 1):
-                            st.markdown(f"**步骤 {idx}:**")
-                            st.text(response)
-                            st.markdown("---")
 
                 # 读取结果
                 with open(output_path, 'r', encoding='utf-8') as f:
@@ -381,8 +416,21 @@ def render_filling_stage():
 
     # 检查是否已经生成填充建议
     if st.session_state.filling_suggestions is None:
+        # 创建流式日志容器
+        _, log_container = create_streaming_container("🤖 查看 AI 推理过程")
+
         with st.spinner("正在生成智能填充建议..."):
             try:
+                # 流式日志累积器
+                streaming_logs = []
+
+                def on_text_received(timestamp: str, text: str):
+                    """接收到 AI 文本时的回调"""
+                    # 添加时间戳前缀
+                    log_entry = f"**[{timestamp}]** {text}"
+                    streaming_logs.append(log_entry)
+                    update_streaming_container(log_container, streaming_logs)
+
                 caller = SkillCaller(timeout=300)
 
                 # 修改: 使用会话目录
@@ -391,21 +439,14 @@ def render_filling_stage():
                 quality_path = session_dir / "quality_report.json"
                 output_path = session_dir / "filling_suggestions.json"
 
-                # 调用 Skill 3: 填充建议
+                # 调用 Skill 3: 填充建议,传递回调
                 skill_result = caller.call_skill(
                     "suggest-data-filling",
                     str(extracted_path),
                     str(quality_path),
-                    str(output_path)
+                    str(output_path),
+                    callback=on_text_received  # 新增: 传递流式回调
                 )
-
-                # 展示 AI 响应过程
-                if skill_result.get("ai_responses"):
-                    with st.expander("🤖 查看 AI 推理过程", expanded=False):
-                        for idx, response in enumerate(skill_result["ai_responses"], 1):
-                            st.markdown(f"**步骤 {idx}:**")
-                            st.text(response)
-                            st.markdown("---")
 
                 # 读取结果
                 with open(output_path, 'r', encoding='utf-8') as f:

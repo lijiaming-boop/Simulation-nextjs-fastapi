@@ -4,8 +4,9 @@
 """
 import os
 import asyncio
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 
@@ -61,7 +62,8 @@ class SkillCaller:
         self,
         skill_name: str,
         *args,
-        check_output: bool = True
+        check_output: bool = True,
+        callback: Optional[Callable[[str, str], None]] = None
     ) -> Dict[str, Any]:
         """调用 Claude Skill(同步包装器)
 
@@ -69,6 +71,7 @@ class SkillCaller:
             skill_name: Skill 名称 (如 "extract-survey-data")
             *args: Skill 参数(文件路径等)
             check_output: 是否检查输出文件
+            callback: 回调函数 callback(timestamp, message)，每次 AI 回复时调用
 
         Returns:
             包含执行结果的字典，结构如下：
@@ -90,14 +93,15 @@ class SkillCaller:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(
-            self._call_skill_async(skill_name, *args, check_output=check_output)
+            self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback)
         )
 
     async def _call_skill_async(
         self,
         skill_name: str,
         *args,
-        check_output: bool = True
+        check_output: bool = True,
+        callback: Optional[Callable[[str, str], None]] = None
     ) -> Dict[str, Any]:
         """调用 Claude Skill(异步实现)
 
@@ -105,6 +109,7 @@ class SkillCaller:
             skill_name: Skill 名称
             *args: Skill 参数
             check_output: 是否检查输出文件
+            callback: 回调函数，每次收到 AI 回复时调用
 
         Returns:
             包含执行结果的字典
@@ -150,11 +155,27 @@ class SkillCaller:
                                 print(f"[AI Response] {block.text}")
                                 ai_responses.append(block.text)
 
+                                # 调用回调函数（新增）
+                                if callback:
+                                    timestamp = datetime.now().strftime("%H:%M:%S")
+                                    callback(timestamp, block.text)
+
+                                # 等待一小段时间让 Streamlit 有机会重绘
+                                await asyncio.sleep(0.01)
+
         except asyncio.TimeoutError as e:
+            # 错误时也调用回调
+            if callback:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                callback(timestamp, f"❌ 执行超时（>{self.timeout}秒）")
             raise SkillError(
                 f"Skill '{skill_name}' 执行超时(>{self.timeout}秒)"
             ) from e
         except Exception as e:
+            # 错误时也调用回调
+            if callback:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                callback(timestamp, f"❌ 执行出错: {str(e)}")
             raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
 
         # 合并结果文本
