@@ -91,7 +91,7 @@ def main():
     st.markdown("---")
 
     # 流程进度指示器
-    stages = ['上传', '提取+质量检查', '填充建议', '计算', '结果']
+    stages = ['上传调研表', '数据提取+质量检查', '数据填充', '节能测算', '结果展示']
     stage_map = {
         'upload': 0, 'extract_check': 1,
         'filling': 2, 'calculate': 3, 'result': 4
