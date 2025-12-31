@@ -181,8 +181,8 @@ def render_extract_check_stage():
 
                 def on_text_received(timestamp: str, text: str):
                     """接收到 AI 文本时的回调"""
-                    # 添加时间戳前缀
-                    log_entry = f"**[{timestamp}]** {text}"
+                    # 添加时间戳和品牌前缀
+                    log_entry = f"**[{timestamp}]** 灵知AI：{text}"
                     streaming_logs.append(log_entry)
                     update_streaming_container(log_container, streaming_logs)
 
@@ -426,8 +426,8 @@ def render_filling_stage():
 
                 def on_text_received(timestamp: str, text: str):
                     """接收到 AI 文本时的回调"""
-                    # 添加时间戳前缀
-                    log_entry = f"**[{timestamp}]** {text}"
+                    # 添加时间戳和品牌前缀
+                    log_entry = f"**[{timestamp}]** 灵知AI：{text}"
                     streaming_logs.append(log_entry)
                     update_streaming_container(log_container, streaming_logs)
 
