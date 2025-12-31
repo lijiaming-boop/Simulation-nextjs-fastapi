@@ -888,32 +888,6 @@ def render_result_stage():
     with st.expander("🔍 查看计算元数据", expanded=True):
         st.json(result)
 
-    # 打印功能
-    st.markdown("---")
-    st.info("📋 **呼叫SR前请打印本页**")
-
-    # 使用 JavaScript 实现打印功能
-    print_button_html = """
-<script>
-function printPage() {
-    window.print();
-}
-</script>
-<button onclick="printPage()" style="
-    background-color: #0066cc;
-    color: white;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    font-size: 1rem;
-    width: 100%;
-">
-    🖨️ 打印本页
-</button>
-"""
-    st.markdown(print_button_html, unsafe_allow_html=True)
-
     st.markdown("---")
 
     # 重新开始
