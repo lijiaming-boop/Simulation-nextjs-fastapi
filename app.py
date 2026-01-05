@@ -6,6 +6,7 @@ import pandas as pd
 from pathlib import Path
 import plotly.graph_objects as go
 import plotly.express as px
+from streamlit_scroll_to_top import scroll_to_here
 from core.skill_caller import SkillCaller, SkillError
 from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
@@ -51,6 +52,7 @@ def init_session_state():
         st.session_state.filling_suggestions = None
         st.session_state.result = None
         st.session_state.uploader_key = 0  # 新增: file_uploader的key计数器
+        st.session_state.scroll_to_top = False  # 新增: 滚动到顶部标志
 
         # 新增: 初始化会话管理器
         from core.session_manager import SessionManager
@@ -89,6 +91,11 @@ def main():
     # 标题
     st.title("❄️ 空调节能率智能测算工具")
     st.markdown("---")
+
+    # 滚动到顶部逻辑（在标题之后立即执行）
+    if st.session_state.get('scroll_to_top', False):
+        scroll_to_here(0, key='scroll_to_top_marker')
+        st.session_state.scroll_to_top = False  # 重置标志
 
     # 流程进度指示器
     stages = ['上传调研表', '数据提取+质量检查', '数据填充', '节能测算', '结果展示']
@@ -155,6 +162,7 @@ def render_upload_stage():
 
         if st.button("🚀 开始分析", type="primary", use_container_width=True):
             st.session_state.stage = 'extract_check'
+            st.session_state.scroll_to_top = True  # 新增: 触发滚动
             st.rerun()
 
 
@@ -407,6 +415,7 @@ def render_extract_check_stage():
     st.markdown("---")
     if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
         st.session_state.stage = 'filling'
+        st.session_state.scroll_to_top = True  # 新增: 触发滚动
         st.rerun()
 
 
@@ -529,6 +538,7 @@ def render_filling_stage():
         with col1:
             if st.button("✅ 确认填充,开始计算", type="primary", use_container_width=True):
                 st.session_state.stage = 'calculate'
+                st.session_state.scroll_to_top = True  # 新增: 触发滚动
                 st.rerun()
 
         with col2:
