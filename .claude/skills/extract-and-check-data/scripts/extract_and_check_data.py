@@ -303,8 +303,9 @@ def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
 
     优先级：
     1. 如果只有一个冷站工作表，直接使用
-    2. 如果有多个冷站，优先使用'1#冷站'
-    3. 如果没有1#冷站，使用第一个冷站
+    2. 如果有多个冷站，优先使用包含"设备运行规律"或"用电情况统计"的sheet
+    3. 如果没有包含运行数据的sheet，优先使用'冷站详情'
+    4. 如果没有1#冷站，使用第一个冷站
 
     Args:
         xls: Excel文件对象
@@ -321,6 +322,24 @@ def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
     # 如果只有一个冷站，直接返回
     if len(cold_station_sheets) == 1:
         return cold_station_sheets[0]
+
+    # 如果有多个冷站，智能查找包含月度运行数据的sheet
+    for sheet_name in cold_station_sheets:
+        try:
+            df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+            # 查找是否包含"设备运行规律"或"用电情况统计"
+            for idx in range(min(50, len(df))):
+                row = df.iloc[idx]
+                for val in row:
+                    if pd.notna(val) and isinstance(val, str):
+                        if '设备运行规律' in val or '用电情况统计' in val:
+                            return sheet_name
+        except Exception:
+            continue
+
+    # 如果没有找到包含运行数据的sheet，优先使用'冷站详情'
+    if '冷站详情' in cold_station_sheets:
+        return '冷站详情'
 
     # 如果有多个冷站，优先使用"1#冷站"
     if '1#冷站' in cold_station_sheets:
@@ -452,7 +471,7 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     }
 
     # 动态查找"设备运行规律"标题行（不硬编码起始行号，从头开始查找）
-    equipment_section_row = find_row_by_keyword(df, ['设备运行规律'], start_row=0, end_row=50)
+    equipment_section_row = find_row_by_keyword(df, ['设备运行规律', '冷机运行规律'], start_row=0, end_row=50)
     if equipment_section_row is None:
         return {
             "error": True,
