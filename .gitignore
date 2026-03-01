@@ -3,11 +3,12 @@ tmp/
 *.pyc
 __pycache__/
 
-# Environment variables
-.env
-
 # Streamlit secrets
 .streamlit/secrets.toml
+
+# Go proxy .env
+proxy/.env
+proxy/*.exe
 
 # IDE
 .vscode/

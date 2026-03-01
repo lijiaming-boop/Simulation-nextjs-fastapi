@@ -13,19 +13,21 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 )
 
 // Casdoor 配置
 var (
-	casdoorServerURL   = "https://casdoor.mogulinker.com"
-	clientID           = "4edb1fca2280ea63894a"
-	clientSecret       = "b78916090366cb34392b501c21853a23030cbbca"
-	redirectURI        = "http://localhost:8080/oauth2callback"
-	streamlitBackend   = "http://localhost:8501"
-	cookieSecret       = []byte("tD940R5zYumrkAqhJbUwX6lTGiCyLWxF")
-	sessionCookieName  = "session_token"
-	userInfoCookieName = "user_info"
+	casdoorServerURL   string
+	clientID           string
+	clientSecret       string
+	redirectURI        string
+	streamlitBackend   string
+	cookieSecret       []byte
+	sessionCookieName  string
+	userInfoCookieName string
+	proxyPort          string
 )
 
 // OAuth2 配置
@@ -45,22 +47,19 @@ type UserInfo struct {
 }
 
 func init() {
-	// 从环境变量读取配置（可选）
-	if env := os.Getenv("CASDOOR_SERVER_URL"); env != "" {
-		casdoorServerURL = env
-	}
-	if env := os.Getenv("CLIENT_ID"); env != "" {
-		clientID = env
-	}
-	if env := os.Getenv("CLIENT_SECRET"); env != "" {
-		clientSecret = env
-	}
-	if env := os.Getenv("REDIRECT_URI"); env != "" {
-		redirectURI = env
-	}
-	if env := os.Getenv("STREAMLIT_BACKEND"); env != "" {
-		streamlitBackend = env
-	}
+	// 加载 .env 文件（仅开发环境）
+	godotenv.Load()
+
+	// 从环境变量读取配置
+	casdoorServerURL = getEnv("CASDOOR_SERVER_URL", "https://casdoor.mogulinker.com")
+	clientID = getEnv("CLIENT_ID", "")
+	clientSecret = getEnv("CLIENT_SECRET", "")
+	redirectURI = getEnv("REDIRECT_URI", "http://localhost:8080/oauth2callback")
+	streamlitBackend = getEnv("STREAMLIT_BACKEND", "http://localhost:8501")
+	cookieSecret = []byte(getEnv("COOKIE_SECRET", "change-this-secret-in-production"))
+	sessionCookieName = getEnv("SESSION_COOKIE_NAME", "session_token")
+	userInfoCookieName = getEnv("USER_INFO_COOKIE_NAME", "user_info")
+	proxyPort = getEnv("PROXY_PORT", "8080")
 
 	// 初始化 OIDC Provider
 	ctx := context.Background()
@@ -115,13 +114,22 @@ func main() {
 	fmt.Printf("  Casdoor Server: %s\n", casdoorServerURL)
 	fmt.Printf("  Streamlit Backend: %s\n", streamlitBackend)
 	fmt.Printf("  Redirect URI: %s\n", redirectURI)
+	fmt.Printf("  Port: %s\n", proxyPort)
 	fmt.Println("===========================================")
-	fmt.Println("  Server starting on http://localhost:8080")
+	fmt.Printf("  Server starting on http://localhost:%s\n", proxyPort)
 	fmt.Println("===========================================")
 
-	if err := r.Run(":8080"); err != nil {
+	if err := r.Run(":" + proxyPort); err != nil {
 		panic(fmt.Sprintf("Failed to start server: %v", err))
 	}
+}
+
+// getEnv 获取环境变量，如果不存在则返回默认值
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // handleLogin 处理登录请求
