@@ -46,15 +46,14 @@ def init_session_state():
     if 'stage' not in st.session_state:
         st.session_state.stage = 'upload'
         st.session_state.uploaded_file = None
-        st.session_state.original_filename = None  # 新增：保存原始文件名
+        st.session_state.original_filename = None
         st.session_state.extracted_data = None
         st.session_state.quality_report = None
         st.session_state.filling_suggestions = None
         st.session_state.result = None
-        st.session_state.uploader_key = 0  # 新增：file_uploader 的 key 计数器
-        st.session_state.scroll_to_top = False  # 新增：滚动到顶部标志
+        st.session_state.uploader_key = 0
+        st.session_state.scroll_to_top = False
 
-        # 新增：初始化会话管理器
         from core.session_manager import SessionManager
         st.session_state.session_manager = SessionManager()
         st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
@@ -90,8 +89,13 @@ def main():
     # 初始化
     init_session_state()
 
-    # 标题
-    st.title("❄️ 空调节能率智能测算工具")
+    # 标题和退出按钮
+    col_title, col_logout = st.columns([6, 1])
+    with col_title:
+        st.title("❄️ 空调节能率智能测算工具")
+    with col_logout:
+        st.link_button("🚪 退出", "/logout", use_container_width=True)
+    
     st.markdown("---")
 
     # 滚动到顶部逻辑（在标题之后立即执行）

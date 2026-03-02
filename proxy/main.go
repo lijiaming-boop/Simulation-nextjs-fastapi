@@ -207,12 +207,12 @@ func handleCallback(c *gin.Context) {
 	// 生成会话 token（使用 access token 作为会话标识）
 	sessionToken := token.AccessToken
 
-	// 设置会话 cookie
-	c.SetCookie(sessionCookieName, sessionToken, 3600*24, "/", "", false, true)
+	// 设置会话 cookie（不设置过期时间，浏览器关闭自动清除）
+	c.SetCookie(sessionCookieName, sessionToken, 0, "/", "", false, true)
 
-	// 设置用户信息 cookie（base64 编码）
+	// 设置用户信息 cookie（不设置过期时间，浏览器关闭自动清除）
 	userInfoJSON, _ := json.Marshal(userInfo)
-	c.SetCookie(userInfoCookieName, string(userInfoJSON), 3600*24, "/", "", false, false)
+	c.SetCookie(userInfoCookieName, string(userInfoJSON), 0, "/", "", false, false)
 
 	// 重定向到应用首页
 	c.Redirect(http.StatusTemporaryRedirect, "/")
