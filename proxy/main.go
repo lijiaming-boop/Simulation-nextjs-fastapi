@@ -202,22 +202,31 @@ func handleCallback(c *gin.Context) {
 		return
 	}
 
-	// 获取用户信息
+	// 获取用户信息 - 优先从 userinfo endpoint 获取完整信息
 	var userInfo UserInfo
-	if err := idToken.Claims(&userInfo); err != nil {
-		// 如果 ID Token 中没有用户信息，尝试从 userinfo endpoint 获取
-		userInfoEndpoint := casdoorServerURL + "/api/userinfo"
-		resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get userinfo: %v", err)})
+	userInfoEndpoint := casdoorServerURL + "/api/userinfo"
+	resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
+	if err != nil {
+		// 如果 userinfo endpoint 失败，尝试从 ID Token 获取
+		log.Printf("Failed to get userinfo from endpoint: %v, falling back to ID token claims", err)
+		if err := idToken.Claims(&userInfo); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get user info: %v", err)})
 			return
 		}
+	} else {
 		defer resp.Body.Close()
 		if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to decode userinfo: %v", err)})
-			return
+			// 如果解码失败，尝试从 ID Token 获取
+			log.Printf("Failed to decode userinfo: %v, falling back to ID token claims", err)
+			if err := idToken.Claims(&userInfo); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get user info: %v", err)})
+				return
+			}
 		}
 	}
+
+	log.Printf("User info retrieved: sub=%s, name=%s, email=%s, loginName=%s",
+		userInfo.Sub, userInfo.Name, userInfo.Email, userInfo.LoginName)
 
 	// 生成会话 token（使用 access token 作为会话标识）
 	sessionToken := token.AccessToken
