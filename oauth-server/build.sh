@@ -22,11 +22,11 @@ go mod tidy
 
 # 编译
 echo "[INFO] Building..."
-GOOS=linux GOARCH=amd64 go build -o oauth-server-linux cmd/main.go
+GOOS=linux GOARCH=amd64 go build -o oauth-server cmd/main.go
 GOOS=windows GOARCH=amd64 go build -o oauth-server.exe cmd/main.go
-GOOS=darwin GOARCH=amd64 go build -o oauth-server-macos cmd/main.go
+GOOS=darwin GOARCH=amd64 go build -o oauth-server cmd/main.go
 
 echo "[INFO] Build completed!"
 echo "  - oauth-server.exe (Windows)"
-echo "  - oauth-server-linux (Linux)"
-echo "  - oauth-server-macos (macOS)"
+echo "  - oauth-server (Linux)"
+echo "  - oauth-server (macOS)"
