@@ -6,9 +6,9 @@ WorkingDirectory=/home/mogu/lingzhi_app/conditioner_saving/proxy
 Environment=OAUTH_SERVER_URL=https://h-oauth.mogulinker.com
 Environment=CLIENT_ID=4edb1fca2280ea63894a
 Environment=CLIENT_SECRET=b78916090366cb34392b501c21853a23030cbbca
-Environment=REDIRECT_URI=http://113.96.190.243:8502/oauth2callback
-Environment=STREAMLIT_BACKEND=http://localhost:8501
-Environment=PROXY_PORT=8502
+Environment=REDIRECT_URI=http://113.96.190.243:8501/oauth2callback
+Environment=STREAMLIT_BACKEND=http://localhost:8502
+Environment=PROXY_PORT=8501
 Environment=COOKIE_SECRET=tD940R5zYumrkAqhJbUwX6lTGiCyLWxF
 Environment=SESSION_COOKIE_NAME=session_token
 Environment=USER_INFO_COOKIE_NAME=user_info
