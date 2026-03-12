@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"oauth-server/internal/api"
 	"oauth-server/internal/models"
 	"oauth-server/internal/service"
 	"oauth-server/internal/store"
@@ -18,6 +20,7 @@ type OAuthHandler struct {
 	tokenManager *token.TokenManager
 	store        store.Store
 	issuer       string
+	apiClient    *api.MogulinkerAPIClient
 }
 
 // NewOAuthHandler 创建新的 OAuth 处理器
@@ -32,6 +35,7 @@ func NewOAuthHandler(
 		tokenManager: tokenManager,
 		store:        store,
 		issuer:       issuer,
+		apiClient:    api.NewMogulinkerAPIClient(),
 	}
 }
 
@@ -106,18 +110,41 @@ func (h *OAuthHandler) HandleLogin(c *gin.Context) {
 
 	// 验证用户名和密码
 	if username == "" || password == "" {
-		h.renderError(c, http.StatusBadRequest, "invalid_request", "Username and password are required")
+		h.renderError(c, http.StatusBadRequest, "invalid_request", "用户名和密码不能为空")
 		return
 	}
 
-	// 通过 MySQL 验证用户
-	userInfo, err := h.store.GetUserByCredentials(username, password)
+	// 调用蘑菇物联 API 进行登录验证
+	loginData, err := h.apiClient.Login(username, password)
 	if err != nil {
 		h.renderError(c, http.StatusUnauthorized, "invalid_credentials", "账号或密码不正确")
 		return
 	}
 
-	h.completeAuthorization(c, userInfo.Sub, clientID, redirectURI, responseType, scope, state, nonce)
+	// 将用户信息保存到 store
+	userInfo := &models.UserInfo{
+		Sub:                     loginData.UserID,
+		Name:                    loginData.UserName,
+		LoginName:               loginData.Mobile,
+		Mobile:                  loginData.Mobile,
+		Role:                    loginData.Role,
+		RoleName:                loginData.RoleName,
+		Department:              loginData.Department,
+		DepartmentName:          loginData.DepartmentName,
+		DepartmentStructureName: loginData.DepartmentStructureName,
+		EnterpriseName:          loginData.EnterpriseName,
+		Enterprise:              loginData.Enterprise,
+		EnterpriseBalance:       loginData.EnterpriseBalance,
+	}
+
+	// 保存用户信息
+	h.store.SaveUser(userInfo)
+
+	// 调试日志
+	fmt.Printf("Saved user info: Sub=%s, Name=%s, Mobile=%s\n", userInfo.Sub, userInfo.Name, userInfo.Mobile)
+
+	// 使用 API 返回的用户 ID 作为 subject
+	h.completeAuthorization(c, loginData.UserID, clientID, redirectURI, responseType, scope, state, nonce)
 }
 
 // HandleQuickLogin 处理快速登录 (POST /oauth/quick-login)
@@ -146,7 +173,7 @@ func (h *OAuthHandler) completeAuthorization(
 	// 这里简化处理
 
 	// 生成授权码
-	code, err := h.service.CreateAuthorizationCode(clientID, redirectURI, scope, nonce, state)
+	code, err := h.service.CreateAuthorizationCode(clientID, redirectURI, scope, nonce, state, sub)
 	if err != nil {
 		h.renderError(c, http.StatusInternalServerError, "server_error", "Failed to create authorization code")
 		return
@@ -244,13 +271,20 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"access_token":  token.AccessToken,
 		"token_type":    token.TokenType,
 		"expires_in":    token.ExpiresIn,
 		"scope":         token.Scope,
 		"refresh_token": token.RefreshToken,
-	})
+	}
+
+	// 如果有 ID Token，添加到响应中
+	if token.IDToken != "" {
+		response["id_token"] = token.IDToken
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *OAuthHandler) handleRefreshTokenGrant(
@@ -350,12 +384,21 @@ func (h *OAuthHandler) UserInfo(c *gin.Context) {
 		return
 	}
 
-	// 获取用户信息（这里返回默认用户信息）
-	userInfo := models.UserInfo{
-		Sub:       claims.Subject,
-		Name:      "OAuth User",
-		Email:     "user@example.com",
-		LoginName: "oauth_user",
+	// 从 store 获取用户信息
+	userInfo, exists := h.store.GetUser(claims.Subject)
+
+	// 调试日志
+	fmt.Printf("UserInfo request: Subject=%s, Exists=%v\n", claims.Subject, exists)
+	if exists {
+		fmt.Printf("UserInfo found: Name=%s, Mobile=%s\n", userInfo.Name, userInfo.Mobile)
+	}
+
+	if !exists {
+		// 如果找不到用户信息，返回基本信息
+		userInfo = &models.UserInfo{
+			Sub:  claims.Subject,
+			Name: "Unknown User",
+		}
 	}
 
 	c.JSON(http.StatusOK, userInfo)

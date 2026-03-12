@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -61,12 +62,26 @@ func init() {
 	userInfoCookieName = getEnv("USER_INFO_COOKIE_NAME", "user_info")
 	proxyPort = getEnv("PROXY_PORT", "8080")
 
-	// 初始化 OIDC Provider
+	// 初始化 OIDC Provider，带重试机制
 	ctx := context.Background()
 	var err error
-	provider, err = oidc.NewProvider(ctx, casdoorServerURL)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize OIDC provider: %v", err))
+	retryInterval := 3 * time.Second
+	maxRetries := 10 // 最多重试10次，避免无限重试
+
+	for i := 0; i < maxRetries; i++ {
+		provider, err = oidc.NewProvider(ctx, casdoorServerURL)
+		if err == nil {
+			log.Printf("Successfully initialized OIDC provider")
+			break
+		}
+
+		if i < maxRetries-1 {
+			log.Printf("Failed to initialize OIDC provider (attempt %d/%d): %v. Retrying in %v...",
+				i+1, maxRetries, err, retryInterval)
+			time.Sleep(retryInterval)
+		} else {
+			panic(fmt.Sprintf("Failed to initialize OIDC provider after %d attempts: %v", maxRetries, err))
+		}
 	}
 
 	// 配置 OAuth2

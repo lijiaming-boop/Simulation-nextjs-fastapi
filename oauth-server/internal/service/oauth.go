@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"time"
 
 	"oauth-server/internal/models"
@@ -25,7 +26,7 @@ func NewOAuthService(store store.Store, tokenManager *token.TokenManager, issuer
 }
 
 // CreateAuthorizationCode 创建授权码
-func (s *OAuthService) CreateAuthorizationCode(clientID, redirectURI, scope, nonce, state string) (string, error) {
+func (s *OAuthService) CreateAuthorizationCode(clientID, redirectURI, scope, nonce, state, subject string) (string, error) {
 	code, err := s.tokenManager.GenerateAuthorizationCode()
 	if err != nil {
 		return "", err
@@ -38,6 +39,7 @@ func (s *OAuthService) CreateAuthorizationCode(clientID, redirectURI, scope, non
 		Scope:       scope,
 		Nonce:       nonce,
 		State:       state,
+		Subject:     subject,
 		ExpiresAt:   time.Now().Add(10 * time.Minute), // 10 分钟有效期
 		Used:        false,
 	}
@@ -86,10 +88,16 @@ func (s *OAuthService) ExchangeCodeForToken(code, clientID, clientSecret, redire
 	authCode.Used = true
 	s.store.DeleteAuthCode(code)
 
+	// 从授权码中获取用户 ID
+	subject := authCode.Subject
+	if subject == "" {
+		subject = "authenticated-user" // 后备默认值
+	}
+
 	// 生成访问令牌
 	accessTokenString, err := s.tokenManager.GenerateAccessToken(
 		clientID,
-		"authenticated-user", // 默认用户，实际应该从授权码中获取
+		subject,
 		authCode.Scope,
 		3600*time.Second, // 1 小时有效期
 	)
@@ -100,7 +108,7 @@ func (s *OAuthService) ExchangeCodeForToken(code, clientID, clientSecret, redire
 	// 生成刷新令牌
 	refreshTokenString, err := s.tokenManager.GenerateRefreshToken(
 		clientID,
-		"authenticated-user",
+		subject,
 		authCode.Scope,
 		7*24*time.Hour, // 7 天有效期
 	)
@@ -108,15 +116,31 @@ func (s *OAuthService) ExchangeCodeForToken(code, clientID, clientSecret, redire
 		return nil, err
 	}
 
+	// 生成 ID Token (OpenID Connect)
+	idTokenString := ""
+	if strings.Contains(authCode.Scope, "openid") {
+		idTokenString, err = s.tokenManager.GenerateIDToken(
+			s.issuer,
+			subject,
+			clientID,
+			authCode.Nonce,
+			3600*time.Second, // 1 小时有效期
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	now := time.Now()
 	token := &models.AccessToken{
 		TokenType:    "Bearer",
 		AccessToken:  accessTokenString,
 		RefreshToken: refreshTokenString,
+		IDToken:      idTokenString,
 		ExpiresIn:    3600,
 		Scope:        authCode.Scope,
 		ClientID:     clientID,
-		Subject:      "authenticated-user",
+		Subject:      subject,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(3600 * time.Second),
 	}

@@ -73,6 +73,31 @@ func (tm *TokenManager) GenerateRefreshToken(clientID, subject, scope string, ex
 	return generateSecureToken()
 }
 
+// GenerateIDToken 生成 ID Token (OpenID Connect)
+func (tm *TokenManager) GenerateIDToken(issuer, subject, audience, nonce string, expiresIn time.Duration) (string, error) {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	now := time.Now()
+	claims := JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   subject,
+			Audience:  jwt.ClaimStrings{audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiresIn)),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        generateTokenID(),
+		},
+		Nonce: nonce,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = tm.kid
+
+	return token.SignedString(tm.privateKey)
+}
+
 // GenerateAuthorizationCode 生成授权码
 func (tm *TokenManager) GenerateAuthorizationCode() (string, error) {
 	return generateSecureToken()

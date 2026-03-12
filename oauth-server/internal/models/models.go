@@ -6,12 +6,12 @@ import (
 
 // OAuthClient OAuth 客户端
 type OAuthClient struct {
-	ClientID     string   `json:"client_id"`
-	ClientSecret string   `json:"client_secret"`
-	Name         string   `json:"name"`
-	RedirectURIs []string `json:"redirect_uris"`
-	Scopes       []string `json:"scopes"`
-	IsActive     bool     `json:"is_active"`
+	ClientID     string    `json:"client_id"`
+	ClientSecret string    `json:"client_secret"`
+	Name         string    `json:"name"`
+	RedirectURIs []string  `json:"redirect_uris"`
+	Scopes       []string  `json:"scopes"`
+	IsActive     bool      `json:"is_active"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -23,21 +23,23 @@ type AuthorizationCode struct {
 	Scope       string    `json:"scope"`
 	Nonce       string    `json:"nonce"`
 	State       string    `json:"state"`
+	Subject     string    `json:"subject"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	Used        bool      `json:"used"`
 }
 
 // AccessToken 访问令牌
 type AccessToken struct {
-	TokenType   string    `json:"token_type"`
-	AccessToken string    `json:"access_token"`
-	RefreshToken string   `json:"refresh_token,omitempty"`
-	ExpiresIn   int       `json:"expires_in"`
-	Scope       string    `json:"scope"`
-	ClientID    string    `json:"client_id"`
-	Subject     string    `json:"sub,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	TokenType    string    `json:"token_type"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	IDToken      string    `json:"id_token,omitempty"`
+	ExpiresIn    int       `json:"expires_in"`
+	Scope        string    `json:"scope"`
+	ClientID     string    `json:"client_id"`
+	Subject      string    `json:"sub,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 // RefreshToken 刷新令牌
@@ -52,12 +54,21 @@ type RefreshToken struct {
 
 // UserInfo 用户信息
 type UserInfo struct {
-	Sub       string `json:"sub"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar,omitempty"`
-	LoginName string `json:"login_name,omitempty"`
-	Phone     string `json:"phone,omitempty"`
+	Sub                     string  `json:"sub"`
+	Name                    string  `json:"name"`
+	Email                   string  `json:"email,omitempty"`
+	Avatar                  string  `json:"avatar,omitempty"`
+	LoginName               string  `json:"login_name,omitempty"`
+	Phone                   string  `json:"phone,omitempty"`
+	Role                    string  `json:"role,omitempty"`
+	RoleName                string  `json:"role_name,omitempty"`
+	Department              string  `json:"department,omitempty"`
+	DepartmentName          string  `json:"department_name,omitempty"`
+	DepartmentStructureName string  `json:"department_structure_name,omitempty"`
+	Mobile                  string  `json:"mobile,omitempty"`
+	EnterpriseName          string  `json:"enterprise_name,omitempty"`
+	Enterprise              string  `json:"enterprise,omitempty"`
+	EnterpriseBalance       float64 `json:"enterprise_balance,omitempty"`
 }
 
 // TokenIntrospectionResponse Token  introspection 响应
@@ -110,14 +121,14 @@ type AuthRequest struct {
 
 // LoginRequest 登录请求参数
 type LoginRequest struct {
-	Username string `form:"username" binding:"required"`
-	Password string `form:"password" binding:"required"`
-	ClientID string `form:"client_id"`
-	RedirectURI string `form:"redirect_uri"`
+	Username     string `form:"username" binding:"required"`
+	Password     string `form:"password" binding:"required"`
+	ClientID     string `form:"client_id"`
+	RedirectURI  string `form:"redirect_uri"`
 	ResponseType string `form:"response_type"`
-	Scope string `form:"scope"`
-	State string `form:"state"`
-	Nonce string `form:"nonce"`
+	Scope        string `form:"scope"`
+	State        string `form:"state"`
+	Nonce        string `form:"nonce"`
 }
 
 // TokenRequest Token 请求参数

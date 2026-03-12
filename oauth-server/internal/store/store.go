@@ -36,6 +36,7 @@ type Store interface {
 	GetUser(sub string) (*models.UserInfo, bool)
 	GetAllUsers() []*models.UserInfo
 	GetUserByCredentials(username, password string) (*models.UserInfo, error)
+	SaveUser(user *models.UserInfo)
 }
 
 // MemoryStore 内存存储实现
@@ -304,6 +305,13 @@ func (s *MemoryStore) GetUserByCredentials(username, password string) (*models.U
 	}
 
 	return nil, fmt.Errorf("账号或密码不正确")
+}
+
+// SaveUser 保存用户信息
+func (s *MemoryStore) SaveUser(user *models.UserInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.users[user.Sub] = user
 }
 
 // cleanupExpired 定期清理过期数据

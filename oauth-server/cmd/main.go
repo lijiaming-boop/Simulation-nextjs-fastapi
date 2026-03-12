@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	serverPort   string
-	issuer       string
-	enableCORS   bool
+	serverPort     string
+	issuer         string
+	enableCORS     bool
 	allowedOrigins []string
 )
 
@@ -29,7 +29,7 @@ func init() {
 	serverPort = getEnv("SERVER_PORT", "8081")
 	issuer = getEnv("ISSUER", "http://localhost:"+serverPort)
 	enableCORS = getEnv("ENABLE_CORS", "false") == "true"
-	
+
 	// 解析允许的源
 	originsStr := getEnv("ALLOWED_ORIGINS", "")
 	if originsStr != "" {
@@ -58,22 +58,11 @@ func main() {
 		panic(fmt.Sprintf("Failed to create token manager: %v", err))
 	}
 
-	// 初始化存储（优先使用 MySQL，失败则回退到内存存储）
-	var mysqlStore store.Store
-	mysqlStore, err = store.NewMySQLStore()
-	if err != nil {
-		fmt.Printf("Warning: Failed to create MySQL store: %v\n", err)
-		fmt.Println("Falling back to MemoryStore for demonstration...")
-		mysqlStore = store.NewMemoryStore()
-	}
-	defer func() {
-		if ms, ok := mysqlStore.(*store.MySQLStore); ok {
-			ms.Close()
-		}
-	}()
+	// 初始化内存存储
+	memoryStore := store.NewMemoryStore()
 
-	oauthService := service.NewOAuthService(mysqlStore, tokenManager, issuer)
-	oauthHandler := handler.NewOAuthHandler(oauthService, tokenManager, mysqlStore, issuer)
+	oauthService := service.NewOAuthService(memoryStore, tokenManager, issuer)
+	oauthHandler := handler.NewOAuthHandler(oauthService, tokenManager, memoryStore, issuer)
 
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
@@ -102,12 +91,12 @@ func main() {
 			"description": "Conditioner Saving OAuth 2.0 Authorization Server",
 			"issuer":      issuer,
 			"endpoints": gin.H{
-				"authorization":              "/oauth/authorize",
-				"token":                      "/oauth/token",
-				"userinfo":                   "/oauth/userinfo",
-				"introspect":                 "/oauth/introspect",
-				"jwks":                       "/.well-known/jwks.json",
-				"openid-configuration":       "/.well-known/openid-configuration",
+				"authorization":        "/oauth/authorize",
+				"token":                "/oauth/token",
+				"userinfo":             "/oauth/userinfo",
+				"introspect":           "/oauth/introspect",
+				"jwks":                 "/.well-known/jwks.json",
+				"openid-configuration": "/.well-known/openid-configuration",
 			},
 			"supported_grant_types": []string{
 				"authorization_code",
@@ -183,7 +172,7 @@ func trimSpace(s string) string {
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		
+
 		// 检查是否在允许的源列表中
 		allowed := false
 		for _, o := range allowedOrigins {
