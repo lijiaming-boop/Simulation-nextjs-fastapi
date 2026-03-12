@@ -40,12 +40,45 @@ var (
 
 // UserInfo 用户信息结构
 type UserInfo struct {
-	Sub       string `json:"sub"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar"`
-	LoginName string `json:"loginName"`
+	Sub              string `json:"sub"`
+	Name             string `json:"name"`
+	Email            string `json:"email"`
+	Avatar           string `json:"avatar"`
+	Picture          string `json:"picture"`           // 有些 OIDC provider 使用 picture 而不是 avatar
+	LoginName        string `json:"loginName"`
+	PreferredUsername string `json:"preferred_username"` // OIDC 标准字段
+	DisplayName      string `json:"displayName"`
+	Id               string `json:"id"`
 }
+
+// GetDisplayName 获取用户显示名称（优先级：DisplayName > Name > PreferredUsername > LoginName > Email > Sub）
+func (u *UserInfo) GetDisplayName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	if u.Name != "" {
+		return u.Name
+	}
+	if u.PreferredUsername != "" {
+		return u.PreferredUsername
+	}
+	if u.LoginName != "" {
+		return u.LoginName
+	}
+	if u.Email != "" {
+		return u.Email
+	}
+	return u.Sub
+}
+
+// GetAvatar 获取用户头像（优先级：Avatar > Picture）
+func (u *UserInfo) GetAvatar() string {
+	if u.Avatar != "" {
+		return u.Avatar
+	}
+	return u.Picture
+}
+
 
 func init() {
 	// 加载 .env 文件（仅开发环境）
@@ -205,6 +238,7 @@ func handleCallback(c *gin.Context) {
 	// 获取用户信息 - 优先从 userinfo endpoint 获取完整信息
 	var userInfo UserInfo
 	userInfoEndpoint := casdoorServerURL + "/api/userinfo"
+	log.Printf("Fetching user info from: %s", userInfoEndpoint)
 	resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
 	if err != nil {
 		// 如果 userinfo endpoint 失败，尝试从 ID Token 获取
@@ -215,18 +249,29 @@ func handleCallback(c *gin.Context) {
 		}
 	} else {
 		defer resp.Body.Close()
-		if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+
+		// 读取响应体用于调试
+		var rawResponse map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&rawResponse); err != nil {
 			// 如果解码失败，尝试从 ID Token 获取
 			log.Printf("Failed to decode userinfo: %v, falling back to ID token claims", err)
 			if err := idToken.Claims(&userInfo); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get user info: %v", err)})
 				return
 			}
+		} else {
+			log.Printf("Raw userinfo response: %+v", rawResponse)
+
+			// 将 map 转换为 JSON 再解析到 UserInfo 结构体
+			jsonBytes, _ := json.Marshal(rawResponse)
+			if err := json.Unmarshal(jsonBytes, &userInfo); err != nil {
+				log.Printf("Failed to unmarshal userinfo: %v", err)
+			}
 		}
 	}
 
-	log.Printf("User info retrieved: sub=%s, name=%s, email=%s, loginName=%s",
-		userInfo.Sub, userInfo.Name, userInfo.Email, userInfo.LoginName)
+	log.Printf("User info retrieved: sub=%s, name=%s, email=%s, loginName=%s, preferredUsername=%s, displayName=%s",
+		userInfo.Sub, userInfo.Name, userInfo.Email, userInfo.LoginName, userInfo.PreferredUsername, userInfo.DisplayName)
 
 	// 生成会话 token（使用 access token 作为会话标识）
 	sessionToken := token.AccessToken
