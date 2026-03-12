@@ -80,6 +80,9 @@ func main() {
 	r.GET("/oauth/userinfo", oauthHandler.UserInfo)
 	r.POST("/oauth/introspect", oauthHandler.Introspect)
 
+	// API 路由别名（兼容性）
+	r.GET("/api/userinfo", oauthHandler.UserInfo)
+
 	// OIDC 发现端点
 	r.GET("/.well-known/openid-configuration", oauthHandler.WellKnownOIDC)
 	r.GET("/.well-known/jwks.json", oauthHandler.JWKS)

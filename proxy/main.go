@@ -18,9 +18,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Casdoor 配置
+// OAuth 2.0 配置
 var (
-	casdoorServerURL   string
+	oauthServerURL     string
 	clientID           string
 	clientSecret       string
 	redirectURI        string
@@ -40,15 +40,15 @@ var (
 
 // UserInfo 用户信息结构
 type UserInfo struct {
-	Sub              string `json:"sub"`
-	Name             string `json:"name"`
-	Email            string `json:"email"`
-	Avatar           string `json:"avatar"`
-	Picture          string `json:"picture"`           // 有些 OIDC provider 使用 picture 而不是 avatar
-	LoginName        string `json:"loginName"`
+	Sub               string `json:"sub"`
+	Name              string `json:"name"`
+	Email             string `json:"email"`
+	Avatar            string `json:"avatar"`
+	Picture           string `json:"picture"` // 有些 OIDC provider 使用 picture 而不是 avatar
+	LoginName         string `json:"loginName"`
 	PreferredUsername string `json:"preferred_username"` // OIDC 标准字段
-	DisplayName      string `json:"displayName"`
-	Id               string `json:"id"`
+	DisplayName       string `json:"displayName"`
+	Id                string `json:"id"`
 }
 
 // GetDisplayName 获取用户显示名称（优先级：DisplayName > Name > PreferredUsername > LoginName > Email > Sub）
@@ -79,13 +79,12 @@ func (u *UserInfo) GetAvatar() string {
 	return u.Picture
 }
 
-
 func init() {
 	// 加载 .env 文件（仅开发环境）
 	godotenv.Load()
 
 	// 从环境变量读取配置
-	casdoorServerURL = getEnv("CASDOOR_SERVER_URL", "https://casdoor.mogulinker.com")
+	oauthServerURL = getEnv("OAUTH_SERVER_URL", "https://h-oauth.mogulinker.com")
 	clientID = getEnv("CLIENT_ID", "")
 	clientSecret = getEnv("CLIENT_SECRET", "")
 	redirectURI = getEnv("REDIRECT_URI", "http://localhost:8080/oauth2callback")
@@ -102,7 +101,7 @@ func init() {
 	maxRetries := 10 // 最多重试10次，避免无限重试
 
 	for i := 0; i < maxRetries; i++ {
-		provider, err = oidc.NewProvider(ctx, casdoorServerURL)
+		provider, err = oidc.NewProvider(ctx, oauthServerURL)
 		if err == nil {
 			log.Printf("Successfully initialized OIDC provider")
 			break
@@ -159,7 +158,7 @@ func main() {
 	fmt.Println("===========================================")
 	fmt.Println("  Conditioner Saving Proxy Server")
 	fmt.Println("===========================================")
-	fmt.Printf("  Casdoor Server: %s\n", casdoorServerURL)
+	fmt.Printf("  OAuth Server: %s\n", oauthServerURL)
 	fmt.Printf("  Streamlit Backend: %s\n", streamlitBackend)
 	fmt.Printf("  Redirect URI: %s\n", redirectURI)
 	fmt.Printf("  Port: %s\n", proxyPort)
@@ -237,7 +236,7 @@ func handleCallback(c *gin.Context) {
 
 	// 获取用户信息 - 优先从 userinfo endpoint 获取完整信息
 	var userInfo UserInfo
-	userInfoEndpoint := casdoorServerURL + "/api/userinfo"
+	userInfoEndpoint := oauthServerURL + "/api/userinfo"
 	log.Printf("Fetching user info from: %s", userInfoEndpoint)
 	resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
 	if err != nil {
