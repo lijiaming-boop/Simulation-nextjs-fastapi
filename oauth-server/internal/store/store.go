@@ -100,9 +100,9 @@ func (s *MemoryStore) initDefaultClients() {
 		ClientSecret: clientSecret,
 		Name:         "Conditioner Saving Proxy",
 		RedirectURIs: redirectURIs,
-		Scopes:      []string{"openid", "email", "profile"},
-		IsActive:    true,
-		CreatedAt:   time.Now(),
+		Scopes:       []string{"openid", "email", "profile"},
+		IsActive:     true,
+		CreatedAt:    time.Now(),
 	}
 	s.clients[proxyClient.ClientID] = proxyClient
 
@@ -112,9 +112,9 @@ func (s *MemoryStore) initDefaultClients() {
 		ClientSecret: "test-secret-2026",
 		Name:         "Test Client",
 		RedirectURIs: []string{"http://localhost:3000/callback"},
-		Scopes:      []string{"openid", "email", "profile"},
-		IsActive:    true,
-		CreatedAt:   time.Now(),
+		Scopes:       []string{"openid", "email", "profile"},
+		IsActive:     true,
+		CreatedAt:    time.Now(),
 	}
 	s.clients[testClient.ClientID] = testClient
 }
@@ -299,11 +299,11 @@ func (s *MemoryStore) GetUserByCredentials(username, password string) (*models.U
 			if user.Phone == password || password == "test123" {
 				return user, nil
 			}
-			return nil, fmt.Errorf("invalid username or password")
+			return nil, fmt.Errorf("账号或密码不正确")
 		}
 	}
 
-	return nil, fmt.Errorf("invalid username or password")
+	return nil, fmt.Errorf("账号或密码不正确")
 }
 
 // cleanupExpired 定期清理过期数据

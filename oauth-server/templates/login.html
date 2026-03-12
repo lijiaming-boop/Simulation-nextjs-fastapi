@@ -74,9 +74,8 @@
         .login-header {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: flex-start;
             gap: 16px;
-            margin-bottom: 32px;
         }
 
         .mascot-wrapper {
@@ -97,7 +96,7 @@
 
         .login-title {
             font-family: 'PingFang SC-Medium', 'PingFang SC', sans-serif;
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 500;
             color: rgba(0, 0, 0, 0.9);
             text-align: center;
@@ -194,6 +193,8 @@
         .footer {
             position: fixed;
             bottom: 20px;
+            left: 0;
+            right: 0;
             text-align: center;
             color: #999;
             font-size: 13px;
@@ -279,15 +280,12 @@
 
             <button type="submit" class="submit-btn">登 录</button>
 
-            <div class="forgot-password">
-                <a href="#">忘记密码</a>
-            </div>
         </form>
     </div>
 
     <!-- 底部版权信息 -->
     <div class="footer">
-        <p><a href="http://beian.miit.gov.cn/" target="_blank">粤 ICP 备 16046342 号 -3</a></p>
+        <p><a href="http://beian.miit.gov.cn/" target="_blank">粤ICP备16046342号-3</a></p>
     </div>
 
     <script>
@@ -304,12 +302,70 @@
             }
         }
 
-        // 表单提交动画
+        // AJAX 表单提交
         document.querySelector('form').addEventListener('submit', function(e) {
-            const btn = this.querySelector('.submit-btn');
+            e.preventDefault(); // 阻止默认表单提交
+
+            const form = this;
+            const btn = form.querySelector('.submit-btn');
+            const formData = new FormData(form);
+
+            // 显示加载状态
             btn.innerHTML = '登录中...';
             btn.disabled = true;
             btn.style.opacity = '0.7';
+
+            // 发送 AJAX 请求
+            fetch('/oauth/login', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => {
+                // 检查响应状态
+                if (response.redirected) {
+                    // 如果服务器返回重定向，跳转到新页面
+                    window.location.href = response.url;
+                    return null;
+                }
+
+                // 尝试解析 JSON 响应
+                return response.json().then(data => {
+                    return { ok: response.ok, status: response.status, data: data };
+                }).catch(() => {
+                    // 如果不是 JSON，返回错误
+                    return { ok: false, status: response.status, data: { error: 'parse_error', error_description: '响应格式错误' } };
+                });
+            })
+            .then(result => {
+                if (!result) return; // 重定向的情况
+
+                const { ok, status, data } = result;
+
+                if (!ok || data.error) {
+                    // 显示错误信息
+                    const errorMsg = data.error_description || data.error || '登录失败';
+                    alert(errorMsg);
+                    // 恢复按钮状态
+                    btn.innerHTML = '登 录';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                } else if (data.redirect_uri) {
+                    // 手动处理重定向
+                    window.location.href = data.redirect_uri;
+                }
+            })
+            .catch(error => {
+                console.error('登录失败:', error);
+                alert('网络错误，请稍后重试');
+                // 恢复按钮状态
+                btn.innerHTML = '登 录';
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            });
         });
     </script>
 </body>

@@ -113,7 +113,7 @@ func (h *OAuthHandler) HandleLogin(c *gin.Context) {
 	// 通过 MySQL 验证用户
 	userInfo, err := h.store.GetUserByCredentials(username, password)
 	if err != nil {
-		h.renderError(c, http.StatusUnauthorized, "invalid_credentials", "Invalid username or password")
+		h.renderError(c, http.StatusUnauthorized, "invalid_credentials", "账号或密码不正确")
 		return
 	}
 
@@ -168,6 +168,20 @@ func (h *OAuthHandler) completeAuthorization(
 		redirectURL += "&state=" + state
 	}
 
+	// 检查是否是 AJAX 请求
+	if c.GetHeader("X-Requested-With") == "XMLHttpRequest" ||
+		c.GetHeader("Accept") == "application/json" ||
+		c.ContentType() == "application/json" {
+		// AJAX 请求，返回 JSON
+		c.JSON(http.StatusOK, gin.H{
+			"redirect_uri": redirectURL,
+			"code":         code,
+			"state":        state,
+		})
+		return
+	}
+
+	// 传统表单提交，使用重定向
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
@@ -426,6 +440,19 @@ func (h *OAuthHandler) Introspect(c *gin.Context) {
 }
 
 func (h *OAuthHandler) renderError(c *gin.Context, status int, errCode, description string) {
+	// 检查是否是 AJAX 请求
+	if c.GetHeader("X-Requested-With") == "XMLHttpRequest" ||
+		c.GetHeader("Accept") == "application/json" ||
+		c.ContentType() == "application/json" {
+		// AJAX 请求，返回 JSON
+		c.JSON(status, models.ErrorResponse{
+			Error:            errCode,
+			ErrorDescription: description,
+		})
+		return
+	}
+
+	// 传统请求，返回 HTML
 	c.HTML(status, "error.html", gin.H{
 		"Error":       errCode,
 		"Description": description,

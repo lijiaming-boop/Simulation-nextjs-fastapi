@@ -149,7 +149,7 @@ func (s *MySQLStore) GetUserByCredentials(username, password string) (*models.Us
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("invalid username or password")
+		return nil, fmt.Errorf("账号或密码不正确")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
@@ -157,11 +157,11 @@ func (s *MySQLStore) GetUserByCredentials(username, password string) (*models.Us
 
 	// 验证密码
 	if !storedHash.Valid || !storedSalt.Valid {
-		return nil, fmt.Errorf("invalid username or password")
+		return nil, fmt.Errorf("账号或密码不正确")
 	}
 
 	if !pw.CheckPassword(password, storedSalt.String, storedHash.String) {
-		return nil, fmt.Errorf("invalid username or password")
+		return nil, fmt.Errorf("账号或密码不正确")
 	}
 
 	userInfo := &models.UserInfo{
