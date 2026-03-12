@@ -56,6 +56,8 @@ type RefreshToken struct {
 type UserInfo struct {
 	Sub                     string  `json:"sub"`
 	Name                    string  `json:"name"`
+	Firstname               string  `json:"firstname,omitempty"`
+	Lastname                string  `json:"lastname,omitempty"`
 	Email                   string  `json:"email,omitempty"`
 	Avatar                  string  `json:"avatar,omitempty"`
 	LoginName               string  `json:"login_name,omitempty"`

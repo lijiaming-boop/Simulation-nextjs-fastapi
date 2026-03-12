@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -122,9 +123,23 @@ func (h *OAuthHandler) HandleLogin(c *gin.Context) {
 	}
 
 	// 将用户信息保存到 store
+	// 拆分姓名：第一个字为 Lastname，剩余部分为 Firstname
+	var lastname, firstname string
+	if len(loginData.UserName) > 0 {
+		runes := []rune(loginData.UserName)
+		if len(runes) > 0 {
+			lastname = string(runes[0])
+			if len(runes) > 1 {
+				firstname = string(runes[1:])
+			}
+		}
+	}
+
 	userInfo := &models.UserInfo{
 		Sub:                     loginData.UserID,
 		Name:                    loginData.UserName,
+		Lastname:                lastname,
+		Firstname:               firstname,
 		LoginName:               loginData.Mobile,
 		Mobile:                  loginData.Mobile,
 		Role:                    loginData.Role,
@@ -135,6 +150,7 @@ func (h *OAuthHandler) HandleLogin(c *gin.Context) {
 		EnterpriseName:          loginData.EnterpriseName,
 		Enterprise:              loginData.Enterprise,
 		EnterpriseBalance:       loginData.EnterpriseBalance,
+		Email:                   loginData.Mobile + "@mogulinker.com",
 	}
 
 	// 保存用户信息
@@ -190,10 +206,13 @@ func (h *OAuthHandler) completeAuthorization(
 		separator = "&"
 	}
 
-	redirectURL = redirectURL + separator + "code=" + code
+	redirectURL = redirectURL + separator + "code=" + url.QueryEscape(code)
 	if state != "" {
-		redirectURL += "&state=" + state
+		redirectURL += "&state=" + url.QueryEscape(state)
 	}
+
+	// 调试日志
+	fmt.Printf("Authorization complete: code=%s, state=%s, redirect_url=%s\n", code, state, redirectURL)
 
 	// 检查是否是 AJAX 请求
 	if c.GetHeader("X-Requested-With") == "XMLHttpRequest" ||
@@ -251,6 +270,8 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(
 	c *gin.Context,
 	code, clientID, clientSecret, redirectURI string,
 ) {
+	fmt.Printf("Token request: code=%s, clientID=%s, redirectURI=%s\n", code, clientID, redirectURI)
+
 	if code == "" {
 		h.renderTokenError(c, "invalid_request", "Code is required")
 		return
@@ -263,6 +284,7 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(
 
 	token, err := h.service.ExchangeCodeForToken(code, clientID, clientSecret, redirectURI)
 	if err != nil {
+		fmt.Printf("Token exchange error: %v\n", err)
 		if oauthErr, ok := err.(*service.OAuthError); ok {
 			h.renderTokenError(c, oauthErr.Code, oauthErr.Description)
 		} else {
@@ -270,6 +292,15 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(
 		}
 		return
 	}
+
+	fmt.Printf("Token exchange success: access_token=%s..., id_token=%s...\n",
+		token.AccessToken[:20],
+		func() string {
+			if len(token.IDToken) > 20 {
+				return token.IDToken[:20]
+			}
+			return token.IDToken
+		}())
 
 	response := gin.H{
 		"access_token":  token.AccessToken,

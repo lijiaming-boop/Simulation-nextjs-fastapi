@@ -59,7 +59,11 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             text-decoration: none;
+            border: none;
             border-radius: 5px;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
             transition: transform 0.2s;
         }
         .back-button:hover {
@@ -78,7 +82,7 @@
         <h1>OAuth 2.0 错误</h1>
         <span class="error-code">{{.Error}}</span>
         <p class="error-description">{{.Description}}</p>
-        <a href="/" class="back-button">返回首页</a>
+        <button onclick="history.back()" class="back-button">返回</button>
         <div class="footer">
             OAuth 2.0 Authorization Server
         </div>
