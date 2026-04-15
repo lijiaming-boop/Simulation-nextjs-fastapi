@@ -10,6 +10,7 @@ from streamlit_scroll_to_top import scroll_to_here
 from core.skill_caller import SkillCaller, SkillError
 from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
+from config import WeatherService
 
 
 # ==================== 流式 UI 辅助函数 ====================
@@ -598,12 +599,23 @@ def render_calculate_stage():
         status_text.text("正在调用 AI 计算引擎...")
         progress_bar.progress(60)
 
-        calculator = ExcelCalculator()  # 不传 template_path，自动根据 station_type 选择
+        # 使用气象数据服务
+        weather_service = WeatherService()
+        calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
 
         result_path = calculator.calculate(
             filled_path,
             str(session_dir / "result_data.json")
         )
+
+        # 读取结果
+        with open(result_path, 'r', encoding='utf-8') as f:
+            result = json.load(f)
+
+        # 保存格式化结果
+        formatted_result = calculator.format_export_results(filled_data, result)
+        with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
+            json.dump(formatted_result, f, ensure_ascii=False, indent=2)
 
         progress_bar.progress(80)
 
@@ -872,6 +884,35 @@ def render_result_stage():
     st.markdown("---")
 
     # 下载区域
+    st.subheader("📥 下载计算结果")
+    
+    # 下载格式化结果（简化版）
+    st.info("**简化版表格**：只包含原始电量和节能量，单位为'万'")
+    
+    # 下载简化版 Excel 表格
+    st.subheader("📥 下载简化版 Excel 表格")
+    st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
+    
+    # 从会话目录读取简化版 Excel
+    session_dir = st.session_state.session_dir
+    simplified_excel_path = session_dir / "simplified_result.xlsx"
+    
+    if simplified_excel_path.exists():
+        with open(simplified_excel_path, "rb") as f:
+            simplified_excel_data = f.read()
+        
+        st.download_button(
+            label="📥 下载简化版 Excel 表格",
+            data=simplified_excel_data,
+            file_name=f"简化版节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ 简化版 Excel 文件未找到")
+    
+    st.markdown("---")
+    
     st.subheader("📥 下载完整计算表格")
     st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
 

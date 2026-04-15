@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+# 添加正则表达式导入用于精确匹配
+import re as regex_module
+
 try:
     import pandas as pd
 except ImportError:
@@ -67,31 +70,71 @@ def parse_range_value_seasonal(value_str: str, month: int, field_name: str) -> f
         - 水泵频率/温差: 冬季取下限, 夏季取上限, 春秋取平均
         - 供水温度: 冬季取上限, 夏季取下限, 春秋取平均 (相反)
     """
-    # 提取范围值（支持多种分隔符：- / , | ~）
-    range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
-    if not range_match:
-        return None
+    # 特殊处理温差字段，确保在3-5度范围内
+    if field_name in ['cooling_water_temp_diff', 'freezing_water_temp_diff']:
+        # 提取范围值（支持多种分隔符：- / , | ~）
+        range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
+        if range_match:
+            start = float(range_match.group(1))
+            end = float(range_match.group(2))
+            
+            # 确保 start 是最小值，end 是最大值
+            min_val = min(start, end)
+            max_val = max(start, end)
+            
+            # 将范围限制在3-5度之间
+            min_val = max(3.0, min_val)
+            max_val = min(5.0, max_val)
+            
+            # 如果超出范围，则统一使用边界值
+            if min_val > 5.0:
+                min_val = 5.0
+            if max_val < 3.0:
+                max_val = 3.0
+            
+            # 判断季节
+            season = get_season(month)
+            
+            if season == 'winter':
+                return min_val  # 冬季取下限
+            elif season == 'summer':
+                return max_val  # 夏季取上限
+            else:  # spring or autumn
+                return (min_val + max_val) / 2
+        else:
+            # 如果不是范围值，直接解析并限制在3-5度范围内
+            parsed_value = parse_value(value_str)
+            if parsed_value is not None:
+                return max(3.0, min(5.0, parsed_value))
+            else:
+                return None
+    else:
+        # 非温差字段，按原逻辑处理
+        # 提取范围值（支持多种分隔符：- / , | ~）
+        range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
+        if not range_match:
+            return None
 
-    start = float(range_match.group(1))
-    end = float(range_match.group(2))
+        start = float(range_match.group(1))
+        end = float(range_match.group(2))
 
-    # 确保 start 是最小值，end 是最大值
-    min_val = min(start, end)
-    max_val = max(start, end)
+        # 确保 start 是最小值，end 是最大值
+        min_val = min(start, end)
+        max_val = max(start, end)
 
-    # 判断季节
-    season = get_season(month)
+        # 判断季节
+        season = get_season(month)
 
-    # 供水温度字段白名单：使用精确匹配而非子串匹配
-    SUPPLY_TEMP_FIELDS = {'chiller_supply_temp', 'supply_temp'}
-    is_supply_temp = field_name in SUPPLY_TEMP_FIELDS
+        # 供水温度字段白名单：使用精确匹配而非子串匹配
+        SUPPLY_TEMP_FIELDS = {'chiller_supply_temp', 'supply_temp'}
+        is_supply_temp = field_name in SUPPLY_TEMP_FIELDS
 
-    if season == 'winter':
-        return max_val if is_supply_temp else min_val
-    elif season == 'summer':
-        return min_val if is_supply_temp else max_val
-    else:  # spring or autumn
-        return (min_val + max_val) / 2
+        if season == 'winter':
+            return max_val if is_supply_temp else min_val
+        elif season == 'summer':
+            return min_val if is_supply_temp else max_val
+        else:  # spring or autumn
+            return (min_val + max_val) / 2
 
 
 def parse_value(value, month=None, field_name=None):
@@ -150,7 +193,14 @@ def parse_value(value, month=None, field_name=None):
 
 
 def extract_region(df):
-    """从项目总体情况表中提取地区信息"""
+    """从项目总体情况表中提取地区信息
+    
+    Returns:
+        地区字符串（华南/华东/华中/西南/西北/华北/东北/东南亚），如果无法推断则返回 None
+    """
+    # 收集所有匹配的地区候选
+    all_region_candidates = []
+    
     for idx, row in df.iterrows():
         for val in row:
             if pd.isna(val):
@@ -163,13 +213,35 @@ def extract_region(df):
                 '西南': ['四川', '重庆', '贵州', '云南', '西藏', '成都'],
                 '西北': ['陕西', '甘肃', '青海', '宁夏', '新疆', '西安', '兰州'],
                 '华北': ['北京', '天津', '河北', '山西', '内蒙古'],
-                '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨']
+                '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨'],
+                '东南亚': ['马来西亚', '泰国', '越南', '新加坡', '菲律宾', '吉隆坡', '曼谷', '胡志明市', '马尼拉']
             }
+            
+            # 优先检查完整的关键词（如"吉隆坡"）
+            if "吉隆坡" in val_str:
+                return "东南亚"
+            if "曼谷" in val_str:
+                return "东南亚"
+            if "胡志明市" in val_str:
+                return "东南亚"
+            if "马尼拉" in val_str:
+                return "东南亚"
 
+            # 按关键词长度排序，优先匹配更长的关键词
+            region_candidates = []
             for region, keywords in regions.items():
-                if any(keyword in val_str for keyword in keywords):
-                    return region
-
+                for keyword in keywords:
+                    if keyword in val_str:
+                        region_candidates.append((len(keyword), region, keyword))
+            
+            # 收集所有匹配的候选
+            all_region_candidates.extend(region_candidates)
+    
+    # 按关键词长度降序排序，优先匹配更长的关键词
+    if all_region_candidates:
+        all_region_candidates.sort(key=lambda x: -x[0])
+        return all_region_candidates[0][1]
+    
     return None
 
 
@@ -206,7 +278,7 @@ def infer_region_from_text(text):
         text: 文本字符串（站房名称、文件名等）
 
     Returns:
-        地区字符串（华南/华东/华中/西南/西北/华北/东北），如果无法推断则返回 None
+        国内地区字符串（华南/华东/华中/西南/西北/华北/东北），东南亚返回具体城市名称（吉隆坡/曼谷/罗勇/大城府/槟城/胡志明市/北宁省/马尼拉），如果无法推断则返回 None
     """
     if not text or pd.isna(text):
         return None
@@ -224,11 +296,36 @@ def infer_region_from_text(text):
         '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨', '鞍山', '抚顺']
     }
 
-    # 查找匹配的地区
+    # 优先检查东南亚城市（直接返回城市名称）
+    if "吉隆坡" in text_str:
+        return "吉隆坡"
+    if "曼谷" in text_str:
+        return "曼谷"
+    if "罗勇" in text_str:
+        return "罗勇"
+    if "大城府" in text_str:
+        return "大城府"
+    if "槟城" in text_str:
+        return "槟城"
+    if "胡志明市" in text_str:
+        return "胡志明市"
+    if "北宁省" in text_str:
+        return "北宁省"
+    if "马尼拉" in text_str:
+        return "马尼拉"
+    
+    # 按关键词长度排序，优先匹配更长的关键词
+    region_candidates = []
     for region, keywords in regions.items():
-        if any(keyword in text_str for keyword in keywords):
-            return region
-
+        for keyword in keywords:
+            if keyword in text_str:
+                region_candidates.append((len(keyword), region, keyword))
+    
+    # 按关键词长度降序排序，优先匹配更长的关键词
+    if region_candidates:
+        region_candidates.sort(key=lambda x: -x[0])
+        return region_candidates[0][1]
+    
     return None
 
 
@@ -239,7 +336,7 @@ def extract_region_from_filename(filepath):
         filepath: 文件路径字符串
 
     Returns:
-        地区字符串（华南/华东/华中/西南/西北/华北/东北），如果无法推断则返回 None
+        地区字符串（华南/华东/华中/西南/西北/华北/东北/东南亚），如果无法推断则返回 None
     """
     if not filepath:
         return None
@@ -443,16 +540,16 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     # 提取项目地区（三级优先级）
     project_region = None
 
-    # 优先级1: 从站房名称推断地区
-    station_name = extract_station_name(df)
-    if station_name:
-        project_region = infer_region_from_text(station_name)
+    # 优先级1: 从文件名推断地区（优先使用原始文件名）
+    # 文件名通常更准确地反映项目的实际位置
+    filename_to_infer = original_filename if original_filename else survey_excel_path
+    project_region = extract_region_from_filename(filename_to_infer)
 
-    # 优先级2: 从文件名推断地区（优先使用原始文件名）
+    # 优先级2: 从站房名称推断地区
     if not project_region:
-        # 优先使用 original_filename，如果没有提供则使用 survey_excel_path
-        filename_to_infer = original_filename if original_filename else survey_excel_path
-        project_region = extract_region_from_filename(filename_to_infer)
+        station_name = extract_station_name(df)
+        if station_name:
+            project_region = infer_region_from_text(station_name)
 
     # 优先级3: 从项目总体情况表提取
     if not project_region and '项目总体情况' in xls.sheet_names:
@@ -569,6 +666,14 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
                         value = df.iloc[row_idx, month_col_idx]
                         # 传递月份和字段名以支持季节性范围值解析
                         parsed = parse_value(value, month=month, field_name=field)
+                        
+                        # 温差边界处理：冷冻水和冷却水温差正常范围3-5°
+                        if field in ['cooling_water_temp_diff', 'freezing_water_temp_diff'] and parsed is not None:
+                            if parsed < 3:
+                                parsed = 3.0  # 低于3度按3度处理
+                            elif parsed > 5:
+                                parsed = 5.0  # 超过5度按5度处理
+                        
                         month_record[field] = parsed
                         if field == 'total_energy' and parsed is not None:
                             valid_energy_count += 1
@@ -609,8 +714,8 @@ class DataQualityChecker:
         'chiller_supply_temp': (5, 15, '°C'),
         'cooling_pump_freq': (20, 50, 'Hz'),
         'freezing_pump_freq': (20, 50, 'Hz'),
-        'cooling_water_temp_diff': (2, 8, '℃'),
-        'freezing_water_temp_diff': (2, 8, '℃'),
+        'cooling_water_temp_diff': (3, 5, '℃'),      # 修改：正常范围3-5℃
+        'freezing_water_temp_diff': (3, 5, '℃'),    # 修改：正常范围3-5℃
         'cooling_tower_outlet_temp': (15, 40, '°C'),
     }
 
@@ -823,40 +928,53 @@ def extract_and_check_data(survey_excel_path: str, output_json_path: str, origin
         output_json_path: 输出路径
         original_filename: 原始文件名(用于地区推断)
     """
+    try:
+        # 步骤 1: 提取数据,传递原始文件名
+        extracted_data = extract_data_from_excel(survey_excel_path, original_filename)
 
-    # 步骤 1: 提取数据,传递原始文件名
-    extracted_data = extract_data_from_excel(survey_excel_path, original_filename)
+        # 如果提取失败，直接返回错误
+        if extracted_data.get("error"):
+            output_path = Path(output_json_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+            return
 
-    # 如果提取失败，直接返回错误
-    if extracted_data.get("error"):
+        # 步骤 2: 执行质量检查
+        checker = DataQualityChecker(extracted_data)
+        quality_report = checker.run()
+
+        # 步骤 3: 合并结果
+        result = {
+            "extracted_data": extracted_data,
+            "quality_report": quality_report
+        }
+
+        # 步骤 4: 输出结果
+        output_path = Path(output_json_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        print(f"✅ 数据提取和质量检查完成: {output_json_path}")
+        print(f"项目地区: {extracted_data.get('project_region')}")
+        print(f"站房类型: {extracted_data.get('station_type')} (置信度: {extracted_data.get('station_type_confidence')})")
+        print(f"识别依据: {extracted_data.get('station_type_reason')}")
+        print(f"\n{quality_report['summary']}")
+    except Exception as e:
+        import traceback
+        error_result = {
+            "error": True,
+            "message": f"执行过程中发生错误: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
         output_path = Path(output_json_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
-        return
-
-    # 步骤 2: 执行质量检查
-    checker = DataQualityChecker(extracted_data)
-    quality_report = checker.run()
-
-    # 步骤 3: 合并结果
-    result = {
-        "extracted_data": extracted_data,
-        "quality_report": quality_report
-    }
-
-    # 步骤 4: 输出结果
-    output_path = Path(output_json_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ 数据提取和质量检查完成: {output_json_path}")
-    print(f"项目地区: {extracted_data.get('project_region')}")
-    print(f"站房类型: {extracted_data.get('station_type')} (置信度: {extracted_data.get('station_type_confidence')})")
-    print(f"识别依据: {extracted_data.get('station_type_reason')}")
-    print(f"\n{quality_report['summary']}")
+            json.dump(error_result, f, ensure_ascii=False, indent=2)
+        print(f"❌ 执行出错: {str(e)}")
+        print(traceback.format_exc())
 
 
 def main():

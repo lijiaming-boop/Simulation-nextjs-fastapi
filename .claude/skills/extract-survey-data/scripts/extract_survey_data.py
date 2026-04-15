@@ -129,14 +129,35 @@ def find_data_sheet(workbook) -> Optional[Any]:
 
 def extract_region_from_address(sheet) -> Optional[str]:
     """从工作表中尝试提取项目地区"""
-    regions = ['华南', '华东', '华中', '西南', '西北', '华北']
+    # 查找地区关键词
+    regions = {
+        '华南': ['广东', '广西', '海南', '福建', '深圳', '广州', '厦门'],
+        '华东': ['上海', '江苏', '浙江', '安徽', '江西', '南京', '杭州'],
+        '华中': ['湖北', '湖南', '河南', '武汉', '长沙'],
+        '西南': ['四川', '重庆', '贵州', '云南', '西藏', '成都', '重庆'],
+        '西北': ['陕西', '甘肃', '青海', '宁夏', '新疆', '西安', '兰州'],
+        '华北': ['北京', '天津', '河北', '山西', '内蒙古'],
+        '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨'],
+        '东南亚': ['马来西亚', '泰国', '越南', '新加坡', '菲律宾', '吉隆坡', '曼谷', '胡志明市', '马尼拉']
+    }
 
     # 搜索前 20 行中是否包含地区信息
     for row in sheet.iter_rows(min_row=1, max_row=20, values_only=True):
         for cell in row:
             if cell and isinstance(cell, str):
-                for region in regions:
-                    if region in cell:
+                val_str = cell
+                # 优先检查完整的关键词（如"吉隆坡"）
+                if "吉隆坡" in val_str:
+                    return "东南亚"
+                if "曼谷" in val_str:
+                    return "东南亚"
+                if "胡志明市" in val_str:
+                    return "东南亚"
+                if "马尼拉" in val_str:
+                    return "东南亚"
+
+                for region, keywords in regions.items():
+                    if any(keyword in val_str for keyword in keywords):
                         return region
 
     return None

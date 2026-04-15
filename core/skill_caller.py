@@ -183,9 +183,18 @@ class SkillCaller:
 
         # 检查输出文件(如果需要)
         if check_output and len(args) >= 2:
-            # 输出文件总是第二个参数(args[1])，不是最后一个
-            # 因为某些skill可能有可选的第三个参数(如extract-and-check-data的original_filename)
-            output_file = Path(args[1])
+            # 根据不同的skill确定输出文件的位置
+            if skill_name == "suggest-data-filling":
+                # suggest-data-filling: args[0]=输入, args[1]=输入, args[2]=输出
+                if len(args) < 3:
+                    raise SkillError(
+                        f"Skill '{skill_name}' 需要3个参数"
+                    )
+                output_file = Path(args[2])
+            else:
+                # 其他skill: args[0]=输入, args[1]=输出
+                output_file = Path(args[1])
+            
             if not output_file.exists():
                 raise SkillError(
                     f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
@@ -211,12 +220,13 @@ class SkillCaller:
                 )
             prompt = (
                 f"请使用 extract-and-check-data skill 从调研表中提取数据并进行质量检查。\n"
-                f"输入文件: {args[0]}\n"
-                f"输出文件: {args[1]}\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/extract-and-check-data/scripts/extract_and_check_data.py {args[0]} {args[1]}"
             )
             # 如果提供了原始文件名,添加到提示词中
             if len(args) >= 3:
-                prompt += f"原始文件名: {args[2]}\n"
+                prompt += f" {args[2]}"
+            prompt += "\n"
             prompt += "请确保输出包含 extracted_data 和 quality_report 两部分。"
             return prompt
 
@@ -227,8 +237,8 @@ class SkillCaller:
                 )
             return (
                 f"请使用 extract-survey-data skill 从调研表中提取数据。\n"
-                f"输入文件: {args[0]}\n"
-                f"输出文件: {args[1]}\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/extract-survey-data/scripts/extract_survey_data.py {args[0]} {args[1]}\n"
                 f"请确保输出为有效的 JSON 格式。"
             )
 
@@ -239,8 +249,8 @@ class SkillCaller:
                 )
             return (
                 f"请使用 check-data-quality skill 检查数据质量。\n"
-                f"输入文件: {args[0]}\n"
-                f"输出文件: {args[1]}\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/check-data-quality/scripts/check_data_quality.py {args[0]} {args[1]}\n"
                 f"请生成包含完整率、置信度和问题列表的质量报告。"
             )
 
@@ -252,9 +262,8 @@ class SkillCaller:
                 )
             return (
                 f"请使用 suggest-data-filling skill 生成数据填充建议。\n"
-                f"提取数据文件: {args[0]}\n"
-                f"质量报告文件: {args[1]}\n"
-                f"输出文件: {args[2]}\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/suggest-data-filling/scripts/suggest_data_filling.py {args[0]} {args[1]} {args[2]}\n"
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 

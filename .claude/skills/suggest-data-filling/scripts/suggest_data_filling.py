@@ -36,8 +36,8 @@ class DataFillingSuggester:
         },
         'cooling_pump_freq': 45,
         'freezing_pump_freq': 50,
-        'cooling_water_temp_diff': 4.5,
-        'freezing_water_temp_diff': 4.5
+        'cooling_water_temp_diff': 4.0,    # 修改：3-5范围的中间值
+        'freezing_water_temp_diff': 4.0   # 修改：3-5范围的中间值
     }
 
     def __init__(self, data: Dict[str, Any], quality_report: Dict[str, Any]):
