@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 蘑菇汇</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: url('https://images.mogulinker.com/xUBcEV1677545072709.png') no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 20px;
+            padding-right: 10%;
+            position: relative;
+        }
+
+        /* 左上角 Logo */
+        .logo {
+            position: fixed;
+            top: 20px;
+            left: 5%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .logo-icon {
+            width: 128px;
+            height: 40px;
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            color: #1a1a1a;
+            font-weight: 600;
+        }
+
+        /* 响应式 Logo */
+        @media (max-width: 968px) {
+            .logo {
+                left: 20px;
+            }
+        }
+
+        /* 登录卡片 */
+        .login-card {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(26, 115, 232, 0.08);
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .login-header {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .mascot-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .mascot {
+            width: 72px;
+            height: 84px;
+            background-image: url('https://special.mogulinker.com/hngz-prod/pokeball-selfiem-microapp/static/momo.977cd547.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            margin-right: 33px;
+        }
+
+        .login-title {
+            font-family: 'PingFang SC-Medium', 'PingFang SC', sans-serif;
+            font-size: 30px;
+            font-weight: 500;
+            color: rgba(0, 0, 0, 0.9);
+            text-align: center;
+            line-height: 38px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 18px;
+            background: #f5f7fa;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            font-size: 15px;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .form-group input:focus {
+            background: #ffffff;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.08);
+        }
+
+        .form-group input::placeholder {
+            color: #999;
+        }
+
+        /* 密码输入框 */
+        .password-wrapper {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #999;
+            font-size: 16px;
+            padding: 4px;
+        }
+
+        .password-toggle:hover {
+            color: #1a73e8;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1a73e8 0%, #4da3ff 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(26, 115, 232, 0.35);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .forgot-password {
+            text-align: center;
+            margin-top: 16px;
+        }
+
+        .forgot-password a {
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+
+        .forgot-password a:hover {
+            color: #1a73e8;
+        }
+
+        /* 底部版权信息 */
+        .footer {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        .footer a {
+            color: #666;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: #1a73e8;
+        }
+
+        /* 响应式 */
+        @media (max-width: 968px) {
+            body {
+                justify-content: center;
+                padding: 20px;
+            }
+
+            .illustration {
+                display: none;
+            }
+
+            .login-card {
+                margin: 0 auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 左上角 Logo -->
+    <div class="logo">
+        <div class="logo-icon">
+            <img src="data:image/png;base64,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" alt="">
+        </div>
+    </div>
+
+    <!-- 登录卡片 -->
+    <div class="login-card">
+        <div class="login-header">
+            <div class="mascot-wrapper">
+                <div class="mascot"></div>
+                <h1 class="login-title">欢迎登录</h1>
+            </div>
+        </div>
+
+        <form method="POST" action="/oauth/login">
+            <input type="hidden" name="client_id" value="{{.ClientID}}">
+            <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+            <input type="hidden" name="response_type" value="{{.ResponseType}}">
+            <input type="hidden" name="scope" value="{{.Scope}}">
+            <input type="hidden" name="state" value="{{.State}}">
+            <input type="hidden" name="nonce" value="{{.Nonce}}">
+
+            <div class="form-group">
+                <input
+                    type="text"
+                    name="username"
+                    placeholder="请输入账号"
+                    required
+                    autocomplete="username"
+                >
+            </div>
+
+            <div class="form-group">
+                <div class="password-wrapper">
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="请输入密码"
+                        required
+                        autocomplete="current-password"
+                    >
+                    <button type="button" class="password-toggle" onclick="togglePassword()">
+                        👁️
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn">登 录</button>
+
+        </form>
+    </div>
+
+    <!-- 底部版权信息 -->
+    <div class="footer">
+        <p><a href="http://beian.miit.gov.cn/" target="_blank">粤ICP备16046342号-3</a></p>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.querySelector('.password-toggle');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.textContent = '🔒';
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.textContent = '👁️';
+            }
+        }
+
+        // AJAX 表单提交
+        document.querySelector('form').addEventListener('submit', function(e) {
+            e.preventDefault(); // 阻止默认表单提交
+
+            const form = this;
+            const btn = form.querySelector('.submit-btn');
+            const formData = new FormData(form);
+
+            // 显示加载状态
+            btn.innerHTML = '登录中...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+
+            // 发送 AJAX 请求
+            fetch('/oauth/login', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => {
+                // 检查响应状态
+                if (response.redirected) {
+                    // 如果服务器返回重定向，跳转到新页面
+                    window.location.href = response.url;
+                    return null;
+                }
+
+                // 尝试解析 JSON 响应
+                return response.json().then(data => {
+                    return { ok: response.ok, status: response.status, data: data };
+                }).catch(() => {
+                    // 如果不是 JSON，返回错误
+                    return { ok: false, status: response.status, data: { error: 'parse_error', error_description: '响应格式错误' } };
+                });
+            })
+            .then(result => {
+                if (!result) return; // 重定向的情况
+
+                const { ok, status, data } = result;
+
+                if (!ok || data.error) {
+                    // 显示错误信息
+                    const errorMsg = data.error_description || data.error || '登录失败';
+                    alert(errorMsg);
+                    // 恢复按钮状态
+                    btn.innerHTML = '登 录';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                } else if (data.redirect_uri) {
+                    // 手动处理重定向
+                    window.location.href = data.redirect_uri;
+                }
+            })
+            .catch(error => {
+                console.error('登录失败:', error);
+                alert('网络错误，请稍后重试');
+                // 恢复按钮状态
+                btn.innerHTML = '登 录';
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            });
+        });
+    </script>
+</body>
+</html>

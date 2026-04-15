@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -17,9 +18,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Casdoor 配置
+// OAuth 2.0 配置
 var (
-	casdoorServerURL   string
+	oauthServerURL     string
 	clientID           string
 	clientSecret       string
 	redirectURI        string
@@ -39,11 +40,43 @@ var (
 
 // UserInfo 用户信息结构
 type UserInfo struct {
-	Sub       string `json:"sub"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar"`
-	LoginName string `json:"loginName"`
+	Sub               string `json:"sub"`
+	Name              string `json:"name"`
+	Email             string `json:"email"`
+	Avatar            string `json:"avatar"`
+	Picture           string `json:"picture"` // 有些 OIDC provider 使用 picture 而不是 avatar
+	LoginName         string `json:"loginName"`
+	PreferredUsername string `json:"preferred_username"` // OIDC 标准字段
+	DisplayName       string `json:"displayName"`
+	Id                string `json:"id"`
+}
+
+// GetDisplayName 获取用户显示名称（优先级：DisplayName > Name > PreferredUsername > LoginName > Email > Sub）
+func (u *UserInfo) GetDisplayName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	if u.Name != "" {
+		return u.Name
+	}
+	if u.PreferredUsername != "" {
+		return u.PreferredUsername
+	}
+	if u.LoginName != "" {
+		return u.LoginName
+	}
+	if u.Email != "" {
+		return u.Email
+	}
+	return u.Sub
+}
+
+// GetAvatar 获取用户头像（优先级：Avatar > Picture）
+func (u *UserInfo) GetAvatar() string {
+	if u.Avatar != "" {
+		return u.Avatar
+	}
+	return u.Picture
 }
 
 func init() {
@@ -51,7 +84,7 @@ func init() {
 	godotenv.Load()
 
 	// 从环境变量读取配置
-	casdoorServerURL = getEnv("CASDOOR_SERVER_URL", "https://casdoor.mogulinker.com")
+	oauthServerURL = getEnv("OAUTH_SERVER_URL", "https://h-oauth.mogulinker.com")
 	clientID = getEnv("CLIENT_ID", "")
 	clientSecret = getEnv("CLIENT_SECRET", "")
 	redirectURI = getEnv("REDIRECT_URI", "http://localhost:8080/oauth2callback")
@@ -61,12 +94,26 @@ func init() {
 	userInfoCookieName = getEnv("USER_INFO_COOKIE_NAME", "user_info")
 	proxyPort = getEnv("PROXY_PORT", "8080")
 
-	// 初始化 OIDC Provider
+	// 初始化 OIDC Provider，带重试机制
 	ctx := context.Background()
 	var err error
-	provider, err = oidc.NewProvider(ctx, casdoorServerURL)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize OIDC provider: %v", err))
+	retryInterval := 3 * time.Second
+	maxRetries := 10 // 最多重试10次，避免无限重试
+
+	for i := 0; i < maxRetries; i++ {
+		provider, err = oidc.NewProvider(ctx, oauthServerURL)
+		if err == nil {
+			log.Printf("Successfully initialized OIDC provider")
+			break
+		}
+
+		if i < maxRetries-1 {
+			log.Printf("Failed to initialize OIDC provider (attempt %d/%d): %v. Retrying in %v...",
+				i+1, maxRetries, err, retryInterval)
+			time.Sleep(retryInterval)
+		} else {
+			panic(fmt.Sprintf("Failed to initialize OIDC provider after %d attempts: %v", maxRetries, err))
+		}
 	}
 
 	// 配置 OAuth2
@@ -111,7 +158,7 @@ func main() {
 	fmt.Println("===========================================")
 	fmt.Println("  Conditioner Saving Proxy Server")
 	fmt.Println("===========================================")
-	fmt.Printf("  Casdoor Server: %s\n", casdoorServerURL)
+	fmt.Printf("  OAuth Server: %s\n", oauthServerURL)
 	fmt.Printf("  Streamlit Backend: %s\n", streamlitBackend)
 	fmt.Printf("  Redirect URI: %s\n", redirectURI)
 	fmt.Printf("  Port: %s\n", proxyPort)
@@ -187,22 +234,43 @@ func handleCallback(c *gin.Context) {
 		return
 	}
 
-	// 获取用户信息
+	// 获取用户信息 - 优先从 userinfo endpoint 获取完整信息
 	var userInfo UserInfo
-	if err := idToken.Claims(&userInfo); err != nil {
-		// 如果 ID Token 中没有用户信息，尝试从 userinfo endpoint 获取
-		userInfoEndpoint := casdoorServerURL + "/api/userinfo"
-		resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get userinfo: %v", err)})
+	userInfoEndpoint := oauthServerURL + "/api/userinfo"
+	log.Printf("Fetching user info from: %s", userInfoEndpoint)
+	resp, err := oauth2Config.Client(ctx, token).Get(userInfoEndpoint)
+	if err != nil {
+		// 如果 userinfo endpoint 失败，尝试从 ID Token 获取
+		log.Printf("Failed to get userinfo from endpoint: %v, falling back to ID token claims", err)
+		if err := idToken.Claims(&userInfo); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get user info: %v", err)})
 			return
 		}
+	} else {
 		defer resp.Body.Close()
-		if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to decode userinfo: %v", err)})
-			return
+
+		// 读取响应体用于调试
+		var rawResponse map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&rawResponse); err != nil {
+			// 如果解码失败，尝试从 ID Token 获取
+			log.Printf("Failed to decode userinfo: %v, falling back to ID token claims", err)
+			if err := idToken.Claims(&userInfo); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get user info: %v", err)})
+				return
+			}
+		} else {
+			log.Printf("Raw userinfo response: %+v", rawResponse)
+
+			// 将 map 转换为 JSON 再解析到 UserInfo 结构体
+			jsonBytes, _ := json.Marshal(rawResponse)
+			if err := json.Unmarshal(jsonBytes, &userInfo); err != nil {
+				log.Printf("Failed to unmarshal userinfo: %v", err)
+			}
 		}
 	}
+
+	log.Printf("User info retrieved: sub=%s, name=%s, email=%s, loginName=%s, preferredUsername=%s, displayName=%s",
+		userInfo.Sub, userInfo.Name, userInfo.Email, userInfo.LoginName, userInfo.PreferredUsername, userInfo.DisplayName)
 
 	// 生成会话 token（使用 access token 作为会话标识）
 	sessionToken := token.AccessToken
