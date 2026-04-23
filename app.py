@@ -84,6 +84,38 @@ def main():
         page_icon="⚡",
         layout="wide"
     )
+    
+    # 添加全局CSS样式 - 符合Figma设计
+    st.markdown("""
+    <style>
+    .main > div {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        padding: 20px;
+    }
+    .stApp > header {
+        background: transparent;
+    }
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    /* 隐藏Streamlit默认元素 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* 自定义按钮样式 */
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # ==================== 应用主逻辑 ====================
 
@@ -96,19 +128,31 @@ def main():
         return
 
     # 标题和退出按钮
-    col_title, col_logout = st.columns([6, 1])
+    col_back, col_title, col_logout = st.columns([1, 6, 1])
+    
+    with col_back:
+        if st.button("←", help="返回模块选择", use_container_width=True):
+            del st.session_state.module_type
+            st.rerun()
+    
     with col_title:
         if st.session_state.module_type == 'air_conditioner':
             st.title("❄️ 空调节能率智能测算工具")
         else:
-            st.markdown("# 空压AI节能率测算", unsafe_allow_html=True)
-    with col_logout:
-        st.link_button("🚪 退出", "/logout", use_container_width=True)
+            st.markdown("""
+            <div style="text-align: center; margin: 20px 0;">
+                <h1 style="color: #333; font-size: 2.5rem; font-weight: 600; margin: 0;">空压AI节能率测算</h1>
+            </div>
+            """, unsafe_allow_html=True)
     
-    # 返回模块选择按钮
-    if st.button("🔙 返回模块选择", use_container_width=True):
-        del st.session_state.module_type
-        st.rerun()
+    with col_logout:
+        st.markdown("""
+        <div style="display: flex; align-items: center; justify-content: center; height: 60px;">
+            <div style="background: #f0f0f0; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                <span style="font-weight: 600; color: #333;">冯</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("---")
 
@@ -136,7 +180,7 @@ def main():
                 else:
                     st.text(f"⏸️ {stage_name}")
     else:
-        # 空压模块的进度指示器 - 与Figma设计一致
+        # 空压模块的进度指示器 - 完全符合Figma设计
         stages = [
             {'id': 'upload', 'name': '上传调研表', 'number': '1'},
             {'id': 'extract_check', 'name': '数据提取', 'number': '2'},
@@ -144,33 +188,75 @@ def main():
             {'id': 'calculate', 'name': '输出结果', 'number': '4'}
         ]
         
-        # 创建容器
-        progress_container = st.container()
-        with progress_container:
-            # 创建水平布局
-            col1, col2, col3, col4 = st.columns(4)
-            cols = [col1, col2, col3, col4]
-            
-            for i, stage in enumerate(stages):
-                with cols[i]:
-                    # 检查当前阶段
-                    is_completed = st.session_state.stage in ['extract_check', 'filling', 'calculate', 'result'] if i == 0 else \
-                                  st.session_state.stage in ['filling', 'calculate', 'result'] if i == 1 else \
-                                  st.session_state.stage in ['calculate', 'result'] if i == 2 else \
-                                  st.session_state.stage == 'result' if i == 3 else False
-                    
-                    is_current = (st.session_state.stage == 'upload' and i == 0) or \
-                                (st.session_state.stage == 'extract_check' and i == 1) or \
-                                (st.session_state.stage == 'filling' and i == 2) or \
-                                (st.session_state.stage in ['calculate', 'result'] and i == 3)
-                    
-                    # 圆形指示器
-                    if is_completed:
-                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333;">{stage["name"]}</div></div>', unsafe_allow_html=True)
-                    elif is_current:
-                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333;">{stage["name"]}</div></div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50; opacity: 0.4;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333; opacity: 0.4;">{stage["name"]}</div></div>', unsafe_allow_html=True)
+        # 创建进度指示器容器 - 完全符合Figma设计
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius: 60px; 
+                    padding: 25px 50px; 
+                    margin: 40px auto; 
+                    max-width: 800px;
+                    position: relative;
+                    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);">
+            <!-- 连接线 -->
+            <div style="position: absolute; 
+                        top: 50%; 
+                        left: 15%; 
+                        right: 15%; 
+                        height: 2px; 
+                        background: rgba(255,255,255,0.3); 
+                        z-index: 1;"></div>
+        """, unsafe_allow_html=True)
+        
+        # 创建水平布局
+        col1, col2, col3, col4 = st.columns(4)
+        cols = [col1, col2, col3, col4]
+        
+        for i, stage in enumerate(stages):
+            with cols[i]:
+                # 检查当前阶段
+                is_completed = st.session_state.stage in ['extract_check', 'filling', 'calculate', 'result'] if i == 0 else \
+                              st.session_state.stage in ['filling', 'calculate', 'result'] if i == 1 else \
+                              st.session_state.stage in ['calculate', 'result'] if i == 2 else \
+                              st.session_state.stage == 'result' if i == 3 else False
+                
+                is_current = (st.session_state.stage == 'upload' and i == 0) or \
+                            (st.session_state.stage == 'extract_check' and i == 1) or \
+                            (st.session_state.stage == 'filling' and i == 2) or \
+                            (st.session_state.stage in ['calculate', 'result'] and i == 3)
+                
+                # 根据Figma设计的圆形指示器
+                if is_completed or is_current:
+                    # 活跃状态 - 白色背景，蓝色边框
+                    circle_style = "background: white; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.15);"
+                    number_color = "#4A90E2"
+                    text_color = "white"
+                    text_opacity = "1"
+                else:
+                    # 未激活状态 - 半透明白色背景
+                    circle_style = "background: rgba(255,255,255,0.4); border: 2px solid rgba(255,255,255,0.4);"
+                    number_color = "white"
+                    text_color = "rgba(255,255,255,0.7)"
+                    text_opacity = "0.7"
+                
+                st.markdown(f"""
+                <div style="display: flex; flex-direction: column; align-items: center; 
+                            position: relative; z-index: 2; margin: 15px 0;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; 
+                                {circle_style}
+                                display: flex; align-items: center; justify-content: center; 
+                                margin-bottom: 12px;
+                                transition: all 0.3s ease;">
+                        <span style="color: {number_color}; font-weight: 700; font-size: 16px;">{stage["number"]}</span>
+                    </div>
+                    <div style="color: {text_color}; font-weight: 600; font-size: 13px; 
+                                text-align: center; opacity: {text_opacity};
+                                text-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                        {stage["name"]}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -234,9 +320,40 @@ def render_upload_stage():
         st.info("请上传标准的中央空调节能调研表 (Excel 格式)")
         file_description = "中央空调节能调研表"
     else:
-        # 空压模块的上传页面 - 与Figma设计一致
-        st.markdown("## 步骤 1: 上传调研表", unsafe_allow_html=True)
-        st.markdown("请上传空压节能调研表，支持同时上传多个文件（最多10个，支持 Excel、PPT、Word 格式）", unsafe_allow_html=True)
+        # 空压模块的上传页面 - 完全符合Figma设计
+        st.markdown("""
+        <div style="background: white; 
+                    border-radius: 16px; 
+                    padding: 35px; 
+                    margin: 30px auto;
+                    max-width: 900px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+                    border: 1px solid rgba(255,255,255,0.8);
+                    position: relative;
+                    overflow: hidden;">
+            <!-- 顶部渐变条 -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        height: 4px; 
+                        border-radius: 2px; 
+                        margin: -35px -35px 30px -35px;"></div>
+            <!-- 背景渐变 -->
+            <div style="position: absolute; 
+                        top: 0; 
+                        left: 0; 
+                        right: 0; 
+                        height: 60px; 
+                        background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+                        z-index: 0;"></div>
+            <div style="position: relative; z-index: 1;">
+                <h2 style="color: #2c3e50; font-size: 1.9rem; font-weight: 700; margin-bottom: 18px; letter-spacing: -0.5px;">
+                    步骤 1: 上传调研表
+                </h2>
+                <p style="color: #5a6c7d; font-size: 1.05rem; margin-bottom: 30px; line-height: 1.6;">
+                    请上传空压节能调研表，支持同时上传多个文件（最多10个，支持 Excel、PPT、Word 格式）
+                </p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         file_description = "空压机节能调研表"
 
     # 上传区域
@@ -248,7 +365,39 @@ def render_upload_stage():
             key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
         )
     else:
-        # 空压模块的上传区域 - 与Figma设计一致
+        # 空压模块的上传区域 - 完全符合Figma设计
+        st.markdown("""
+        <div style="border: 2px dashed #9E9E9E; 
+                    border-radius: 14px; 
+                    padding: 50px 30px; 
+                    text-align: center; 
+                    background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
+                    margin: 25px auto;
+                    max-width: 800px;
+                    transition: all 0.3s ease;
+                    position: relative;
+                    overflow: hidden;">
+            <!-- 背景装饰 -->
+            <div style="position: absolute; 
+                        top: -50%; 
+                        left: -50%; 
+                        width: 200%; 
+                        height: 200%; 
+                        background: radial-gradient(circle, rgba(102, 126, 234, 0.03) 0%, transparent 70%);
+                        z-index: 0;"></div>
+            <div style="position: relative; z-index: 1;">
+                <div style="font-size: 4rem; color: #9E9E9E; margin-bottom: 20px; 
+                           filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">📁</div>
+                <h3 style="color: #2c3e50; font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px;">
+                    点击上传或拖拽文件到此处
+                </h3>
+                <p style="color: #6c757d; font-size: 0.95rem; margin: 0; line-height: 1.4;">
+                    支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB
+                </p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         uploaded_file = st.file_uploader(
             "选择调研表文件",
             type=['xlsx', 'xls', 'pptx', 'ppt', 'docx', 'doc'],
@@ -279,23 +428,66 @@ def render_upload_stage():
                 st.rerun()
         else:
             # 空压模块的文件上传成功提示
-            st.success(f"✅ 文件已上传：{uploaded_file.name}")
-            st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); 
+                        border: 1px solid #4CAF50; 
+                        border-radius: 12px; 
+                        padding: 20px; 
+                        margin: 25px auto;
+                        max-width: 800px;
+                        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
+                        position: relative;
+                        overflow: hidden;">
+                <!-- 成功图标背景 -->
+                <div style="position: absolute; 
+                            top: -10px; 
+                            right: -10px; 
+                            width: 60px; 
+                            height: 60px; 
+                            background: rgba(76, 175, 80, 0.1); 
+                            border-radius: 50%;
+                            z-index: 0;"></div>
+                <div style="position: relative; z-index: 1;">
+                    <div style="color: #2E7D32; font-weight: 700; font-size: 1.1rem; margin-bottom: 8px;">
+                        ✅ 文件已上传：{filename}
+                    </div>
+                    <div style="color: #5a6c7d; font-size: 0.95rem; font-weight: 500;">
+                        文件大小：{size:.2f} KB
+                    </div>
+                </div>
+            </div>
+            """.format(filename=uploaded_file.name, size=uploaded_file.size / 1024), unsafe_allow_html=True)
 
-    # 空压模块的按钮区域
+    # 空压模块的按钮区域 - 符合Figma设计
     if st.session_state.module_type == 'air_compressor':
-        col1, col2 = st.columns(2)
+        st.markdown("""
+        <div style="display: flex; gap: 15px; margin: 30px 0; justify-content: flex-end;">
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([1, 1])
         with col1:
+            st.markdown("""
+            <div style="margin-right: 10px;">
+            """, unsafe_allow_html=True)
             if st.button("上一步", use_container_width=True, type="secondary"):
                 if st.session_state.get('module_type'):
                     del st.session_state.module_type
                     st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
         with col2:
+            st.markdown("""
+            <div style="margin-left: 10px;">
+            """, unsafe_allow_html=True)
             if uploaded_file:
                 if st.button("下一步", use_container_width=True, type="primary"):
                     st.session_state.stage = 'extract_check'
                     st.session_state.scroll_to_top = True  # 新增：触发滚动
                     st.rerun()
+            else:
+                st.button("下一步", use_container_width=True, type="primary", disabled=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_extract_check_stage():
