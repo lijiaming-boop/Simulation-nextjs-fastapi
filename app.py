@@ -897,8 +897,6 @@ def render_extract_check_stage():
                 </div>
             </div>
             """, unsafe_allow_html=True)
-        </div>
-        """, unsafe_allow_html=True)
         
         # 企业简称
         company_short = extracted_data.get("companyShortName", "未知")
