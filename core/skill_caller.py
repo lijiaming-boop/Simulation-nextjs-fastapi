@@ -248,7 +248,7 @@ class SkillCaller:
     def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
         """优化过长的提示词"""
         # 对于LLM版本的空压机技能
-        elif skill_name == "extract-air-compressor-data-llm":
+        if skill_name == "extract-air-compressor-data-llm":
             if len(args) < 2:
                 raise SkillError(
                     "extract-air-compressor-data-llm 需要至少2个参数"
@@ -324,21 +324,6 @@ class SkillCaller:
                 f"python .claude/skills/suggest-data-filling/scripts/suggest_data_filling.py {args[0]} {args[1]} {args[2]}\n"
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
-
-
-
-        elif skill_name == "extract-air-compressor-data-llm":
-            if len(args) < 2:
-                raise SkillError(
-                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
-                )
-            # 使用LLM版本的空压数据提取
-             cmd = f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
-            if len(args) >= 3:
-                cmd += f" '{args[2]}'"
-            
-            prompt = f"执行LLM智能空压机数据提取：\n{cmd}\n\n使用大语言模型智能识别和提取调研表中的结构化数据。"
-            return prompt
 
         else:
             # 通用提示词
