@@ -661,60 +661,242 @@ def render_extract_check_stage():
             st.metric("严重问题数", critical_issues)
     else:
         # 空压机模块的显示逻辑 - 根据Figma设计稿
-        st.markdown("## 步骤 2：数据提取")
+        # 空压模块的数据提取页面 - 符合Figma设计
+        st.markdown("""
+        <div style="background: white; 
+                    border-radius: 16px; 
+                    padding: 35px; 
+                    margin: 30px auto;
+                    max-width: 900px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+                    border: 1px solid rgba(255,255,255,0.8);
+                    position: relative;
+                    overflow: hidden;">
+            <!-- 顶部渐变条 -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        height: 4px; 
+                        border-radius: 2px; 
+                        margin: -35px -35px 30px -35px;"></div>
+            <!-- 背景渐变 -->
+            <div style="position: absolute; 
+                        top: 0; 
+                        left: 0; 
+                        right: 0; 
+                        height: 60px; 
+                        background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+                        z-index: 0;"></div>
+            <div style="position: relative; z-index: 1;">
+                <h2 style="color: #2c3e50; font-size: 1.9rem; font-weight: 700; margin-bottom: 25px; letter-spacing: -0.5px;">
+                    步骤 2: 数据提取
+                </h2>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         # 数据完整度显示
         completeness = quality_report.get("completeness", 0)
         
-        # 创建数据完整度卡片
-        with st.container():
-            st.markdown("""
-            <div style="background-color: white; padding: 20px; border-radius: 16px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
+        # 创建数据完整度卡片 - 符合Figma设计
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                    padding: 30px; 
+                    border-radius: 16px; 
+                    border: 1px solid #e9ecef; 
+                    margin: 25px auto;
+                    max-width: 900px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    position: relative;
+                    overflow: hidden;">
+            <!-- 装饰元素 -->
+            <div style="position: absolute; 
+                        top: -20px; 
+                        right: -20px; 
+                        width: 80px; 
+                        height: 80px; 
+                        background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+                        border-radius: 50%;"></div>
+        """, unsafe_allow_html=True)
+            
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown(f"""
+            <div style="text-align: center; position: relative; z-index: 1;">
+                <div style="width: 100px; height: 100px; 
+                           background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); 
+                           border-radius: 50%; 
+                           display: flex; 
+                           align-items: center; 
+                           justify-content: center; 
+                           margin: 0 auto 15px auto;
+                           box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);">
+                    <div style="color: white; font-size: 24px; font-weight: 800;">{completeness * 100:.0f}%</div>
+                </div>
+                <div style="color: #5a6c7d; font-size: 16px; font-weight: 600;">数据完整度</div>
+            </div>
             """, unsafe_allow_html=True)
             
-            col1, col2 = st.columns([1, 3])
-            with col1:
+        with col2:
+            # 缺失字段显示 - 符合Figma设计
+            issues = quality_report.get("issues", [])
+            missing_fields = [issue for issue in issues if "缺失" in issue.get("description", "")]
+            
+            st.markdown("""
+            <div style="position: relative; z-index: 1; padding: 10px 0;">
+            """, unsafe_allow_html=True)
+            
+            if missing_fields:
                 st.markdown(f"""
-                <div style="text-align: center;">
-                    <div style="font-size: 32px; font-weight: bold; color: #2E7D32;">{completeness * 100:.0f}%</div>
-                    <div style="color: #666; font-size: 14px;">数据完整度</div>
+                <div style="margin-bottom: 20px;">
+                    <div style="color: #e74c3c; font-weight: 700; font-size: 16px; margin-bottom: 15px;">
+                        ⚠️ 缺失字段（{len(missing_fields)}项，均为非必填）
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 显示缺失字段标签 - 现代化设计
+                missing_tags_html = ""
+                for i, issue in enumerate(missing_fields[:5]):  # 最多显示5个
+                    field_name = issue.get("field", "未知字段")
+                    missing_tags_html += f"""
+                    <span style="display: inline-block; 
+                                 background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%); 
+                                 color: #c62828; 
+                                 padding: 8px 12px; 
+                                 border-radius: 20px; 
+                                 font-size: 13px; 
+                                 font-weight: 600; 
+                                 margin: 4px 8px 4px 0;
+                                 border: 1px solid #ffcdd2;
+                                 box-shadow: 0 2px 4px rgba(198, 40, 40, 0.1);">
+                        {field_name}
+                    </span>
+                    """
+                
+                if len(missing_fields) > 5:
+                    missing_tags_html += f"""
+                    <span style="display: inline-block; 
+                                 background: #f5f5f5; 
+                                 color: #666; 
+                                 padding: 8px 12px; 
+                                 border-radius: 20px; 
+                                 font-size: 13px; 
+                                 font-weight: 600; 
+                                 margin: 4px 8px 4px 0;">
+                        +{len(missing_fields) - 5}项
+                    </span>
+                    """
+                
+                st.markdown(missing_tags_html, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="color: #2E7D32; font-weight: 700; font-size: 16px;">
+                    ✅ 所有必填字段完整
                 </div>
                 """, unsafe_allow_html=True)
             
-            with col2:
-                # 缺失字段显示
-                issues = quality_report.get("issues", [])
-                missing_fields = [issue for issue in issues if "缺失" in issue.get("description", "")]
-                
-                if missing_fields:
-                    st.markdown("❌ 缺失字段（{}项，均为非必填）".format(len(missing_fields)))
-                    
-                    # 显示缺失字段标签
-                    cols = st.columns(min(3, len(missing_fields)))
-                    for i, issue in enumerate(missing_fields[:3]):  # 最多显示3个
-                        with cols[i % 3]:
-                            field_name = issue.get("field", "未知字段")
-                            st.markdown(f"""
-                            <div style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 4px; 
-                                        font-size: 12px; color: #666; margin: 2px;">
-                                {field_name}
-                            </div>
-                            """, unsafe_allow_html=True)
-                else:
-                    st.markdown("✅ 所有必填字段完整")
-            
             st.markdown("</div>", unsafe_allow_html=True)
-
-        # 项目核心信息
-        st.markdown("### 项目核心信息")
         
-        # 企业名称
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # 项目核心信息 - 符合Figma设计
+        st.markdown("""
+        <div style="background: white; 
+                    border-radius: 16px; 
+                    padding: 30px; 
+                    margin: 25px auto;
+                    max-width: 900px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    border: 1px solid #e9ecef;">
+            <h3 style="color: #2c3e50; font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px;">
+                📋 项目核心信息
+            </h3>
+        """, unsafe_allow_html=True)
+        
+        # 企业信息卡片 - 符合Figma设计
         company_name = extracted_data.get("companyName", "未知企业")
-        st.markdown(f"""
-        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
-            <span style="color: #666; font-size: 12px;">企业名称</span><br>
-            <span style="font-weight: 500; color: #333;">{company_name}</span>
+        project_name = extracted_data.get("projectName", "未知项目")
+        project_location = extracted_data.get("projectLocation", "未知地址")
+        industry_type = extracted_data.get("industryType", "未知行业")
+        
+        # 创建信息网格
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                        padding: 20px; 
+                        border-radius: 12px; 
+                        border: 1px solid #e9ecef; 
+                        margin-bottom: 15px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                        transition: all 0.3s ease;">
+                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    企业名称
+                </div>
+                <div style="font-weight: 700; color: #2c3e50; font-size: 16px; line-height: 1.4;">
+                    {company_name}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                        padding: 20px; 
+                        border-radius: 12px; 
+                        border: 1px solid #e9ecef; 
+                        margin-bottom: 15px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                        transition: all 0.3s ease;">
+                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    项目地址
+                </div>
+                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
+                    {project_location}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                        padding: 20px; 
+                        border-radius: 12px; 
+                        border: 1px solid #e9ecef; 
+                        margin-bottom: 15px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                        transition: all 0.3s ease;">
+                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    项目名称
+                </div>
+                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
+                    {project_name}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                        padding: 20px; 
+                        border-radius: 12px; 
+                        border: 1px solid #e9ecef; 
+                        margin-bottom: 15px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                        transition: all 0.3s ease;">
+                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    行业类型
+                </div>
+                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
+                    <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                 color: white; 
+                                 padding: 6px 12px; 
+                                 border-radius: 20px; 
+                                 font-size: 13px; 
+                                 font-weight: 700;">
+                        {industry_type}
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         </div>
         """, unsafe_allow_html=True)
         
@@ -838,8 +1020,21 @@ def render_extract_check_stage():
             </div>
             """, unsafe_allow_html=True)
 
-        # 设备清单
-        st.markdown("### 设备清单")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # 设备清单 - 符合Figma设计
+        st.markdown("""
+        <div style="background: white; 
+                    border-radius: 16px; 
+                    padding: 30px; 
+                    margin: 25px auto;
+                    max-width: 900px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    border: 1px solid #e9ecef;">
+            <h3 style="color: #2c3e50; font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px;">
+                🔧 设备清单
+            </h3>
+        """, unsafe_allow_html=True)
         
         equipment_list = extracted_data.get("equipmentList", [])
         if equipment_list:
@@ -851,27 +1046,103 @@ def render_extract_check_stage():
                     stations[station] = []
                 stations[station].append(equipment)
             
-            for station_name, equipments in stations.items():
-                with st.expander(f"🔧 {station_name}", expanded=True):
-                    # 创建设备表格
-                    if equipments:
-                        equipment_data = []
-                        for eq in equipments:
-                            equipment_data.append({
-                                "设备编号": eq.get("equipmentNumber", ""),
-                                "品牌": eq.get("brand", ""),
-                                "型号": eq.get("model", ""),
-                                "设备类型": eq.get("equipmentType", ""),
-                                "铭牌功率(kW)": eq.get("ratedPower", ""),
-                                "铭牌流量(m³/min)": eq.get("ratedFlow", "")
-                            })
+            for i, (station_name, equipments) in enumerate(stations.items()):
+                # 站房标题
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            color: white; 
+                            padding: 15px 20px; 
+                            border-radius: 12px; 
+                            margin: 20px 0 15px 0;
+                            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+                    <h4 style="margin: 0; font-size: 1.2rem; font-weight: 700;">
+                        🏭 {station_name}
+                    </h4>
+                </div>
+                """, unsafe_allow_html=True)
+                    # 创建设备卡片 - 符合Figma设计
+                if equipments:
+                    for j, eq in enumerate(equipments):
+                        # 设备状态颜色
+                        status = eq.get("runningStatus", "未知")
+                        if status == "运行":
+                            status_color = "#4CAF50"
+                            status_bg = "#e8f5e8"
+                        elif status == "备用":
+                            status_color = "#FF9800"
+                            status_bg = "#fff3e0"
+                        else:
+                            status_color = "#9E9E9E"
+                            status_bg = "#f5f5f5"
                         
-                        df_equipment = pd.DataFrame(equipment_data)
-                        st.dataframe(df_equipment, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("该站房暂无设备信息")
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
+                                    border: 1px solid #e9ecef; 
+                                    border-radius: 12px; 
+                                    padding: 20px; 
+                                    margin-bottom: 15px;
+                                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                                    transition: all 0.3s ease;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h5 style="color: #2c3e50; font-size: 1.1rem; font-weight: 700; margin: 0;">
+                                    {eq.get("equipmentNumber", "未知设备")}
+                                </h5>
+                                <span style="background: {status_bg}; 
+                                             color: {status_color}; 
+                                             padding: 6px 12px; 
+                                             border-radius: 20px; 
+                                             font-size: 12px; 
+                                             font-weight: 700;">
+                                    {status}
+                                </span>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div>
+                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">品牌型号</div>
+                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("brand", "未知")} {eq.get("model", "")}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">设备类型</div>
+                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("equipmentType", "未知")}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">铭牌功率</div>
+                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("ratedPower", "未知")} kW</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">铭牌流量</div>
+                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("ratedFlow", "未知")} m³/min</div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style="background: #f8f9fa; 
+                                border: 1px solid #e9ecef; 
+                                border-radius: 12px; 
+                                padding: 20px; 
+                                text-align: center;
+                                color: #6c757d;">
+                        该站房暂无设备信息
+                    </div>
+                    """, unsafe_allow_html=True)
         else:
-            st.info("未检测到设备信息")
+            st.markdown("""
+            <div style="background: #f8f9fa; 
+                        border: 1px solid #e9ecef; 
+                        border-radius: 12px; 
+                        padding: 30px; 
+                        text-align: center;
+                        color: #6c757d;">
+                <div style="font-size: 2rem; margin-bottom: 15px;">📦</div>
+                <div style="font-weight: 600; font-size: 1.1rem;">未检测到设备信息</div>
+                <div style="font-size: 0.9rem; margin-top: 8px;">请检查调研表中的设备清单部分</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # 根据模块类型显示不同的问题列表
     if st.session_state.module_type == 'air_conditioner':
@@ -961,12 +1232,24 @@ def render_extract_check_stage():
     with st.expander("查看提取的原始数据"):
         st.json(extracted_data)
 
-    # 提供确认按钮进入下一阶段 (仅当置信度不是 low 时)
-    st.markdown("---")
-    if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
-        st.session_state.stage = 'filling'
-        st.session_state.scroll_to_top = True  # 新增：触发滚动
-        st.rerun()
+    # 提供确认按钮进入下一阶段 - 符合Figma设计
+    if st.session_state.module_type == 'air_compressor':
+        st.markdown("""
+        <div style="margin: 40px auto; max-width: 900px; text-align: center;">
+        """, unsafe_allow_html=True)
+        
+        if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
+            st.session_state.stage = 'filling'
+            st.session_state.scroll_to_top = True
+            st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("---")
+        if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
+            st.session_state.stage = 'filling'
+            st.session_state.scroll_to_top = True
+            st.rerun()
 
 
 
