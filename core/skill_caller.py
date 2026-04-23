@@ -137,6 +137,12 @@ class SkillCaller:
         print(f"📝 [SkillCaller] 构建提示词，参数数量: {len(args)}")
         prompt = self._build_prompt(skill_name, *args)
         print(f"📏 [SkillCaller] 提示词长度: {len(prompt)} 字符")
+        
+        # 检查提示词长度，如果过长则优化
+        if len(prompt) > 8000:  # 设置一个合理的长度限制
+            print(f"⚠️  [SkillCaller] 提示词过长，进行优化...")
+            prompt = self._optimize_prompt(prompt, skill_name, *args)
+            print(f"📏 [SkillCaller] 优化后提示词长度: {len(prompt)} 字符")
 
         # 配置 Agent SDK
         # 注意: API key 通过环境变量 ANTHROPIC_API_KEY 传递
@@ -239,6 +245,28 @@ class SkillCaller:
             "result_text": result_text
         }
 
+    def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
+        """优化过长的提示词"""
+        # 对于空压机技能，使用简化的提示词
+        if skill_name == "extract-and-check-data-air-compressor":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-and-check-data-air-compressor 需要至少2个参数"
+                )
+            optimized_prompt = (
+                f"执行空压机数据提取任务：\n"
+                f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
+            )
+            if len(args) >= 3:
+                optimized_prompt += f" {args[2]}"
+            return optimized_prompt
+        
+        # 对于其他技能，截断过长的内容
+        if len(prompt) > 8000:
+            return prompt[:7500] + "\n...(内容已截断，请执行相应的脚本)"
+        
+        return prompt
+
     def _build_prompt(self, skill_name: str, *args) -> str:
         """构建 Skill 调用提示词
 
@@ -297,6 +325,23 @@ class SkillCaller:
                 f"python .claude/skills/suggest-data-filling/scripts/suggest_data_filling.py {args[0]} {args[1]} {args[2]}\n"
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
+
+        elif skill_name == "extract-and-check-data-air-compressor":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-and-check-data-air-compressor 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
+                )
+            prompt = (
+                f"请使用 extract-and-check-data-air-compressor skill 从空压机调研表中提取数据并进行质量检查。\n"
+                f"支持Excel(.xlsx/.xls)和Word(.docx)格式。\n"
+                f"请执行以下命令：\n"
+                f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
+            )
+            # 如果提供了原始文件名,添加到提示词中
+            if len(args) >= 3:
+                prompt += f" {args[2]}"
+            prompt += "\n请确保输出包含 extracted_data 和 quality_report 两部分。"
+            return prompt
 
         else:
             # 通用提示词
