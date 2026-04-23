@@ -247,20 +247,6 @@ class SkillCaller:
 
     def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
         """优化过长的提示词"""
-        # 对于空压机技能，使用超简化的提示词
-        if skill_name == "extract-and-check-data-air-compressor":
-            if len(args) < 2:
-                raise SkillError(
-                    "extract-and-check-data-air-compressor 需要至少2个参数"
-                )
-            # 使用最简化的命令，减少上下文长度
-            cmd = f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
-            if len(args) >= 3:
-                cmd += f" '{args[2]}'"
-            
-            optimized_prompt = f"请执行以下命令：\n{cmd}\n\n这将提取空压机调研表数据并生成JSON结果。"
-            return optimized_prompt
-        
         # 对于LLM版本的空压机技能
         elif skill_name == "extract-air-compressor-data-llm":
             if len(args) < 2:
@@ -339,18 +325,7 @@ class SkillCaller:
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 
-        elif skill_name == "extract-and-check-data-air-compressor":
-            if len(args) < 2:
-                raise SkillError(
-                    "extract-and-check-data-air-compressor 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
-                )
-            # 使用简化的提示词，减少token消耗
-            cmd = f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
-            if len(args) >= 3:
-                cmd += f" '{args[2]}'"
-            
-            prompt = f"执行空压机数据提取：\n{cmd}\n\n输出JSON包含extracted_data和quality_report。"
-            return prompt
+
 
         elif skill_name == "extract-air-compressor-data-llm":
             if len(args) < 2:

@@ -321,6 +321,8 @@ equipmentList: 数组，每个设备包含：
 - brand: 品牌
 - model: 型号
 - equipmentType: 设备类型（螺杆式、离心式等）
+- manufactureYear: 出厂年份（只提取数值，如2018）
+- runningStatus: 运行状态（运行、备用、故障、停用）
 - ratedPower: 铭牌功率（单位：kW，只提取数值）
 - ratedFlow: 铭牌流量（单位：m³/min，只提取数值）
 - station: 所属站房（如"空压一站"、"空压二站"等，如果没有明确说明，可设为"空压站"）
@@ -346,6 +348,8 @@ equipmentList: 数组，每个设备包含：
       "brand": "品牌",
       "model": "型号",
       "equipmentType": "设备类型",
+      "manufactureYear": 数值或null,
+      "runningStatus": "运行状态",
       "ratedPower": 数值或null,
       "ratedFlow": 数值或null,
       "station": "所属站房"
@@ -445,7 +449,7 @@ equipmentList: 数组，每个设备包含：
             for equipment in data["equipmentList"]:
                 if isinstance(equipment, dict):
                     # 确保设备字段完整
-                    equipment_fields = ["equipmentNumber", "brand", "model", "equipmentType", "ratedPower", "ratedFlow", "station"]
+                    equipment_fields = ["equipmentNumber", "brand", "model", "equipmentType", "manufactureYear", "runningStatus", "ratedPower", "ratedFlow", "station"]
                     for field in equipment_fields:
                         if field not in equipment:
                             equipment[field] = None
@@ -455,6 +459,8 @@ equipmentList: 数组，每个设备包含：
                         equipment["ratedPower"] = self._extract_numeric_value(equipment["ratedPower"])
                     if equipment["ratedFlow"] is not None:
                         equipment["ratedFlow"] = self._extract_numeric_value(equipment["ratedFlow"])
+                    if equipment["manufactureYear"] is not None:
+                        equipment["manufactureYear"] = self._extract_numeric_value(equipment["manufactureYear"])
                     
                     cleaned_equipment.append(equipment)
             
@@ -543,7 +549,7 @@ def calculate_completeness(extracted_data: Dict[str, Any]) -> float:
     if equipment_list:
         equipment_completeness = 0
         for equipment in equipment_list:
-            equipment_fields = ["equipmentNumber", "brand", "model", "equipmentType", "ratedPower", "ratedFlow"]
+            equipment_fields = ["equipmentNumber", "brand", "model", "equipmentType", "manufactureYear", "runningStatus", "ratedPower", "ratedFlow"]
             filled_count = 0
             for field in equipment_fields:
                 value = equipment.get(field)
