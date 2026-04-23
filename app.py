@@ -395,76 +395,291 @@ def render_extract_check_stage():
     # 下面的代码对缓存和新获取的结果都生效
     # =================================================================
 
-    # 展示提取结果
-    st.success("✅ 数据提取完成")
+    # 根据模块类型显示不同的数据提取结果
+    if st.session_state.module_type == 'air_conditioner':
+        # 空调模块的显示逻辑
+        st.success("✅ 数据提取完成")
 
-    # 新增：展示站房类型（3 列布局）
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("项目地区", extracted_data.get("project_region", "未识别"))
-    with col2:
-        station_type = extracted_data.get("station_type", "unknown")
-        station_type_names = {
-            "standard": "标准站房",
-            "secondary_pump": "二次泵站房",
-            "unsupported": "⚠️ 不支持类型"
-        }
-        st.metric("站房类型", station_type_names.get(station_type, station_type))
-    with col3:
-        st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
+        # 新增：展示站房类型（3 列布局）
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("项目地区", extracted_data.get("project_region", "未识别"))
+        with col2:
+            station_type = extracted_data.get("station_type", "unknown")
+            station_type_names = {
+                "standard": "标准站房",
+                "secondary_pump": "二次泵站房",
+                "unsupported": "⚠️ 不支持类型"
+            }
+            st.metric("站房类型", station_type_names.get(station_type, station_type))
+        with col3:
+            st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
 
-    # 新增：展示站房类型识别详情
-    station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
-    station_type_reason = extracted_data.get("station_type_reason", "")
+        # 新增：展示站房类型识别详情
+        station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
+        station_type_reason = extracted_data.get("station_type_reason", "")
 
-    if station_type_confidence != "high":
-        st.info(
-            f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
-            f"**识别依据**: {station_type_reason}"
-        )
+        if station_type_confidence != "high":
+            st.info(
+                f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
+                f"**识别依据**: {station_type_reason}"
+            )
 
-    # 新增：检查是否为不支持类型（在质量检查之前）
-    if station_type == "unsupported":
-        st.markdown("---")
-        st.error("⛔ **该类型站房不支持自动节能评估**")
+        # 新增：检查是否为不支持类型（在质量检查之前）
+        if station_type == "unsupported":
+            st.markdown("---")
+            st.error("⛔ **该类型站房不支持自动节能评估**")
 
-        st.warning(
-            "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
-            "- 热水泵\n"
-            "- 水蓄冷/冰蓄冷\n"
-            "- 中低温机组\n\n"
-            "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
-            f"**识别依据**: {station_type_reason}"
-        )
+            st.warning(
+                "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
+                "- 热水泵\n"
+                "- 水蓄冷/冰蓄冷\n"
+                "- 中低温机组\n\n"
+                "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
+                f"**识别依据**: {station_type_reason}"
+            )
 
-        # 提供重新上传按钮
-        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
-            reset_flow()
-            st.rerun()
+            # 提供重新上传按钮
+            if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+                reset_flow()
+                st.rerun()
 
-        # 终止函数执行
-        return
+            # 终止函数执行
+            return
 
-    # 展示质量报告
-    st.success("✅ 质量检查完成")
+        # 展示质量报告
+        st.success("✅ 质量检查完成")
 
-    # 核心指标卡
-    col1, col2, col3 = st.columns(3)
-    with col1:
+        # 核心指标卡
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            completeness = quality_report.get("completeness", 0)
+            st.metric(
+                "数据完整率",
+                f"{completeness * 100:.1f}%",
+                delta=None if completeness >= 0.8 else "需要改进"
+            )
+        with col2:
+            confidence = quality_report.get("confidence_level", "unknown")
+            confidence_map = {"high": "高", "medium": "中", "low": "低"}
+            st.metric("置信水平", confidence_map.get(confidence, confidence))
+        with col3:
+            issues = quality_report.get("issues", [])
+            critical_issues = len([i for i in issues if i.get("severity") == "critical"])
+            st.metric("严重问题数", critical_issues)
+    else:
+        # 空压机模块的显示逻辑 - 根据Figma设计稿
+        st.markdown("## 步骤 2：数据提取")
+        
+        # 数据完整度显示
         completeness = quality_report.get("completeness", 0)
-        st.metric(
-            "数据完整率",
-            f"{completeness * 100:.1f}%",
-            delta=None if completeness >= 0.8 else "需要改进"
-        )
-    with col2:
-        confidence = quality_report.get("confidence_level", "unknown")
-        confidence_map = {"high": "高", "medium": "中", "low": "低"}
-        st.metric("置信水平", confidence_map.get(confidence, confidence))
-    with col3:
-        issues = quality_report.get("issues", [])
-        critical_issues = len([i for i in issues if i.get("severity") == "critical"])
-        st.metric("严重问题数", critical_issues)
+        
+        # 创建数据完整度卡片
+        with st.container():
+            st.markdown("""
+            <div style="background-color: white; padding: 20px; border-radius: 16px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
+            """, unsafe_allow_html=True)
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.markdown(f"""
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #2E7D32;">{completeness * 100:.0f}%</div>
+                    <div style="color: #666; font-size: 14px;">数据完整度</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                # 缺失字段显示
+                issues = quality_report.get("issues", [])
+                missing_fields = [issue for issue in issues if "缺失" in issue.get("description", "")]
+                
+                if missing_fields:
+                    st.markdown("❌ 缺失字段（{}项，均为非必填）".format(len(missing_fields)))
+                    
+                    # 显示缺失字段标签
+                    cols = st.columns(min(3, len(missing_fields)))
+                    for i, issue in enumerate(missing_fields[:3]):  # 最多显示3个
+                        with cols[i % 3]:
+                            field_name = issue.get("field", "未知字段")
+                            st.markdown(f"""
+                            <div style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 4px; 
+                                        font-size: 12px; color: #666; margin: 2px;">
+                                {field_name}
+                            </div>
+                            """, unsafe_allow_html=True)
+                else:
+                    st.markdown("✅ 所有必填字段完整")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # 项目核心信息
+        st.markdown("### 项目核心信息")
+        
+        # 企业名称
+        company_name = extracted_data.get("companyName", "未知企业")
+        st.markdown(f"""
+        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
+            <span style="color: #666; font-size: 12px;">企业名称</span><br>
+            <span style="font-weight: 500; color: #333;">{company_name}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 企业简称
+        company_short = extracted_data.get("companyShortName", "未知")
+        st.markdown(f"""
+        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
+            <span style="color: #666; font-size: 12px;">企业简称</span><br>
+            <span style="font-weight: 500; color: #333;">{company_short}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 项目名称（高亮显示）
+        project_name = extracted_data.get("projectName", "空压系统节能项目")
+        st.markdown(f"""
+        <div style="background-color: #e8f5e8; padding: 12px; border-radius: 10px; 
+                    border: 1px solid #4caf50; margin-bottom: 8px;">
+            <span style="color: #666; font-size: 12px;">项目名称</span><br>
+            <span style="font-weight: 500; color: #333;">{project_name}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 项目所在地
+        location = extracted_data.get("projectLocation", "未填写")
+        st.markdown(f"""
+        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
+            <span style="color: #666; font-size: 12px;">项目所在地（省市）</span><br>
+            <span style="font-weight: 500; color: #333;">{location}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 行业类型
+        industry = extracted_data.get("industryType", "其他")
+        st.markdown(f"""
+        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
+            <span style="color: #666; font-size: 12px;">行业类型</span><br>
+            <span style="font-weight: 500; color: #333;">{industry}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 空压系统年度总用量（高亮显示）
+        total_energy = extracted_data.get("totalAnnualEnergyConsumption")
+        if total_energy:
+            st.markdown(f"""
+            <div style="background-color: #fff3e0; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #ff9800; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">空压系统年度总用量</span><br>
+                <span style="font-weight: bold; color: #e65100; font-size: 18px;">{total_energy}</span>
+                <span style="color: #e65100; font-size: 14px;"> 万 kWh</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">空压系统年度总用量</span><br>
+                <span style="font-weight: 500; color: #333;">未填写</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # 其他关键参数
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 平均电价
+            electricity_price = extracted_data.get("electricityPrice")
+            price_text = f"{electricity_price} 元/kWh" if electricity_price else "未填写"
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">平均电价</span><br>
+                <span style="font-weight: 500; color: #333;">{price_text}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 近14天系统平均压力
+            avg_pressure = extracted_data.get("averagePressure")
+            pressure_text = f"{avg_pressure} bar" if avg_pressure else "未填写"
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">近14天系统平均压力</span><br>
+                <span style="font-weight: 500; color: #333;">{pressure_text}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 年运行天数
+            annual_days = extracted_data.get("annualRunningDays")
+            days_text = f"{annual_days} 天" if annual_days else "未填写"
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">年运行天数</span><br>
+                <span style="font-weight: 500; color: #333;">{days_text}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            # 现有系统报警压力（下限）
+            alarm_pressure = extracted_data.get("alarmPressureLowerLimit")
+            alarm_text = f"{alarm_pressure} bar" if alarm_pressure else "未填写"
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">现有系统报警压力（下限）</span><br>
+                <span style="font-weight: 500; color: #333;">{alarm_text}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 每天开机时间
+            daily_hours = extracted_data.get("dailyRunningHours")
+            hours_text = f"{daily_hours} 小时" if daily_hours else "未填写"
+            st.markdown(f"""
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
+                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
+                <span style="color: #666; font-size: 12px;">每天开机时间</span><br>
+                <span style="font-weight: 500; color: #333;">{hours_text}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # 设备清单
+        st.markdown("### 设备清单")
+        
+        equipment_list = extracted_data.get("equipmentList", [])
+        if equipment_list:
+            # 按站房分组显示设备
+            stations = {}
+            for equipment in equipment_list:
+                station = equipment.get("station", "未知站房")
+                if station not in stations:
+                    stations[station] = []
+                stations[station].append(equipment)
+            
+            for station_name, equipments in stations.items():
+                with st.expander(f"🔧 {station_name}", expanded=True):
+                    # 创建设备表格
+                    if equipments:
+                        equipment_data = []
+                        for eq in equipments:
+                            equipment_data.append({
+                                "设备编号": eq.get("equipmentNumber", ""),
+                                "品牌": eq.get("brand", ""),
+                                "型号": eq.get("model", ""),
+                                "设备类型": eq.get("equipmentType", ""),
+                                "铭牌功率(kW)": eq.get("ratedPower", ""),
+                                "铭牌流量(m³/min)": eq.get("ratedFlow", "")
+                            })
+                        
+                        df_equipment = pd.DataFrame(equipment_data)
+                        st.dataframe(df_equipment, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("该站房暂无设备信息")
+        else:
+            st.info("未检测到设备信息")
 
     # 问题列表
     if issues:
