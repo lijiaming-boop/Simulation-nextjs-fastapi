@@ -814,7 +814,7 @@ def render_filling_stage():
                 if st.session_state.module_type == 'air_conditioner':
                     skill_name = "suggest-data-filling"
                 else:
-                    skill_name = "suggest-data-filling-air-compressor"
+                    skill_name = "suggest-air-compressor-data-filling"
                     
                 # 调用 Skill 3: 填充建议，传递回调
                 skill_result = caller.call_skill(

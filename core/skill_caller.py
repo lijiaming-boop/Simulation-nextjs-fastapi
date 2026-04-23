@@ -325,6 +325,19 @@ class SkillCaller:
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 
+        elif skill_name == "suggest-air-compressor-data-filling":
+            if len(args) < 3:
+                raise SkillError(
+                    "suggest-air-compressor-data-filling 需要3个参数: "
+                    "提取数据路径, 质量报告路径, 输出建议路径"
+                )
+            return (
+                f"请使用 suggest-air-compressor-data-filling skill 生成空压机数据填充建议。\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/suggest-air-compressor-data-filling/scripts/suggest_air_compressor_data_filling.py {args[0]} {args[1]} {args[2]}\n"
+                f"请基于行业标准和附表查询提供智能填充建议。"
+            )
+
         else:
             # 通用提示词
             params_str = ', '.join(str(arg) for arg in args)
