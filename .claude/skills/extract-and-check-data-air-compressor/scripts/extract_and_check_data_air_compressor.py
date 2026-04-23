@@ -284,7 +284,7 @@ def extract_project_info(df):
         if project_info["projectLocation"]:
             project_info["companyName"] = project_info["projectLocation"]
             project_info["companyShortName"] = project_info["projectLocation"]
-            project_info["projectName"] = f"{project_info["projectLocation"]}空压系统节能项目"
+            project_info["projectName"] = f"{project_info['projectLocation']}空压系统节能项目"
         else:
             # 从文件名或其他信息生成默认名称
             project_info["companyName"] = "未知企业"
@@ -478,6 +478,273 @@ def extract_equipment_list(df):
             equipment_list.append(equipment)
     
     return equipment_list
+
+
+def extract_data_from_word(survey_word_path: str, original_filename: Optional[str] = None) -> Dict[str, Any]:
+    """从 Word 文件提取空压机节能数据
+
+    Args:
+        survey_word_path: Word 文件路径
+        original_filename: 原始文件名
+    """
+    try:
+        print(f"📖 [Word数据提取] 读取Word文件: {survey_word_path}")
+        print(f"📁 [Word数据提取] 原始文件名: {original_filename}")
+        
+        # 检查文件是否存在
+        if not Path(survey_word_path).exists():
+            raise FileNotFoundError(f"文件不存在: {survey_word_path}")
+        
+        # 获取文件信息
+        file_size = Path(survey_word_path).stat().st_size
+        print(f"📏 [Word数据提取] 文件大小: {file_size} 字节")
+        
+        # 读取Word文档
+        print(f"🔄 [Word数据提取] 尝试读取Word文档...")
+        doc = Document(survey_word_path)
+        print(f"✅ [Word数据提取] Word文档读取成功")
+        print(f"📄 [Word数据提取] 发现 {len(doc.tables)} 个表格")
+        
+        # 初始化数据结构
+        project_info = {
+            "companyName": "未知企业",
+            "companyShortName": "未知企业", 
+            "projectName": "空压系统节能项目",
+            "projectLocation": None,
+            "industryType": "其他",
+            "totalAnnualEnergyConsumption": None,
+            "electricityPrice": None,
+            "alarmPressureLowerLimit": None,
+            "averagePressure": None,
+            "dailyRunningHours": None,
+            "annualRunningDays": None
+        }
+        
+        equipment_list = []
+        
+        # 从文档中提取文本信息
+        full_text = ""
+        for paragraph in doc.paragraphs:
+            full_text += paragraph.text + "\n"
+        
+        print(f"📝 [Word数据提取] 文档文本长度: {len(full_text)} 字符")
+        
+        # 尝试从文本中提取企业名称
+        company_patterns = [
+            r"企业名称[：:]\s*([^\n\r]+)",
+            r"公司名称[：:]\s*([^\n\r]+)",
+            r"单位名称[：:]\s*([^\n\r]+)",
+            r"([^，,。.\n\r]{2,20})(有限公司|股份有限公司|集团|公司)"
+        ]
+        
+        for pattern in company_patterns:
+            match = re.search(pattern, full_text)
+            if match:
+                company_name = match.group(1).strip()
+                if len(company_name) > 1:
+                    project_info["companyName"] = company_name
+                    project_info["companyShortName"] = company_name
+                    print(f"✅ [Word数据提取] 提取到企业名称: {company_name}")
+                    break
+        
+        # 处理表格数据
+        for table_idx, table in enumerate(doc.tables):
+            print(f"🔍 [Word数据提取] 处理第 {table_idx + 1} 个表格 ({len(table.rows)} 行 x {len(table.columns) if table.rows else 0} 列)")
+            
+            # 将表格转换为类似DataFrame的结构
+            table_data = []
+            for row in table.rows:
+                row_data = []
+                for cell in row.cells:
+                    cell_text = cell.text.strip()
+                    row_data.append(cell_text)
+                table_data.append(row_data)
+            
+            # 尝试从表格中提取设备信息
+            equipment_from_table = extract_equipment_from_word_table(table_data, table_idx)
+            equipment_list.extend(equipment_from_table)
+            
+            # 尝试从表格中提取项目信息
+            project_info_from_table = extract_project_info_from_word_table(table_data, table_idx)
+            for key, value in project_info_from_table.items():
+                if value is not None and project_info.get(key) is None:
+                    project_info[key] = value
+        
+        print(f"✅ [Word数据提取] 数据提取完成")
+        print(f"   - 企业名称: {project_info.get('companyName', '未知')}")
+        print(f"   - 设备数量: {len(equipment_list)} 台")
+        
+        return {
+            "system_info": project_info,
+            "equipment_list": equipment_list
+        }
+        
+    except Exception as e:
+        print(f"❌ [Word数据提取] 发生异常: {str(e)}")
+        import traceback
+        print(f"🔍 [Word数据提取] 详细错误信息:")
+        traceback.print_exc()
+        return {
+            "error": True,
+            "message": f"Word数据提取失败: {str(e)}"
+        }
+
+
+def extract_equipment_from_word_table(table_data: List[List[str]], table_idx: int) -> List[Dict[str, Any]]:
+    """从Word表格中提取设备信息"""
+    equipment_list = []
+    
+    if not table_data or len(table_data) < 2:
+        return equipment_list
+    
+    print(f"🔧 [设备提取] 分析第 {table_idx + 1} 个表格的设备信息...")
+    
+    # 查找可能的设备表格标题行
+    header_row_idx = -1
+    for i, row in enumerate(table_data):
+        row_text = " ".join(row).lower()
+        if any(keyword in row_text for keyword in ["设备", "空压机", "压缩机", "型号", "功率", "流量"]):
+            header_row_idx = i
+            print(f"📋 [设备提取] 找到可能的设备表格标题行: {i}")
+            break
+    
+    if header_row_idx == -1:
+        print(f"⚠️  [设备提取] 未找到设备表格标题")
+        return equipment_list
+    
+    # 分析标题行，确定列映射
+    header_row = table_data[header_row_idx]
+    column_mapping = {}
+    
+    for col_idx, header in enumerate(header_row):
+        header_lower = header.lower().strip()
+        if "设备" in header_lower or "空压机" in header_lower or "压缩机" in header_lower:
+            if "编号" in header_lower or "号" in header_lower:
+                column_mapping["equipmentId"] = col_idx
+            elif "类型" in header_lower:
+                column_mapping["equipmentType"] = col_idx
+        elif "型号" in header_lower:
+            column_mapping["model"] = col_idx
+        elif "品牌" in header_lower or "厂家" in header_lower:
+            column_mapping["brand"] = col_idx
+        elif "功率" in header_lower and "kw" in header_lower:
+            column_mapping["ratedPower"] = col_idx
+        elif "流量" in header_lower and ("m³" in header_lower or "立方" in header_lower):
+            column_mapping["ratedFlow"] = col_idx
+        elif "年份" in header_lower or "制造" in header_lower:
+            column_mapping["manufactureYear"] = col_idx
+        elif "状态" in header_lower or "运行" in header_lower:
+            column_mapping["runningStatus"] = col_idx
+    
+    print(f"📊 [设备提取] 列映射: {column_mapping}")
+    
+    # 提取设备数据
+    for row_idx in range(header_row_idx + 1, len(table_data)):
+        row = table_data[row_idx]
+        
+        # 跳过空行
+        if not any(cell.strip() for cell in row):
+            continue
+        
+        equipment = {
+            "stationId": f"空压站{table_idx + 1}",
+            "equipmentId": None,
+            "equipmentType": None,
+            "brand": None,
+            "model": None,
+            "manufactureYear": None,
+            "age": None,
+            "runningStatus": None,
+            "ratedPower": None,
+            "ratedFlow": None,
+            "compressorPowerFactor": DEFAULT_POWER_FACTOR,
+            "specificPower": None
+        }
+        
+        # 根据列映射提取数据
+        for field, col_idx in column_mapping.items():
+            if col_idx < len(row):
+                value = row[col_idx].strip()
+                if value:
+                    if field in ["ratedPower", "ratedFlow", "manufactureYear"]:
+                        # 尝试提取数值
+                        numbers = re.findall(r'\d+\.?\d*', value)
+                        if numbers:
+                            equipment[field] = float(numbers[0])
+                    else:
+                        equipment[field] = value
+        
+        # 如果没有设备ID，尝试生成一个
+        if not equipment["equipmentId"]:
+            equipment["equipmentId"] = f"设备{len(equipment_list) + 1}"
+        
+        # 计算机龄
+        current_year = datetime.datetime.now().year
+        if equipment["manufactureYear"]:
+            equipment["age"] = current_year - equipment["manufactureYear"]
+        
+        # 计算比功率
+        if equipment["ratedPower"] and equipment["ratedFlow"] and equipment["ratedFlow"] > 0:
+            equipment["specificPower"] = (equipment["ratedPower"] * RATED_POWER_FACTOR) / equipment["ratedFlow"]
+        
+        # 只添加有基本信息的设备
+        if equipment["equipmentId"]:
+            equipment_list.append(equipment)
+            print(f"✅ [设备提取] 提取设备: {equipment['equipmentId']} - {equipment.get('brand', '未知品牌')} {equipment.get('model', '未知型号')}")
+    
+    return equipment_list
+
+
+def extract_project_info_from_word_table(table_data: List[List[str]], table_idx: int) -> Dict[str, Any]:
+    """从Word表格中提取项目信息"""
+    project_info = {}
+    
+    if not table_data:
+        return project_info
+    
+    print(f"🏢 [项目信息提取] 分析第 {table_idx + 1} 个表格的项目信息...")
+    
+    # 遍历表格寻找项目信息
+    for row in table_data:
+        for cell in row:
+            cell_text = cell.strip()
+            if not cell_text:
+                continue
+            
+            # 提取各种项目信息
+            patterns = {
+                "totalAnnualEnergyConsumption": [
+                    r"年.*用电量[：:]\s*(\d+\.?\d*)",
+                    r"总.*耗电[：:]\s*(\d+\.?\d*)",
+                    r"(\d+\.?\d*)\s*kwh"
+                ],
+                "electricityPrice": [
+                    r"电价[：:]\s*(\d+\.?\d*)",
+                    r"(\d+\.?\d*)\s*元.*kwh"
+                ],
+                "alarmPressureLowerLimit": [
+                    r"报警.*压力[：:]\s*(\d+\.?\d*)",
+                    r"下限.*压力[：:]\s*(\d+\.?\d*)"
+                ],
+                "averagePressure": [
+                    r"平均.*压力[：:]\s*(\d+\.?\d*)",
+                    r"系统.*压力[：:]\s*(\d+\.?\d*)"
+                ]
+            }
+            
+            for field, pattern_list in patterns.items():
+                if project_info.get(field) is None:
+                    for pattern in pattern_list:
+                        match = re.search(pattern, cell_text, re.IGNORECASE)
+                        if match:
+                            try:
+                                project_info[field] = float(match.group(1))
+                                print(f"✅ [项目信息提取] 提取到 {field}: {project_info[field]}")
+                                break
+                            except ValueError:
+                                continue
+    
+    return project_info
 
 
 def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[str] = None) -> Dict[str, Any]:
