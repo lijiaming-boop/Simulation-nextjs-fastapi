@@ -365,18 +365,69 @@ def render_upload_stage():
             key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
         )
     else:
-        # 空压模块的上传区域 - 完全符合Figma设计
+        # 空压模块的上传区域 - 完全符合Figma设计，集成上传功能
         st.markdown("""
-        <div style="border: 2px dashed #9E9E9E; 
-                    border-radius: 14px; 
-                    padding: 50px 30px; 
-                    text-align: center; 
-                    background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
-                    margin: 25px auto;
-                    max-width: 800px;
-                    transition: all 0.3s ease;
-                    position: relative;
-                    overflow: hidden;">
+        <style>
+         .upload-container {
+             border: 2px dashed #9E9E9E; 
+             border-radius: 14px; 
+             padding: 20px; 
+             text-align: center; 
+             background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
+             margin: 25px auto;
+             max-width: 800px;
+             transition: all 0.3s ease;
+             position: relative;
+             overflow: hidden;
+         }
+         .upload-container:hover {
+             border-color: #667eea;
+             background: linear-gradient(135deg, #f8f9fc 0%, #f0f2ff 100%);
+         }
+         /* 隐藏默认的文件上传器样式 */
+         .stFileUploader {
+             width: 100% !important;
+         }
+         .stFileUploader > div {
+             border: none !important;
+             background: transparent !important;
+             padding: 0 !important;
+             margin: 0 !important;
+         }
+         .stFileUploader > div > div {
+             border: none !important;
+             background: transparent !important;
+             padding: 0 !important;
+             margin: 0 !important;
+         }
+         .stFileUploader > div > div > div {
+             border: none !important;
+             background: transparent !important;
+             padding: 0 !important;
+             margin: 0 !important;
+         }
+         .stFileUploader label {
+             display: none !important;
+         }
+         /* 自定义上传按钮样式 */
+         .stFileUploader > div > div > div > button {
+             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+             color: white !important;
+             border: none !important;
+             border-radius: 25px !important;
+             padding: 12px 30px !important;
+             font-weight: 600 !important;
+             font-size: 14px !important;
+             margin-top: 10px !important;
+             transition: all 0.3s ease !important;
+         }
+         .stFileUploader > div > div > div > button:hover {
+             transform: translateY(-2px) !important;
+             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+         }
+         </style>
+        
+        <div class="upload-container">
             <!-- 背景装饰 -->
             <div style="position: absolute; 
                         top: -50%; 
@@ -391,13 +442,12 @@ def render_upload_stage():
                 <h3 style="color: #2c3e50; font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px;">
                     点击上传或拖拽文件到此处
                 </h3>
-                <p style="color: #6c757d; font-size: 0.95rem; margin: 0; line-height: 1.4;">
+                <p style="color: #6c757d; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.4;">
                     支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB
                 </p>
-            </div>
-        </div>
         """, unsafe_allow_html=True)
         
+        # 在拖拽区域内放置文件上传器
         uploaded_file = st.file_uploader(
             "选择调研表文件",
             type=['xlsx', 'xls', 'pptx', 'ppt', 'docx', 'doc'],
@@ -405,6 +455,11 @@ def render_upload_stage():
             key=f"file_uploader_{st.session_state.uploader_key}",
             label_visibility="collapsed"
         )
+        
+        st.markdown("""
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     if uploaded_file:
         st.session_state.uploaded_file = uploaded_file
