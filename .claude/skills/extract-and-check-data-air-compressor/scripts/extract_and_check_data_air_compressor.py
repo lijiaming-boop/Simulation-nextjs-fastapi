@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import datetime
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
@@ -26,6 +27,13 @@ except ImportError:
     print("错误: 需要安装 openpyxl 库")
     print("请运行: pip install openpyxl")
     sys.exit(1)
+
+try:
+    from docx import Document
+except ImportError:
+    print("警告: python-docx 未安装，Word文档读取功能将不可用")
+    print("如需支持Word格式，请运行: pip install python-docx")
+    Document = None
 
 
 # 常量定义
@@ -125,6 +133,52 @@ def parse_value(value):
         return float(number_match.group(1))
 
     return None
+
+
+def read_word_document(docx_path: str) -> pd.DataFrame:
+    """从Word文档中提取表格数据并转换为DataFrame
+    
+    Args:
+        docx_path: Word文档路径
+        
+    Returns:
+        包含Word文档表格数据的DataFrame
+    """
+    print(f"📖 [Word读取] 打开文档: {docx_path}")
+    
+    doc = Document(docx_path)
+    
+    # 收集所有表格
+    all_tables = []
+    print(f"📊 [Word读取] 发现 {len(doc.tables)} 个表格")
+    
+    for i, table in enumerate(doc.tables):
+        print(f"📋 [Word读取] 处理表格 {i+1}/{len(doc.tables)}")
+        # 将表格转换为DataFrame
+        rows = []
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            rows.append(cells)
+        
+        if rows:
+            df_table = pd.DataFrame(rows[1:], columns=rows[0] if rows else None)
+            all_tables.append(df_table)
+            print(f"   表格 {i+1}: {df_table.shape[0]} 行 x {df_table.shape[1]} 列")
+    
+    if not all_tables:
+        # 如果没有表格，尝试从段落中提取数据
+        print(f"⚠️  [Word读取] 未发现表格，尝试从段落提取...")
+        # 返回空的DataFrame
+        return pd.DataFrame()
+    
+    # 合并所有表格（按行）
+    # 优先使用第一个表格（通常是主数据表）
+    if all_tables:
+        main_df = all_tables[0]
+        print(f"✅ [Word读取] 使用主表格: {main_df.shape[0]} 行 x {main_df.shape[1]} 列")
+        return main_df
+    
+    return pd.DataFrame()
 
 
 def extract_project_info(df):
@@ -472,30 +526,100 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
                     print(f"❌ [数据提取] xlrd引擎读取失败: {str(e3)}")
                     
                     # 所有Excel方法都失败了，检查是否是其他格式
-                     print(f"⚠️  [数据提取] Excel读取失败，检查文件格式...")
-                     
-                     # 检查文件扩展名
-                     file_ext = Path(survey_excel_path).suffix.lower()
-                     original_ext = Path(original_filename).suffix.lower() if original_filename else ""
-                     
-                     print(f"📄 [数据提取] 文件扩展名: {file_ext}, 原始扩展名: {original_ext}")
-                     
-                     if original_ext in ['.docx', '.doc', '.pptx', '.ppt']:
-                         # 这是Word或PowerPoint文件，返回特殊错误
-                         error_msg = f"检测到非Excel文件格式: {original_ext}\n"
-                         error_msg += f"空压模块目前主要支持Excel格式的调研表。\n"
-                         error_msg += f"如果您的调研表是Word或PowerPoint格式，请：\n"
-                         error_msg += f"1. 将表格数据复制到Excel文件中\n"
-                         error_msg += f"2. 或者联系技术支持添加对该格式的支持"
-                         raise Exception(error_msg)
-                     else:
-                         # 其他错误
-                         error_msg = f"无法读取文件，尝试了多种Excel读取方法:\n"
-                         error_msg += f"1. 默认方式: {str(e1)}\n"
-                         error_msg += f"2. openpyxl引擎: {str(e2)}\n"
-                         error_msg += f"3. xlrd引擎: {str(e3)}\n"
-                         error_msg += f"请确认文件是有效的Excel格式（.xlsx或.xls）"
-                         raise Exception(error_msg)
+                    print(f"⚠️  [数据提取] Excel读取失败，检查文件格式...")
+                    
+                    # 直接检查文件内容（更准确）
+                    try:
+                        with zipfile.ZipFile(survey_excel_path, 'r') as zf:
+                            file_list = zf.namelist()
+                            has_xl = any(f.startswith('xl/') for f in file_list)
+                            has_word = any(f.startswith('word/') for f in file_list)
+                            print(f"🔍 [数据提取] 文件内容检查: xl/={has_xl}, word/={has_word}")
+                            
+                            if has_word and not has_xl:
+                                # 这是Word文件，尝试使用python-docx读取
+                                if Document is None:
+                                    error_msg = f"检测到文件是Word格式(.docx)，不是Excel格式\n"
+                                    error_msg += f"当前环境未安装python-docx库，无法读取Word文档。\n"
+                                    error_msg += f"请先安装库: pip install python-docx\n"
+                                    error_msg += f"或者将Word文档中的表格数据复制到Excel文件中"
+                                    raise Exception(error_msg)
+                                
+                                print(f"🔄 [数据提取] 尝试使用python-docx读取Word文档...")
+                                try:
+                                    df = read_word_document(survey_excel_path)
+                                    print(f"✅ [数据提取] Word文档读取成功")
+                                    print(f"📏 [数据提取] 文档尺寸: {df.shape[0]} 行 x {df.shape[1]} 列")
+                                    
+                                    # 提取项目信息
+                                    print(f"🏢 [数据提取] 提取项目基本信息...")
+                                    project_info = extract_project_info(df)
+                                    print(f"✅ [数据提取] 项目信息提取完成: {project_info.get('companyName', '未知企业')}")
+                                    
+                                    # 提取设备列表
+                                    print(f"🔧 [数据提取] 提取设备列表...")
+                                    equipment_list = extract_equipment_list(df)
+                                    print(f"📋 [数据提取] 从Word文档提取到 {len(equipment_list)} 台设备")
+                                    
+                                    # 填充缺失的行业类型
+                                    if not project_info.get("industryType"):
+                                        if original_filename:
+                                            for industry in PRESSURE_SAFETY_MARGIN_TABLE.keys():
+                                                if industry in original_filename:
+                                                    project_info["industryType"] = industry
+                                                    break
+                                        if not project_info.get("industryType"):
+                                            project_info["industryType"] = "其他"
+                                    
+                                    # 填充缺失的电价
+                                    if not project_info.get("electricityPrice"):
+                                        project_info["electricityPrice"] = 0.7
+                                    
+                                    # 返回结果
+                                    return {
+                                        "extracted_data": {
+                                            "system_info": project_info,
+                                            "equipment_list": equipment_list
+                                        },
+                                        "quality_report": {
+                                            "completeness": calculate_completeness(project_info, equipment_list),
+                                            "confidence": calculate_confidence(project_info, equipment_list),
+                                            "confidence_level": get_confidence_level(project_info, equipment_list),
+                                            "issues": check_quality_issues(project_info, equipment_list),
+                                            "summary": generate_summary(project_info, equipment_list),
+                                            "need_rejection": False,
+                                            "rejection_reasons": []
+                                        }
+                                    }
+                                except Exception as word_error:
+                                    error_msg = f"Word文档读取失败: {str(word_error)}\n"
+                                    error_msg += f"请确认Word文档中包含有效的表格数据"
+                                    raise Exception(error_msg)
+                            elif not has_xl and not has_word:
+                                # 无法识别的格式
+                                error_msg = f"无法识别文件格式\n"
+                                error_msg += f"请确认文件是有效的Excel格式(.xlsx或.xls)"
+                                raise Exception(error_msg)
+                    except zipfile.BadZipFile:
+                        # 不是zip格式（可能是老版本.xls或其他格式）
+                        pass
+                    
+                    # 回退到扩展名检查
+                    original_ext = Path(original_filename).suffix.lower() if original_filename else ""
+                    if original_ext in ['.docx', '.doc', '.pptx', '.ppt']:
+                        error_msg = f"检测到非Excel文件格式: {original_ext}\n"
+                        error_msg += f"空压模块目前主要支持Excel格式的调研表。\n"
+                        error_msg += f"如果您的调研表是Word或PowerPoint格式，请：\n"
+                        error_msg += f"1. 将表格数据复制到Excel文件中\n"
+                        error_msg += f"2. 或者联系技术支持添加对该格式的支持"
+                        raise Exception(error_msg)
+                    else:
+                        error_msg = f"无法读取文件，尝试了多种Excel读取方法:\n"
+                        error_msg += f"1. 默认方式: {str(e1)}\n"
+                        error_msg += f"2. openpyxl引擎: {str(e2)}\n"
+                        error_msg += f"3. xlrd引擎: {str(e3)}\n"
+                        error_msg += f"请确认文件是有效的Excel格式(.xlsx或.xls)"
+                        raise Exception(error_msg)
         
         print(f"📄 [数据提取] 发现工作表: {xls.sheet_names}")
         
