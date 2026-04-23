@@ -8,7 +8,11 @@
 2. `output_json_path` (string): 输出JSON文件路径
 3. `original_filename` (string, optional): 原始文件名(用于地区和行业推断)
 
-## 输出结果
+## 输出要求
+
+**重要：输出必须简洁，只输出必要的JSON数据，不要添加任何解释性文本、markdown代码块标记（```json）、格式化内容或对话式描述。**
+
+输出格式如下：
 ```json
 {
   "extracted_data": {
@@ -36,9 +40,7 @@
         "age": 机龄 (年),
         "runningStatus": "运行状态",
         "ratedPower": 铭牌功率 (kW),
-        "ratedFlow": 铭牌流量 (m³/min),
-        "compressorPowerFactor": 压缩机功率因子 (kW/(m³/min)/bar),
-        "specificPower": 比功率 (kW/(m³/min))
+        "ratedFlow": 铭牌流量 (m³/min)
       }
     ]
   },
@@ -60,6 +62,13 @@
   }
 }
 ```
+
+**关键要求：**
+1. 只输出纯JSON，不要有 ```json 标记
+2. equipment_list 中只包含必要字段，移除不必要的派生字段计算说明
+3. issues 只列出实际存在的问题，不要列出所有检查项
+4. summary 简洁明了，不超过50字
+5. 不要输出任何对话式文本（如"以下是提取的结果"）
 
 ## 功能说明
 1. **数据提取**:
