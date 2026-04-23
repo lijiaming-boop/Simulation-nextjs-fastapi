@@ -1018,24 +1018,32 @@ def render_calculate_stage():
                 str(session_dir / "result_data.json")
             )
         else:
-            # 空压机计算逻辑（暂用模拟数据，需要替换为实际的空压机计算模块）
-            # 使用专门的空压机Excel计算器
-            from core.air_compressor_calculator import AirCompressorCalculator
-            calculator = AirCompressorCalculator()
+            # 空压机计算逻辑 - 使用新的计算skill
+            print("🔢 [空压计算] 调用空压机节能计算skill...")
             
-            result_path = calculator.calculate(
+            # 调用空压机节能计算skill
+            calc_caller = SkillCaller(timeout=300)
+            calc_result = calc_caller.call_skill(
+                "calculate-air-compressor-energy-saving",
                 filled_path,
                 str(session_dir / "result_data.json")
             )
+            
+            result_path = str(session_dir / "result_data.json")
 
         # 读取结果
         with open(result_path, 'r', encoding='utf-8') as f:
             result = json.load(f)
 
         # 保存格式化结果
-        formatted_result = calculator.format_export_results(filled_data, result)
-        with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
-            json.dump(formatted_result, f, ensure_ascii=False, indent=2)
+        if st.session_state.module_type == 'air_conditioner':
+            formatted_result = calculator.format_export_results(filled_data, result)
+            with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
+                json.dump(formatted_result, f, ensure_ascii=False, indent=2)
+        else:
+            # 空压机模块直接使用计算结果
+            with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
 
         progress_bar.progress(80)
 

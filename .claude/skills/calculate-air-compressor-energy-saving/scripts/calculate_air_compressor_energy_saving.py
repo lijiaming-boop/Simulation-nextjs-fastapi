@@ -1,0 +1,389 @@
+#!/usr/bin/env python3
+"""
+空压机节能率计算器
+基于需求文档的标准计算公式进行节能率和节能量计算
+"""
+
+import json
+import sys
+import math
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+# 常量定义
+ATMOSPHERIC_PRESSURE = 1.0  # bar，大气压力
+MAIN_PIPELINE_DIRECT_CONSUMPTION_RATIO = 70  # %，主管网直接耗量比例
+
+
+class AirCompressorEnergyCalculator:
+    """空压机节能率计算器"""
+    
+    def __init__(self):
+        """初始化计算器"""
+        self.calculation_details = {}
+    
+    def calculate_energy_saving(self, filled_data: Dict[str, Any]) -> Dict[str, Any]:
+        """计算空压机系统节能率"""
+        
+        print(f"🔢 [节能计算] 开始计算空压机系统节能率...")
+        
+        # 提取基础数据
+        project_data = self._extract_project_data(filled_data)
+        equipment_data = self._extract_equipment_data(filled_data)
+        
+        # 计算系统参数
+        system_params = self._calculate_system_parameters(equipment_data)
+        
+        # 计算当前系统能耗
+        current_energy = self._calculate_current_energy_consumption(project_data, system_params)
+        
+        # 计算优化后系统能耗
+        optimized_energy = self._calculate_optimized_energy_consumption(project_data, system_params)
+        
+        # 计算节能率和节能量
+        energy_saving = current_energy - optimized_energy
+        energy_saving_rate = energy_saving / current_energy if current_energy > 0 else 0
+        
+        # 计算范围估算
+        energy_saving_rate_min = energy_saving_rate * 0.8
+        energy_saving_rate_max = energy_saving_rate * 1.2
+        total_saving_min = energy_saving * 0.8
+        total_saving_max = energy_saving * 1.2
+        
+        # 构建结果
+        result = {
+            "current_total_energy": current_energy,
+            "optimized_total_energy": optimized_energy,
+            "energy_saving": energy_saving,
+            "energy_saving_rate": energy_saving_rate,
+            "energy_saving_rate_range": f"{energy_saving_rate_min * 100:.1f}% - {energy_saving_rate_max * 100:.1f}%",
+            "energy_saving_rate_min": energy_saving_rate_min,
+            "energy_saving_rate_max": energy_saving_rate_max,
+            "total_saving_min": total_saving_min,
+            "total_saving_max": total_saving_max,
+            "system_parameters": system_params,
+            "calculation_details": self.calculation_details,
+            "completeness": filled_data.get("completeness", 1.0),
+            "filled_count": len(filled_data.get("fillable_suggestions", [])),
+            "calculation_method": "air_compressor_standard",
+            "equipment_analysis": self._analyze_equipment(equipment_data)
+        }
+        
+        print(f"✅ [节能计算] 计算完成")
+        print(f"📊 当前系统能耗: {current_energy / 10000:.1f} 万kWh/年")
+        print(f"📊 优化后能耗: {optimized_energy / 10000:.1f} 万kWh/年")
+        print(f"📊 节能量: {energy_saving / 10000:.1f} 万kWh/年")
+        print(f"📊 节能率: {energy_saving_rate * 100:.1f}%")
+        
+        return result
+    
+    def _extract_project_data(self, filled_data: Dict[str, Any]) -> Dict[str, Any]:
+        """提取项目级数据"""
+        
+        return {
+            "totalAnnualEnergyConsumption": filled_data.get("totalAnnualEnergyConsumption", 0),
+            "electricityPrice": filled_data.get("electricityPrice", 0.6),
+            "alarmPressureLowerLimit": filled_data.get("alarmPressureLowerLimit", 5.0),
+            "averagePressure": filled_data.get("averagePressure", 6.0),
+            "dailyRunningHours": filled_data.get("dailyRunningHours", 20),
+            "annualRunningDays": filled_data.get("annualRunningDays", 330),
+            "averageAnnualOperatingHours": filled_data.get("averageAnnualOperatingHours", 8500),
+            "safetyMargin": filled_data.get("safetyMargin", 0.2),
+            "pressureFluctuation": filled_data.get("pressureFluctuation", 0.2),
+            "postControlAveragePressure": filled_data.get("postControlAveragePressure", 5.4),
+            "mainPipelineDirectConsumptionRatio": filled_data.get("mainPipelineDirectConsumptionRatio", 70)
+        }
+    
+    def _extract_equipment_data(self, filled_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """提取设备级数据"""
+        
+        equipment_list = filled_data.get("equipmentList", [])
+        processed_equipment = []
+        
+        for equipment in equipment_list:
+            # 确保所有必要字段存在
+            processed_eq = {
+                "equipmentNumber": equipment.get("equipmentNumber", ""),
+                "brand": equipment.get("brand", ""),
+                "model": equipment.get("model", ""),
+                "equipmentType": equipment.get("equipmentType", "螺杆式"),
+                "manufactureYear": equipment.get("manufactureYear", 2015),
+                "runningStatus": equipment.get("runningStatus", "运行"),
+                "ratedPower": equipment.get("ratedPower", 0),
+                "ratedFlow": equipment.get("ratedFlow", 0),
+                "station": equipment.get("station", "空压站"),
+                "age": equipment.get("age", 10),
+                "specificPower": equipment.get("specificPower", 7.0),
+                "compressorPowerFactor": equipment.get("compressorPowerFactor", 0.35)
+            }
+            
+            processed_equipment.append(processed_eq)
+        
+        return processed_equipment
+    
+    def _calculate_system_parameters(self, equipment_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """计算系统级参数"""
+        
+        print(f"🔧 [系统参数] 计算系统级参数...")
+        
+        # 筛选运行和备用设备
+        running_equipment = [eq for eq in equipment_data if eq["runningStatus"] in ["运行", "备用"]]
+        active_equipment = [eq for eq in equipment_data if eq["runningStatus"] == "运行"]
+        
+        if not running_equipment:
+            raise ValueError("没有找到运行或备用状态的空压机设备")
+        
+        if not active_equipment:
+            raise ValueError("没有找到运行状态的空压机设备")
+        
+        # 计算系统压缩机功率因子（运行+备用设备的平均值）
+        total_power_factor = sum(eq["compressorPowerFactor"] for eq in running_equipment)
+        system_compressor_power_factor = total_power_factor / len(running_equipment)
+        
+        # 计算系统比功率（仅运行设备的平均值）
+        total_specific_power = sum(eq["specificPower"] for eq in active_equipment)
+        system_specific_power = total_specific_power / len(active_equipment)
+        
+        # 计算系统压缩空气流量（仅运行设备的流量求和）
+        system_compressed_air_flow = sum(eq["ratedFlow"] for eq in active_equipment)
+        
+        system_params = {
+            "systemCompressorPowerFactor": round(system_compressor_power_factor, 3),
+            "systemSpecificPower": round(system_specific_power, 2),
+            "systemCompressedAirFlow": round(system_compressed_air_flow, 1),
+            "runningEquipmentCount": len(active_equipment),
+            "backupEquipmentCount": len([eq for eq in running_equipment if eq["runningStatus"] == "备用"]),
+            "totalEquipmentCount": len(equipment_data)
+        }
+        
+        print(f"📊 系统压缩机功率因子: {system_params['systemCompressorPowerFactor']}")
+        print(f"📊 系统比功率: {system_params['systemSpecificPower']} kW/(m³/min)")
+        print(f"📊 系统压缩空气流量: {system_params['systemCompressedAirFlow']} m³/min")
+        
+        return system_params
+    
+    def _calculate_current_energy_consumption(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> float:
+        """计算当前系统能耗"""
+        
+        print(f"⚡ [当前能耗] 计算当前系统能耗...")
+        
+        # 基础参数
+        current_pressure = project_data["averagePressure"]  # bar
+        annual_energy = project_data["totalAnnualEnergyConsumption"]  # kWh
+        
+        # 记录计算详情
+        self.calculation_details["current_pressure"] = current_pressure
+        self.calculation_details["annual_energy_from_survey"] = annual_energy
+        
+        print(f"📊 调研表年度总能耗: {annual_energy / 10000:.1f} 万kWh")
+        print(f"📊 当前系统平均压力: {current_pressure} bar")
+        
+        # 直接使用调研表中的年度总能耗作为当前系统能耗
+        # 这是最准确的基准值
+        current_total_energy = annual_energy
+        
+        self.calculation_details["current_calculation_method"] = "直接使用调研表年度总能耗"
+        
+        return current_total_energy
+    
+    def _calculate_optimized_energy_consumption(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> float:
+        """计算优化后系统能耗"""
+        
+        print(f"⚡ [优化能耗] 计算优化后系统能耗...")
+        
+        # 基础参数
+        current_pressure = project_data["averagePressure"]  # bar
+        optimized_pressure = project_data["postControlAveragePressure"]  # bar
+        annual_energy = project_data["totalAnnualEnergyConsumption"]  # kWh
+        
+        # 压力优化节能计算
+        # 检查压力合理性：如果当前压力低于优化后压力，说明当前系统已经很高效
+        if current_pressure <= optimized_pressure:
+            print(f"⚠️  当前压力({current_pressure} bar)已经接近或低于优化目标({optimized_pressure} bar)")
+            # 在这种情况下，节能主要来自控制优化，而非压力降低
+            # 使用保守的节能估算：5-15%的控制优化节能
+            control_optimization_factor = 0.9  # 10%的控制优化节能
+            optimized_total_energy = annual_energy * control_optimization_factor
+            
+            self.calculation_details["optimization_type"] = "控制优化为主"
+            self.calculation_details["control_optimization_factor"] = control_optimization_factor
+        else:
+            # 正常的压力优化计算
+            # 基于压缩机功率与压力的关系：P ∝ (P_out / P_in)^((γ-1)/γ)
+            # 简化模型：功率与压力比的1.3次方成正比
+            
+            pressure_ratio_current = (current_pressure + ATMOSPHERIC_PRESSURE) / ATMOSPHERIC_PRESSURE
+            pressure_ratio_optimized = (optimized_pressure + ATMOSPHERIC_PRESSURE) / ATMOSPHERIC_PRESSURE
+            
+            # 计算压力优化系数
+            pressure_optimization_factor = (pressure_ratio_optimized / pressure_ratio_current) ** 1.3
+            
+            # 优化后能耗 = 当前能耗 × 压力优化系数
+            optimized_total_energy = annual_energy * pressure_optimization_factor
+            
+            self.calculation_details["optimization_type"] = "压力优化为主"
+            self.calculation_details["pressure_ratio_current"] = pressure_ratio_current
+            self.calculation_details["pressure_ratio_optimized"] = pressure_ratio_optimized
+            self.calculation_details["pressure_optimization_factor"] = pressure_optimization_factor
+        
+        # 记录通用计算详情
+        self.calculation_details.update({
+            "optimized_pressure": optimized_pressure,
+            "pressure_reduction": current_pressure - optimized_pressure,
+            "optimized_calculation_method": "基于压力比的功率关系计算"
+        })
+        
+        print(f"📊 优化后系统平均压力: {optimized_pressure} bar")
+        print(f"📊 压力变化: {current_pressure - optimized_pressure:.2f} bar")
+        
+        # 根据优化类型显示不同信息
+        if "control_optimization_factor" in self.calculation_details:
+            print(f"📊 控制优化系数: {self.calculation_details['control_optimization_factor']:.3f}")
+        elif "pressure_optimization_factor" in self.calculation_details:
+            print(f"📊 压力优化系数: {self.calculation_details['pressure_optimization_factor']:.3f}")
+        
+        return optimized_total_energy
+    
+    def _analyze_equipment(self, equipment_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """分析设备状况"""
+        
+        analysis = {
+            "total_air_compressors": len(equipment_data),
+            "total_power": 0.0,
+            "average_efficiency": 0.0,
+            "equipment_types": {},
+            "brand_distribution": {},
+            "age_distribution": {}
+        }
+        
+        if not equipment_data:
+            return analysis
+        
+        # 统计运行设备
+        running_equipment = [eq for eq in equipment_data if eq["runningStatus"] == "运行"]
+        
+        if running_equipment:
+            # 总功率
+            total_power = sum(eq["ratedPower"] for eq in running_equipment)
+            analysis["total_power"] = total_power
+            
+            # 平均效率（基于比功率估算）
+            avg_specific_power = sum(eq["specificPower"] for eq in running_equipment) / len(running_equipment)
+            # 效率估算：比功率越低效率越高，参考值7.0对应80%效率
+            estimated_efficiency = max(0.6, min(0.9, 0.8 * (7.0 / avg_specific_power)))
+            analysis["average_efficiency"] = estimated_efficiency
+        
+        # 设备类型分布
+        for eq in equipment_data:
+            eq_type = eq["equipmentType"]
+            analysis["equipment_types"][eq_type] = analysis["equipment_types"].get(eq_type, 0) + 1
+        
+        # 品牌分布
+        for eq in equipment_data:
+            brand = eq["brand"] or "未知品牌"
+            analysis["brand_distribution"][brand] = analysis["brand_distribution"].get(brand, 0) + 1
+        
+        # 机龄分布
+        for eq in equipment_data:
+            age = eq["age"]
+            if age < 5:
+                age_group = "5年以下"
+            elif age < 10:
+                age_group = "5-10年"
+            else:
+                age_group = "10年以上"
+            
+            analysis["age_distribution"][age_group] = analysis["age_distribution"].get(age_group, 0) + 1
+        
+        return analysis
+    
+    def _calculate_energy_saving_details(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> Dict[str, Any]:
+        """计算详细的节能分析"""
+        
+        current_pressure = project_data["averagePressure"]
+        optimized_pressure = project_data["postControlAveragePressure"]
+        annual_hours = project_data["averageAnnualOperatingHours"]
+        system_flow = system_params["systemCompressedAirFlow"]
+        
+        # 计算压力节能潜力
+        pressure_reduction = current_pressure - optimized_pressure
+        pressure_saving_potential = pressure_reduction / current_pressure
+        
+        # 计算流量相关节能
+        # 基于主管网直接耗量比例
+        direct_consumption_ratio = project_data["mainPipelineDirectConsumptionRatio"] / 100
+        
+        details = {
+            "pressure_analysis": {
+                "current_pressure": current_pressure,
+                "optimized_pressure": optimized_pressure,
+                "pressure_reduction": pressure_reduction,
+                "pressure_saving_potential": pressure_saving_potential
+            },
+            "flow_analysis": {
+                "system_flow": system_flow,
+                "direct_consumption_ratio": direct_consumption_ratio,
+                "annual_operating_hours": annual_hours
+            },
+            "energy_breakdown": {
+                "compression_energy_saving": "基于压力优化的节能",
+                "control_optimization_saving": "智能控制优化节能",
+                "system_efficiency_improvement": "系统效率提升节能"
+            }
+        }
+        
+        return details
+
+
+def main():
+    """主函数"""
+    if len(sys.argv) < 3:
+        print("用法: python calculate_air_compressor_energy_saving.py <填充数据JSON路径> <输出结果JSON路径>")
+        sys.exit(1)
+    
+    filled_data_path = sys.argv[1]
+    output_path = sys.argv[2]
+    
+    print(f"🚀 [空压节能计算] 开始计算节能率")
+    print(f"📁 [空压节能计算] 填充数据: {filled_data_path}")
+    print(f"📁 [空压节能计算] 输出路径: {output_path}")
+    
+    try:
+        # 读取填充后的数据
+        with open(filled_data_path, 'r', encoding='utf-8') as f:
+            filled_data = json.load(f)
+        
+        # 执行节能计算
+        calculator = AirCompressorEnergyCalculator()
+        result = calculator.calculate_energy_saving(filled_data)
+        
+        # 保存结果
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ [空压节能计算] 计算完成")
+        print(f"📄 结果已保存到: {output_path}")
+        
+    except Exception as e:
+        print(f"❌ [空压节能计算] 计算失败: {str(e)}")
+        
+        # 保存错误结果
+        error_result = {
+            "error": True,
+            "message": f"节能计算失败: {str(e)}",
+            "current_total_energy": 0,
+            "optimized_total_energy": 0,
+            "energy_saving": 0,
+            "energy_saving_rate": 0,
+            "energy_saving_rate_range": "0% - 0%",
+            "calculation_method": "failed"
+        }
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(error_result, f, ensure_ascii=False, indent=2)
+        
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

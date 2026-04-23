@@ -338,6 +338,18 @@ class SkillCaller:
                 f"请基于行业标准和附表查询提供智能填充建议。"
             )
 
+        elif skill_name == "calculate-air-compressor-energy-saving":
+            if len(args) < 2:
+                raise SkillError(
+                    "calculate-air-compressor-energy-saving 需要2个参数: 填充数据路径, 输出结果路径"
+                )
+            return (
+                f"请使用 calculate-air-compressor-energy-saving skill 计算空压机节能率。\n"
+                f"请使用以下命令执行脚本：\n"
+                f"python .claude/skills/calculate-air-compressor-energy-saving/scripts/calculate_air_compressor_energy_saving.py {args[0]} {args[1]}\n"
+                f"请基于需求文档的标准计算公式进行精确计算。"
+            )
+
         else:
             # 通用提示词
             params_str = ', '.join(str(arg) for arg in args)
