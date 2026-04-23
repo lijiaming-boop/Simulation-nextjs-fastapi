@@ -435,7 +435,68 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     """
     try:
         print(f"📖 [数据提取] 读取Excel文件: {survey_excel_path}")
-        xls = pd.ExcelFile(survey_excel_path)
+        print(f"📁 [数据提取] 原始文件名: {original_filename}")
+        
+        # 检查文件是否存在
+        if not Path(survey_excel_path).exists():
+            raise FileNotFoundError(f"文件不存在: {survey_excel_path}")
+        
+        # 获取文件信息
+        file_size = Path(survey_excel_path).stat().st_size
+        print(f"📏 [数据提取] 文件大小: {file_size} 字节")
+        
+        # 尝试不同的方式读取文件
+        xls = None
+        try:
+            # 首先尝试作为Excel文件读取
+            print(f"🔄 [数据提取] 尝试读取为Excel格式...")
+            xls = pd.ExcelFile(survey_excel_path)
+            print(f"✅ [数据提取] Excel格式读取成功")
+        except Exception as e1:
+            print(f"❌ [数据提取] Excel格式读取失败: {str(e1)}")
+            
+            # 如果失败，尝试指定引擎
+            try:
+                print(f"🔄 [数据提取] 尝试使用openpyxl引擎...")
+                xls = pd.ExcelFile(survey_excel_path, engine='openpyxl')
+                print(f"✅ [数据提取] openpyxl引擎读取成功")
+            except Exception as e2:
+                print(f"❌ [数据提取] openpyxl引擎读取失败: {str(e2)}")
+                
+                # 尝试xlrd引擎（用于.xls文件）
+                try:
+                    print(f"🔄 [数据提取] 尝试使用xlrd引擎...")
+                    xls = pd.ExcelFile(survey_excel_path, engine='xlrd')
+                    print(f"✅ [数据提取] xlrd引擎读取成功")
+                except Exception as e3:
+                    print(f"❌ [数据提取] xlrd引擎读取失败: {str(e3)}")
+                    
+                    # 所有Excel方法都失败了，检查是否是其他格式
+                     print(f"⚠️  [数据提取] Excel读取失败，检查文件格式...")
+                     
+                     # 检查文件扩展名
+                     file_ext = Path(survey_excel_path).suffix.lower()
+                     original_ext = Path(original_filename).suffix.lower() if original_filename else ""
+                     
+                     print(f"📄 [数据提取] 文件扩展名: {file_ext}, 原始扩展名: {original_ext}")
+                     
+                     if original_ext in ['.docx', '.doc', '.pptx', '.ppt']:
+                         # 这是Word或PowerPoint文件，返回特殊错误
+                         error_msg = f"检测到非Excel文件格式: {original_ext}\n"
+                         error_msg += f"空压模块目前主要支持Excel格式的调研表。\n"
+                         error_msg += f"如果您的调研表是Word或PowerPoint格式，请：\n"
+                         error_msg += f"1. 将表格数据复制到Excel文件中\n"
+                         error_msg += f"2. 或者联系技术支持添加对该格式的支持"
+                         raise Exception(error_msg)
+                     else:
+                         # 其他错误
+                         error_msg = f"无法读取文件，尝试了多种Excel读取方法:\n"
+                         error_msg += f"1. 默认方式: {str(e1)}\n"
+                         error_msg += f"2. openpyxl引擎: {str(e2)}\n"
+                         error_msg += f"3. xlrd引擎: {str(e3)}\n"
+                         error_msg += f"请确认文件是有效的Excel格式（.xlsx或.xls）"
+                         raise Exception(error_msg)
+        
         print(f"📄 [数据提取] 发现工作表: {xls.sheet_names}")
         
         # 尝试从第一个工作表提取数据
