@@ -118,20 +118,34 @@ class SkillCaller:
             SkillError: Skill 调用失败
         """
         # 检查 Skill 是否存在
+        print(f"🔍 [SkillCaller] 查找技能: {skill_name}")
         skill_path = self.skills_dir / skill_name
         skill_md = skill_path / "SKILL.md"
+        print(f"📁 [SkillCaller] 技能路径: {skill_path}")
 
         # 兼容旧版单文件格式
         if not skill_md.exists():
             skill_md_old = self.skills_dir / f"{skill_name}.md"
             if not skill_md_old.exists():
+                print(f"❌ [SkillCaller] 技能未找到: {skill_name}")
                 raise SkillError(f"Skill not found: {skill_name}")
+            print(f"📄 [SkillCaller] 使用旧版技能文件: {skill_md_old}")
+        else:
+            print(f"📄 [SkillCaller] 使用新版技能文件: {skill_md}")
 
         # 构建提示词
+        print(f"📝 [SkillCaller] 构建提示词，参数数量: {len(args)}")
         prompt = self._build_prompt(skill_name, *args)
+        print(f"📏 [SkillCaller] 提示词长度: {len(prompt)} 字符")
 
         # 配置 Agent SDK
         # 注意: API key 通过环境变量 ANTHROPIC_API_KEY 传递
+        print(f"⚙️  [SkillCaller] 配置Agent SDK")
+        print(f"   - 工作目录: {self.project_root}")
+        print(f"   - 超时时间: {self.timeout}秒")
+        print(f"   - API端点: {os.getenv('ANTHROPIC_BASE_URL', '默认')}")
+        print(f"   - 模型: {os.getenv('ANTHROPIC_MODEL', '默认')}")
+        
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
             setting_sources=["user", "project"],
@@ -139,6 +153,7 @@ class SkillCaller:
         )
 
         # 调用 Agent SDK（添加超时控制）
+        print(f"🚀 [SkillCaller] 开始调用Claude Agent SDK...")
         all_messages = []
         ai_responses = []
         try:
@@ -152,7 +167,7 @@ class SkillCaller:
                         for block in message.content:
                             if isinstance(block, TextBlock):
                                 # 打印AI响应内容到console（方便调试）
-                                print(f"[AI Response] {block.text}")
+                                print(f"🤖 [AI Response] {block.text}")
                                 ai_responses.append(block.text)
 
                                 # 调用回调函数（新增）
@@ -162,6 +177,9 @@ class SkillCaller:
 
                                 # 等待一小段时间让 Streamlit 有机会重绘
                                 await asyncio.sleep(0.01)
+                    else:
+                        # 记录其他类型的消息
+                        print(f"📨 [Other Message] {type(message).__name__}: {str(message)[:100]}...")
 
         except asyncio.TimeoutError as e:
             # 错误时也调用回调
@@ -188,9 +206,14 @@ class SkillCaller:
 
         # 合并结果文本
         result_text = "\n".join(all_messages)
+        print(f"✅ [SkillCaller] 技能执行完成")
+        print(f"   - 收到消息数: {len(all_messages)}")
+        print(f"   - AI回复数: {len(ai_responses)}")
+        print(f"   - 总文本长度: {len(result_text)} 字符")
 
         # 检查输出文件(如果需要)
         if check_output and len(args) >= 2:
+            print(f"🔍 [SkillCaller] 检查输出文件...")
             # 根据不同的skill确定输出文件的位置
             if skill_name == "suggest-data-filling":
                 # suggest-data-filling: args[0]=输入, args[1]=输入, args[2]=输出

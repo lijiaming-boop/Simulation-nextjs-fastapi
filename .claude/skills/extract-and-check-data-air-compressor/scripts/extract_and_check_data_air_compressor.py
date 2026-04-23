@@ -434,25 +434,38 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         original_filename: 原始文件名
     """
     try:
+        print(f"📖 [数据提取] 读取Excel文件: {survey_excel_path}")
         xls = pd.ExcelFile(survey_excel_path)
+        print(f"📄 [数据提取] 发现工作表: {xls.sheet_names}")
         
         # 尝试从第一个工作表提取数据
         first_sheet = xls.sheet_names[0]
+        print(f"📊 [数据提取] 开始处理工作表: {first_sheet}")
         df = pd.read_excel(xls, sheet_name=first_sheet, header=None)
+        print(f"📏 [数据提取] 工作表尺寸: {df.shape[0]} 行 x {df.shape[1]} 列")
         
         # 提取项目信息
+        print(f"🏢 [数据提取] 提取项目基本信息...")
         project_info = extract_project_info(df)
+        print(f"✅ [数据提取] 项目信息提取完成: {project_info.get('companyName', '未知企业')}")
         
         # 提取设备列表
+        print(f"🔧 [数据提取] 提取设备列表...")
         equipment_list = extract_equipment_list(df)
+        print(f"📋 [数据提取] 从工作表 '{first_sheet}' 提取到 {len(equipment_list)} 台设备")
         
         # 如果第一个工作表没有设备列表，尝试其他工作表
         if not equipment_list:
+            print(f"⚠️  [数据提取] 第一个工作表未找到设备，尝试其他工作表...")
             for sheet_name in xls.sheet_names[1:]:
+                print(f"🔍 [数据提取] 检查工作表: {sheet_name}")
                 df_sheet = pd.read_excel(xls, sheet_name=sheet_name, header=None)
                 equipment_list = extract_equipment_list(df_sheet)
                 if equipment_list:
+                    print(f"✅ [数据提取] 在工作表 '{sheet_name}' 找到 {len(equipment_list)} 台设备")
                     break
+                else:
+                    print(f"❌ [数据提取] 工作表 '{sheet_name}' 未找到设备数据")
         
         # 填充缺失的行业类型
         if not project_info.get("industryType"):
@@ -479,6 +492,10 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         }
         
     except Exception as e:
+        print(f"❌ [数据提取] 发生异常: {str(e)}")
+        import traceback
+        print(f"🔍 [数据提取] 详细错误信息:")
+        traceback.print_exc()
         return {
             "error": True,
             "message": f"数据提取失败: {str(e)}"
@@ -817,57 +834,93 @@ def extract_and_check_data_air_compressor(survey_excel_path: str, output_json_pa
         original_filename: 原始文件名
     """
     try:
+        print(f"🔧 [空压机数据提取] 开始处理文件: {survey_excel_path}")
+        print(f"📁 [空压机数据提取] 原始文件名: {original_filename}")
+        print(f"📤 [空压机数据提取] 输出路径: {output_json_path}")
+        
         # 步骤 1: 提取数据
+        print("📊 [步骤1] 开始从Excel文件提取数据...")
         extracted_data = extract_data_from_excel(survey_excel_path, original_filename)
-
+        
         # 如果提取失败，直接返回错误
         if extracted_data.get("error"):
+            print(f"❌ [步骤1] 数据提取失败: {extracted_data.get('message')}")
             output_path = Path(output_json_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
             return
+        
+        print(f"✅ [步骤1] 数据提取成功")
+        print(f"   - 提取到 {len(extracted_data.get('equipment_list', []))} 台设备")
+        print(f"   - 企业名称: {extracted_data.get('system_info', {}).get('companyName', '未知')}")
+        print(f"   - 行业类型: {extracted_data.get('system_info', {}).get('industryType', '未知')}")
 
         # 步骤 2: 执行质量检查
+        print("🔍 [步骤2] 开始数据质量检查...")
         checker = AirCompressorDataQualityChecker(extracted_data)
         quality_report = checker.run()
+        
+        print(f"✅ [步骤2] 质量检查完成")
+        print(f"   - 数据完整率: {quality_report.get('completeness', 0)*100:.1f}%")
+        print(f"   - 置信度: {quality_report.get('confidence', 0):.1f}%")
+        print(f"   - 置信度等级: {quality_report.get('confidence_level', '未知')}")
+        print(f"   - 发现问题: {len(quality_report.get('issues', []))} 个")
+        
+        if quality_report.get('issues'):
+            print("⚠️  [质量问题详情]:")
+            for issue in quality_report.get('issues', []):
+                severity_icon = "🔴" if issue.get('severity') == 'high' else "🟡" if issue.get('severity') == 'medium' else "🟢"
+                print(f"   {severity_icon} {issue.get('message', '')}")
 
         # 步骤 3: 合并结果
+        print("📋 [步骤3] 合并提取结果和质量报告...")
         result = {
             "extracted_data": extracted_data,
             "quality_report": quality_report
         }
 
         # 步骤 4: 输出结果
+        print("💾 [步骤4] 保存结果到文件...")
         output_path = Path(output_json_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
-        print(f"✅ 空压机数据提取和质量检查完成: {output_json_path}")
-        print(f"企业名称: {extracted_data.get('system_info', {}).get('companyName')}")
-        print(f"项目名称: {extracted_data.get('system_info', {}).get('projectName')}")
-        print(f"设备数量: {len(extracted_data.get('equipment_list', []))}")
-        print(f"\n{quality_report['summary']}")
+        print(f"✅ [完成] 空压机数据提取和质量检查完成: {output_json_path}")
+        print(f"📊 [结果摘要]:")
+        print(f"   - 企业名称: {extracted_data.get('system_info', {}).get('companyName', '未知')}")
+        print(f"   - 项目名称: {extracted_data.get('system_info', {}).get('projectName', '未知')}")
+        print(f"   - 设备数量: {len(extracted_data.get('equipment_list', []))} 台")
+        print(f"   - 文件大小: {output_path.stat().st_size} 字节")
+        print(f"\n📋 [质量报告]: {quality_report['summary']}")
         
         if quality_report['need_rejection']:
-            print(f"\n❌ 需要打回的原因:")
+            print(f"\n❌ [需要打回] 发现致命问题:")
             for reason in quality_report['rejection_reasons']:
-                print(f"  - {reason}")
+                print(f"   🔴 {reason}")
+        else:
+            print(f"\n✅ [可以继续] 数据质量符合要求，可进入下一步骤")
     except Exception as e:
+        print(f"💥 [致命错误] 空压机数据处理失败: {str(e)}")
         import traceback
+        print(f"🔍 [错误详情] 完整堆栈跟踪:")
+        traceback.print_exc()
+        
         error_result = {
             "error": True,
             "message": f"执行过程中发生错误: {str(e)}",
             "traceback": traceback.format_exc()
         }
+        
+        print(f"💾 [错误处理] 保存错误信息到: {output_json_path}")
         output_path = Path(output_json_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(error_result, f, ensure_ascii=False, indent=2)
-        print(f"❌ 执行出错: {str(e)}")
-        print(traceback.format_exc())
+        
+        print(f"❌ [最终状态] 空压机数据处理失败，请检查上述错误信息")
 
 
 def main():
