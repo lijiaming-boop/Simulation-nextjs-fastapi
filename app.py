@@ -681,33 +681,38 @@ def render_extract_check_stage():
         else:
             st.info("未检测到设备信息")
 
-    # 问题列表
-    if issues:
-        st.subheader("📋 发现的问题")
+    # 根据模块类型显示不同的问题列表
+    if st.session_state.module_type == 'air_conditioner':
+        # 空调模块的问题列表显示
+        if issues:
+            st.subheader("📋 发现的问题")
 
-        severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
-        for issue in issues:
-            severity = issue.get("severity", "low")
-            severity_groups.get(severity, []).append(issue)
+            severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
+            for issue in issues:
+                severity = issue.get("severity", "low")
+                severity_groups.get(severity, []).append(issue)
 
-        severity_labels = {
-            "critical": "🔴 严重问题",
-            "high": "🟠 高优先级",
-            "medium": "🟡 中优先级",
-            "low": "🔵 低优先级"
-        }
+            severity_labels = {
+                "critical": "🔴 严重问题",
+                "high": "🟠 高优先级",
+                "medium": "🟡 中优先级",
+                "low": "🔵 低优先级"
+            }
 
-        for severity in ["critical", "high", "medium", "low"]:
-            group = severity_groups[severity]
-            if group:
-                with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
-                    for issue in group:
-                        st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
+            for severity in ["critical", "high", "medium", "low"]:
+                group = severity_groups[severity]
+                if group:
+                    with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
+                        for issue in group:
+                            st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
+        else:
+            st.success("✨ 未发现任何问题，数据质量优秀!")
+
+        # 总结
+        st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
     else:
-        st.success("✨ 未发现任何问题，数据质量优秀!")
-
-    # 总结
-    st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
+        # 空压机模块的问题列表显示 - 已在数据完整度卡片中显示，这里不重复显示
+        pass
 
     # 检查置信度级别
     confidence = quality_report.get("confidence_level", "unknown")
@@ -775,7 +780,10 @@ def render_extract_check_stage():
 
 def render_filling_stage():
     """阶段 3: 填充建议 (需要用户确认)"""
-    st.header("🔧 步骤 3: 数据填充建议")
+    if st.session_state.module_type == 'air_conditioner':
+        st.header("🔧 步骤 3: 数据填充建议")
+    else:
+        st.markdown("## 步骤 3：节能测算")
 
     # 检查是否已经生成填充建议
     if st.session_state.filling_suggestions is None:
@@ -866,29 +874,75 @@ def render_filling_stage():
         fillable = suggestions.get("fillable_suggestions", [])
 
         if fillable:
-            st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
+            if st.session_state.module_type == 'air_conditioner':
+                st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
 
-            st.subheader("📝 填充建议详情")
+                st.subheader("📝 填充建议详情")
 
-            # 转换为 DataFrame 展示
-            suggestions_data = []
-            for s in fillable:
-                suggestions_data.append({
-                    "字段": s.get("field"),
-                    "原始值": s.get("original_value") or "缺失",
-                    "建议值": s.get("suggested_value"),
-                    "方法": s.get("method"),
-                    "置信度": s.get("confidence"),
-                    "推理说明": s.get("reasoning")
-                })
+                # 转换为 DataFrame 展示
+                suggestions_data = []
+                for s in fillable:
+                    suggestions_data.append({
+                        "字段": s.get("field"),
+                        "原始值": s.get("original_value") or "缺失",
+                        "建议值": s.get("suggested_value"),
+                        "方法": s.get("method"),
+                        "置信度": s.get("confidence"),
+                        "推理说明": s.get("reasoning")
+                    })
 
-            df = pd.DataFrame(suggestions_data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+                df = pd.DataFrame(suggestions_data)
+                st.dataframe(df, use_container_width=True, hide_index=True)
 
-            st.info(
-                "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
-                "如果您同意这些建议，点击下方按钮继续计算。"
-            )
+                st.info(
+                    "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
+                    "如果您同意这些建议，点击下方按钮继续计算。"
+                )
+            else:
+                # 空压机模块的填充建议显示
+                st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
+                
+                st.markdown("### 📝 填充建议详情")
+                
+                # 使用卡片式布局显示填充建议
+                for i, s in enumerate(fillable):
+                    field_name = s.get("field", "未知字段")
+                    original_value = s.get("original_value") or "缺失"
+                    suggested_value = s.get("suggested_value", "")
+                    method = s.get("method", "")
+                    confidence = s.get("confidence", "")
+                    reasoning = s.get("reasoning", "")
+                    
+                    st.markdown(f"""
+                    <div style="background-color: #f8f9fa; padding: 16px; border-radius: 10px; 
+                                border: 1px solid #e0e0e0; margin-bottom: 12px;">
+                        <div style="font-weight: bold; color: #333; margin-bottom: 8px;">
+                            📊 {field_name}
+                        </div>
+                        <div style="display: flex; gap: 20px; margin-bottom: 8px;">
+                            <div>
+                                <span style="color: #666; font-size: 12px;">原始值:</span><br>
+                                <span style="color: #e74c3c;">{original_value}</span>
+                            </div>
+                            <div>
+                                <span style="color: #666; font-size: 12px;">建议值:</span><br>
+                                <span style="color: #27ae60; font-weight: bold;">{suggested_value}</span>
+                            </div>
+                            <div>
+                                <span style="color: #666; font-size: 12px;">置信度:</span><br>
+                                <span style="color: #3498db;">{confidence}</span>
+                            </div>
+                        </div>
+                        <div style="color: #666; font-size: 14px;">
+                            <strong>推理说明:</strong> {reasoning}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.info(
+                    "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
+                    "如果您同意这些建议，点击下方按钮继续计算。"
+                )
         else:
             st.success("✨ 数据完整，无需填充!")
 
@@ -908,7 +962,10 @@ def render_filling_stage():
 
 def render_calculate_stage():
     """阶段 4: 执行计算 (自动执行)"""
-    st.header("⚙️ 步骤 4: 执行计算")
+    if st.session_state.module_type == 'air_conditioner':
+        st.header("⚙️ 步骤 4: 执行计算")
+    else:
+        st.markdown("## 步骤 4：输出结果")
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -1021,7 +1078,10 @@ def render_result_stage():
     # 打印提示
     st.info("📋 **呼叫 SR 前，请点击右上角打印本页**")
 
-    st.header("📈 测算结果")
+    if st.session_state.module_type == 'air_conditioner':
+        st.header("📈 测算结果")
+    else:
+        st.markdown("## 📈 测算结果")
 
     result = st.session_state.result
 
