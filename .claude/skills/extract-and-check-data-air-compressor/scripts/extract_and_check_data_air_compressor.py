@@ -238,7 +238,7 @@ def extract_project_info(df):
         if project_info["projectLocation"]:
             project_info["companyName"] = project_info["projectLocation"]
             project_info["companyShortName"] = project_info["projectLocation"]
-            project_info["projectName"] = f"{project_info["projectLocation"]}空压系统节能项目"
+            project_info["projectName"] = f"{project_info['projectLocation']}空压系统节能项目"
         else:
             # 从文件名或其他信息生成默认名称
             project_info["companyName"] = "未知企业"
