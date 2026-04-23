@@ -139,7 +139,7 @@ class SkillCaller:
         print(f"📏 [SkillCaller] 提示词长度: {len(prompt)} 字符")
         
         # 检查提示词长度，如果过长则优化
-        if len(prompt) > 8000:  # 设置一个合理的长度限制
+        if len(prompt) > 4000:  # 降低阈值，更早触发优化
             print(f"⚠️  [SkillCaller] 提示词过长，进行优化...")
             prompt = self._optimize_prompt(prompt, skill_name, *args)
             print(f"📏 [SkillCaller] 优化后提示词长度: {len(prompt)} 字符")
@@ -247,18 +247,18 @@ class SkillCaller:
 
     def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
         """优化过长的提示词"""
-        # 对于空压机技能，使用简化的提示词
+        # 对于空压机技能，使用超简化的提示词
         if skill_name == "extract-and-check-data-air-compressor":
             if len(args) < 2:
                 raise SkillError(
                     "extract-and-check-data-air-compressor 需要至少2个参数"
                 )
-            optimized_prompt = (
-                f"执行空压机数据提取任务：\n"
-                f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
-            )
+            # 使用最简化的命令，减少上下文长度
+            cmd = f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
             if len(args) >= 3:
-                optimized_prompt += f" {args[2]}"
+                cmd += f" '{args[2]}'"
+            
+            optimized_prompt = f"请执行以下命令：\n{cmd}\n\n这将提取空压机调研表数据并生成JSON结果。"
             return optimized_prompt
         
         # 对于其他技能，截断过长的内容
@@ -331,16 +331,12 @@ class SkillCaller:
                 raise SkillError(
                     "extract-and-check-data-air-compressor 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
                 )
-            prompt = (
-                f"请使用 extract-and-check-data-air-compressor skill 从空压机调研表中提取数据并进行质量检查。\n"
-                f"支持Excel(.xlsx/.xls)和Word(.docx)格式。\n"
-                f"请执行以下命令：\n"
-                f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
-            )
-            # 如果提供了原始文件名,添加到提示词中
+            # 使用简化的提示词，减少token消耗
+            cmd = f"python .claude/skills/extract-and-check-data-air-compressor/scripts/extract_and_check_data_air_compressor.py {args[0]} {args[1]}"
             if len(args) >= 3:
-                prompt += f" {args[2]}"
-            prompt += "\n请确保输出包含 extracted_data 和 quality_report 两部分。"
+                cmd += f" '{args[2]}'"
+            
+            prompt = f"执行空压机数据提取：\n{cmd}\n\n输出JSON包含extracted_data和quality_report。"
             return prompt
 
         else:
