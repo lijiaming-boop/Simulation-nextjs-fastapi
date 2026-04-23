@@ -340,7 +340,7 @@ def render_extract_check_stage():
                 if st.session_state.module_type == 'air_conditioner':
                     skill_name = "extract-and-check-data"
                 else:
-                    skill_name = "extract-and-check-data-air-compressor"
+                    skill_name = "extract-air-compressor-data-llm"
                     
                 # 调用合并的 Skill: 提取和质量检查，传递原始文件名和回调
                 skill_result = caller.call_skill(

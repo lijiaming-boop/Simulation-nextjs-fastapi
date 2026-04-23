@@ -261,6 +261,19 @@ class SkillCaller:
             optimized_prompt = f"请执行以下命令：\n{cmd}\n\n这将提取空压机调研表数据并生成JSON结果。"
             return optimized_prompt
         
+        # 对于LLM版本的空压机技能
+        elif skill_name == "extract-air-compressor-data-llm":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-air-compressor-data-llm 需要至少2个参数"
+                )
+            cmd = f"python .trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
+            if len(args) >= 3:
+                cmd += f" '{args[2]}'"
+            
+            optimized_prompt = f"执行LLM智能数据提取：\n{cmd}"
+            return optimized_prompt
+        
         # 对于其他技能，截断过长的内容
         if len(prompt) > 8000:
             return prompt[:7500] + "\n...(内容已截断，请执行相应的脚本)"
@@ -337,6 +350,19 @@ class SkillCaller:
                 cmd += f" '{args[2]}'"
             
             prompt = f"执行空压机数据提取：\n{cmd}\n\n输出JSON包含extracted_data和quality_report。"
+            return prompt
+
+        elif skill_name == "extract-air-compressor-data-llm":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
+                )
+            # 使用LLM版本的空压数据提取
+            cmd = f"python .trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
+            if len(args) >= 3:
+                cmd += f" '{args[2]}'"
+            
+            prompt = f"执行LLM智能空压机数据提取：\n{cmd}\n\n使用大语言模型智能识别和提取调研表中的结构化数据。"
             return prompt
 
         else:
