@@ -175,7 +175,15 @@ class SkillCaller:
             # 错误时也调用回调
             if callback:
                 timestamp = datetime.now().strftime("%H:%M:%S")
-                callback(timestamp, f"❌ 执行出错: {str(e)}")
+                callback(timestamp, f"❌ 执行出错: {str(type(e).__name__)}: {str(e)}")
+                import traceback
+                callback(timestamp, f"详细错误信息: {traceback.format_exc()}")
+            # 添加更多调试信息
+            import traceback
+            print(f"调用 Skill '{skill_name}' 时发生错误:")
+            print(f"错误类型: {type(e).__name__}")
+            print(f"错误信息: {str(e)}")
+            print(f"详细堆栈: {traceback.format_exc()}")
             raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
 
         # 合并结果文本

@@ -49,7 +49,7 @@ class SessionManager:
             dir_name_with_counter = f"session_{timestamp}_{microseconds}_{counter}"
             session_dir = self.base_dir / dir_name_with_counter
 
-        session_dir.mkdir(parents=True, exist_ok=False)
+        session_dir.mkdir(parents=True, exist_ok=True)
 
         # 更新当前会话目录
         self._current_session_dir = session_dir

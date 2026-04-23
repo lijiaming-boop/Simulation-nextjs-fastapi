@@ -80,8 +80,8 @@ def main():
     """主函数"""
     # 页面配置
     st.set_page_config(
-        page_title="空调节能率智能测算工具",
-        page_icon="❄️",
+        page_title="节能率智能测算工具",
+        page_icon="⚡",
         layout="wide"
     )
 
@@ -89,13 +89,26 @@ def main():
 
     # 初始化
     init_session_state()
+    
+    # 如果还没有选择模块类型，显示模块选择页面
+    if 'module_type' not in st.session_state:
+        render_module_selection()
+        return
 
     # 标题和退出按钮
     col_title, col_logout = st.columns([6, 1])
     with col_title:
-        st.title("❄️ 空调节能率智能测算工具")
+        if st.session_state.module_type == 'air_conditioner':
+            st.title("❄️ 空调节能率智能测算工具")
+        else:
+            st.markdown("# 空压AI节能率测算", unsafe_allow_html=True)
     with col_logout:
         st.link_button("🚪 退出", "/logout", use_container_width=True)
+    
+    # 返回模块选择按钮
+    if st.button("🔙 返回模块选择", use_container_width=True):
+        del st.session_state.module_type
+        st.rerun()
     
     st.markdown("---")
 
@@ -105,22 +118,59 @@ def main():
         st.session_state.scroll_to_top = False  # 重置标志
 
     # 流程进度指示器
-    stages = ['上传调研表', '数据提取 + 质量检查', '数据填充', '节能测算', '结果展示']
-    stage_map = {
-        'upload': 0, 'extract_check': 1,
-        'filling': 2, 'calculate': 3, 'result': 4
-    }
-    current_stage = stage_map.get(st.session_state.stage, 0)
+    if st.session_state.module_type == 'air_conditioner':
+        stages = ['上传调研表', '数据提取 + 质量检查', '数据填充', '节能测算', '结果展示']
+        stage_map = {
+            'upload': 0, 'extract_check': 1,
+            'filling': 2, 'calculate': 3, 'result': 4
+        }
+        current_stage = stage_map.get(st.session_state.stage, 0)
 
-    cols = st.columns(len(stages))
-    for i, (col, stage_name) in enumerate(zip(cols, stages)):
-        with col:
-            if i < current_stage:
-                st.success(f"✅ {stage_name}")
-            elif i == current_stage:
-                st.info(f"▶️ {stage_name}")
-            else:
-                st.text(f"⏸️ {stage_name}")
+        cols = st.columns(len(stages))
+        for i, (col, stage_name) in enumerate(zip(cols, stages)):
+            with col:
+                if i < current_stage:
+                    st.success(f"✅ {stage_name}")
+                elif i == current_stage:
+                    st.info(f"▶️ {stage_name}")
+                else:
+                    st.text(f"⏸️ {stage_name}")
+    else:
+        # 空压模块的进度指示器 - 与Figma设计一致
+        stages = [
+            {'id': 'upload', 'name': '上传调研表', 'number': '1'},
+            {'id': 'extract_check', 'name': '数据提取', 'number': '2'},
+            {'id': 'filling', 'name': '节能测算', 'number': '3'},
+            {'id': 'calculate', 'name': '输出结果', 'number': '4'}
+        ]
+        
+        # 创建容器
+        progress_container = st.container()
+        with progress_container:
+            # 创建水平布局
+            col1, col2, col3, col4 = st.columns(4)
+            cols = [col1, col2, col3, col4]
+            
+            for i, stage in enumerate(stages):
+                with cols[i]:
+                    # 检查当前阶段
+                    is_completed = st.session_state.stage in ['extract_check', 'filling', 'calculate', 'result'] if i == 0 else \
+                                  st.session_state.stage in ['filling', 'calculate', 'result'] if i == 1 else \
+                                  st.session_state.stage in ['calculate', 'result'] if i == 2 else \
+                                  st.session_state.stage == 'result' if i == 3 else False
+                    
+                    is_current = (st.session_state.stage == 'upload' and i == 0) or \
+                                (st.session_state.stage == 'extract_check' and i == 1) or \
+                                (st.session_state.stage == 'filling' and i == 2) or \
+                                (st.session_state.stage in ['calculate', 'result'] and i == 3)
+                    
+                    # 圆形指示器
+                    if is_completed:
+                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333;">{stage["name"]}</div></div>', unsafe_allow_html=True)
+                    elif is_current:
+                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333;">{stage["name"]}</div></div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div style="display: flex; flex-direction: column; align-items: center;"><div style="width: 40px; height: 40px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; border: 2px solid #4CAF50; opacity: 0.4;"><span style="color: white; font-weight: bold;">{stage["number"]}</span></div><div style="margin-top: 8px; font-weight: bold; color: #333; opacity: 0.4;">{stage["name"]}</div></div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -139,18 +189,73 @@ def main():
         render_result_stage()
 
 
+def render_module_selection():
+    """模块选择页面"""
+    st.title("⚡ 节能率智能测算工具")
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📁 项目结构")
+        st.info("""
+        该工具包含两个主要模块：
+        - **空调节能率计算**：针对中央空调系统的节能评估
+        - **空压机节能率计算**：针对压缩空气系统的节能评估
+        """)
+    
+    with col2:
+        st.markdown("### 🛠️ 选择模块")
+        
+        if st.button("❄️ 空调节能率计算", use_container_width=True, type="primary"):
+            st.session_state.module_type = 'air_conditioner'
+            st.rerun()
+        
+        if st.button("🔧 空压机节能率计算", use_container_width=True, type="primary"):
+            st.session_state.module_type = 'air_compressor'
+            st.rerun()
+    
+    st.markdown("---")
+    st.markdown("### ℹ️ 使用说明")
+    st.markdown("""
+    1. 选择您需要使用的计算模块
+    2. 上传对应的调研表（Excel格式）
+    3. 系统将自动提取数据并进行质量检查
+    4. 如有缺失数据，系统会提供智能填充建议
+    5. 确认数据后，系统将进行节能率计算
+    6. 查看计算结果并下载相关报告
+    """)
+
+
 def render_upload_stage():
     """阶段 1: 上传调研表"""
-    st.header("📁 步骤 1: 上传调研表")
+    if st.session_state.module_type == 'air_conditioner':
+        st.header("📁 步骤 1: 上传调研表")
+        st.info("请上传标准的中央空调节能调研表 (Excel 格式)")
+        file_description = "中央空调节能调研表"
+    else:
+        # 空压模块的上传页面 - 与Figma设计一致
+        st.markdown("## 步骤 1: 上传调研表", unsafe_allow_html=True)
+        st.markdown("请上传空压节能调研表，支持同时上传多个文件（最多10个，支持 Excel、PPT、Word 格式）", unsafe_allow_html=True)
+        file_description = "空压机节能调研表"
 
-    st.info("请上传标准的中央空调节能调研表 (Excel 格式)")
-
-    uploaded_file = st.file_uploader(
-        "选择文件",
-        type=['xlsx', 'xls'],
-        help="请使用标准调研表模板",
-        key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
-    )
+    # 上传区域
+    if st.session_state.module_type == 'air_conditioner':
+        uploaded_file = st.file_uploader(
+            f"选择{file_description}",
+            type=['xlsx', 'xls'],
+            help="请使用标准调研表模板",
+            key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
+        )
+    else:
+        # 空压模块的上传区域 - 与Figma设计一致
+        uploaded_file = st.file_uploader(
+            "选择调研表文件",
+            type=['xlsx', 'xls', 'pptx', 'ppt', 'docx', 'doc'],
+            help="支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB",
+            key=f"file_uploader_{st.session_state.uploader_key}",
+            label_visibility="collapsed"
+        )
 
     if uploaded_file:
         st.session_state.uploaded_file = uploaded_file
@@ -163,14 +268,34 @@ def render_upload_stage():
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        st.success(f"✅ 文件已上传：{uploaded_file.name}")
-        st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
-        st.info(f"📂 会话目录：{session_dir.name}")  # 新增：显示会话目录名
+        if st.session_state.module_type == 'air_conditioner':
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
+            st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
+            st.info(f"📂 会话目录：{session_dir.name}")  # 新增：显示会话目录名
 
-        if st.button("🚀 开始分析", type="primary", use_container_width=True):
-            st.session_state.stage = 'extract_check'
-            st.session_state.scroll_to_top = True  # 新增：触发滚动
-            st.rerun()
+            if st.button("🚀 开始分析", type="primary", use_container_width=True):
+                st.session_state.stage = 'extract_check'
+                st.session_state.scroll_to_top = True  # 新增：触发滚动
+                st.rerun()
+        else:
+            # 空压模块的文件上传成功提示
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
+            st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
+
+    # 空压模块的按钮区域
+    if st.session_state.module_type == 'air_compressor':
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("上一步", use_container_width=True, type="secondary"):
+                if st.session_state.get('module_type'):
+                    del st.session_state.module_type
+                    st.rerun()
+        with col2:
+            if uploaded_file:
+                if st.button("下一步", use_container_width=True, type="primary"):
+                    st.session_state.stage = 'extract_check'
+                    st.session_state.scroll_to_top = True  # 新增：触发滚动
+                    st.rerun()
 
 
 def render_extract_check_stage():
@@ -211,9 +336,15 @@ def render_extract_check_stage():
                 # 获取原始文件名
                 original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
 
+                # 根据模块类型选择不同的技能
+                if st.session_state.module_type == 'air_conditioner':
+                    skill_name = "extract-and-check-data"
+                else:
+                    skill_name = "extract-and-check-data-air-compressor"
+                    
                 # 调用合并的 Skill: 提取和质量检查，传递原始文件名和回调
                 skill_result = caller.call_skill(
-                    "extract-and-check-data",
+                    skill_name,
                     str(upload_path),
                     str(output_path),
                     original_filename,  # 新增：传递原始文件名
@@ -456,9 +587,15 @@ def render_filling_stage():
                 quality_path = session_dir / "quality_report.json"
                 output_path = session_dir / "filling_suggestions.json"
 
+                # 根据模块类型选择不同的技能
+                if st.session_state.module_type == 'air_conditioner':
+                    skill_name = "suggest-data-filling"
+                else:
+                    skill_name = "suggest-data-filling-air-compressor"
+                    
                 # 调用 Skill 3: 填充建议，传递回调
                 skill_result = caller.call_skill(
-                    "suggest-data-filling",
+                    skill_name,
                     str(extracted_path),
                     str(quality_path),
                     str(output_path),
@@ -599,14 +736,25 @@ def render_calculate_stage():
         status_text.text("正在调用 AI 计算引擎...")
         progress_bar.progress(60)
 
-        # 使用气象数据服务
-        weather_service = WeatherService()
-        calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
+        if st.session_state.module_type == 'air_conditioner':
+            # 使用气象数据服务（空调需要）
+            weather_service = WeatherService()
+            calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
 
-        result_path = calculator.calculate(
-            filled_path,
-            str(session_dir / "result_data.json")
-        )
+            result_path = calculator.calculate(
+                filled_path,
+                str(session_dir / "result_data.json")
+            )
+        else:
+            # 空压机计算逻辑（暂用模拟数据，需要替换为实际的空压机计算模块）
+            # 使用专门的空压机Excel计算器
+            from core.air_compressor_calculator import AirCompressorCalculator
+            calculator = AirCompressorCalculator()
+            
+            result_path = calculator.calculate(
+                filled_path,
+                str(session_dir / "result_data.json")
+            )
 
         # 读取结果
         with open(result_path, 'r', encoding='utf-8') as f:
@@ -672,189 +820,307 @@ def render_result_stage():
     # 核心指标卡
     st.subheader("🎯 核心指标")
 
-    # 检查是否为范围计算结果
-    if "energy_saving_rate_range" in result:
-        # 新版：展示范围
-        st.metric(
-            "节能率范围",
-            result["energy_saving_rate_range"],
-            help="基于上限和下限两种估算方法"
-        )
-
-        # 详细展示：5 个核心指标
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        with col1:
+    # 根据模块类型显示不同的核心指标
+    if st.session_state.module_type == 'air_conditioner':
+        # 空调模块的核心指标展示
+        # 检查是否为范围计算结果
+        if "energy_saving_rate_range" in result:
+            # 新版：展示范围
             st.metric(
-                "下限（保守估计）",
-                f"{result['energy_saving_rate_min'] * 100:.1f}%"
+                "节能率范围",
+                result["energy_saving_rate_range"],
+                help="基于上限和下限两种估算方法"
             )
 
-        with col2:
-            st.metric(
-                "上限（理想情况）",
-                f"{result['energy_saving_rate_max'] * 100:.1f}%"
-            )
+            # 详细展示：5 个核心指标
+            col1, col2, col3, col4, col5 = st.columns(5)
 
-        with col3:
-            # P0 修复：添加总节能量范围
-            total_min = result.get('total_saving_min', 0)
-            total_max = result.get('total_saving_max', 0)
-            st.metric(
-                "总节能量范围",
-                f"{total_min:.1f} - {total_max:.1f} 万 kWh",
-                help="预估的年度总节能量范围"
-            )
-
-        with col4:
-            completeness = result.get("completeness", 0)
-            st.metric("数据完整度", f"{completeness * 100:.1f}%")
-
-        with col5:
-            filled_count = result.get("filled_count", 0)
-            st.metric("填充字段数", filled_count)
-    else:
-        # 旧版：单一值（向后兼容）
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            rate = result.get("energy_saving_rate", 0)
-            rate_min = result.get("energy_saving_rate_min", 0)
-            rate_max = result.get("energy_saving_rate_max", 0)
-
-            # P1 修复：恢复 delta 显示（如果 min/max 存在）
-            if rate_min > 0 and rate_max > 0:
+            with col1:
                 st.metric(
-                    "预估节能率",
-                    f"{rate * 100:.2f}%",
-                    delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
-                )
-            else:
-                st.metric(
-                    "预估节能率",
-                    f"{rate * 100:.2f}%"
+                    "下限（保守估计）",
+                    f"{result['energy_saving_rate_min'] * 100:.1f}%"
                 )
 
-        with col2:
-            total_saving = result.get("total_saving", 0)
-            st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
+            with col2:
+                st.metric(
+                    "上限（理想情况）",
+                    f"{result['energy_saving_rate_max'] * 100:.1f}%"
+                )
 
-        with col3:
-            completeness = result.get("completeness", 0)
-            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+            with col3:
+                # P0 修复：添加总节能量范围
+                total_min = result.get('total_saving_min', 0)
+                total_max = result.get('total_saving_max', 0)
+                st.metric(
+                    "总节能量范围",
+                    f"{total_min:.1f} - {total_max:.1f} 万 kWh",
+                    help="预估的年度总节能量范围"
+                )
 
-        with col4:
-            filled_count = result.get("filled_count", 0)
-            st.metric("填充字段数", filled_count)
+            with col4:
+                completeness = result.get("completeness", 0)
+                st.metric("数据完整度", f"{completeness * 100:.1f}%")
 
-    st.markdown("---")
+            with col5:
+                filled_count = result.get("filled_count", 0)
+                st.metric("填充字段数", filled_count)
+        else:
+            # 旧版：单一值（向后兼容）
+            col1, col2, col3, col4 = st.columns(4)
 
-    # 分项节能明细
-    st.subheader("📊 分项节能明细")
+            with col1:
+                rate = result.get("energy_saving_rate", 0)
+                rate_min = result.get("energy_saving_rate_min", 0)
+                rate_max = result.get("energy_saving_rate_max", 0)
 
-    # 检查是否为范围计算结果
-    if "chiller_saving_min" in result:
-        # 新版：展示范围
-        savings_data = {
-            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
-            "节能量范围 (万 kWh)": [
-                f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
-                f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
-                f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
-                f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
-            ],
-            "下限 (万 kWh)": [
+                # P1 修复：恢复 delta 显示（如果 min/max 存在）
+                if rate_min > 0 and rate_max > 0:
+                    st.metric(
+                        "预估节能率",
+                        f"{rate * 100:.2f}%",
+                        delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+                    )
+                else:
+                    st.metric(
+                        "预估节能率",
+                        f"{rate * 100:.2f}%"
+                    )
+
+            with col2:
+                total_saving = result.get("total_saving", 0)
+                st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
+
+            with col3:
+                completeness = result.get("completeness", 0)
+                st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+            with col4:
+                filled_count = result.get("filled_count", 0)
+                st.metric("填充字段数", filled_count)
+
+        st.markdown("---")
+
+        # 分项节能明细 - 空调
+        st.subheader("📊 分项节能明细")
+
+        # 检查是否为范围计算结果
+        if "chiller_saving_min" in result:
+            # 新版：展示范围
+            savings_data = {
+                "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+                "节能量范围 (万 kWh)": [
+                    f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
+                    f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
+                    f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
+                    f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
+                ],
+                "下限 (万 kWh)": [
+                    result.get("chiller_saving_min", 0),
+                    result.get("pump_saving_min", 0),
+                    result.get("tower_saving_min", 0),
+                    result.get("total_saving_min", 0)
+                ],
+                "上限 (万 kWh)": [
+                    result.get("chiller_saving_max", 0),
+                    result.get("pump_saving_max", 0),
+                    result.get("tower_saving_max", 0),
+                    result.get("total_saving_max", 0)
+                ]
+            }
+
+            df_savings = pd.DataFrame(savings_data)
+            st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+            # 柱状图 - 展示范围
+            devices = ["冷机", "水泵", "冷却塔"]
+            min_values = [
                 result.get("chiller_saving_min", 0),
                 result.get("pump_saving_min", 0),
-                result.get("tower_saving_min", 0),
-                result.get("total_saving_min", 0)
-            ],
-            "上限 (万 kWh)": [
+                result.get("tower_saving_min", 0)
+            ]
+            max_values = [
                 result.get("chiller_saving_max", 0),
                 result.get("pump_saving_max", 0),
-                result.get("tower_saving_max", 0),
-                result.get("total_saving_max", 0)
+                result.get("tower_saving_max", 0)
             ]
-        }
 
-        df_savings = pd.DataFrame(savings_data)
-        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+            fig = go.Figure()
 
-        # 柱状图 - 展示范围
-        devices = ["冷机", "水泵", "冷却塔"]
-        min_values = [
-            result.get("chiller_saving_min", 0),
-            result.get("pump_saving_min", 0),
-            result.get("tower_saving_min", 0)
-        ]
-        max_values = [
-            result.get("chiller_saving_max", 0),
-            result.get("pump_saving_max", 0),
-            result.get("tower_saving_max", 0)
-        ]
+            # 添加下限柱
+            fig.add_trace(go.Bar(
+                name='下限（保守估计）',
+                x=devices,
+                y=min_values,
+                text=[f"{v:.1f}" for v in min_values],
+                textposition='outside'
+            ))
 
-        fig = go.Figure()
+            # 添加上限柱
+            fig.add_trace(go.Bar(
+                name='上限（理想情况）',
+                x=devices,
+                y=max_values,
+                text=[f"{v:.1f}" for v in max_values],
+                textposition='outside'
+            ))
 
-        # 添加下限柱
-        fig.add_trace(go.Bar(
-            name='下限（保守估计）',
-            x=devices,
-            y=min_values,
-            text=[f"{v:.1f}" for v in min_values],
-            textposition='outside'
-        ))
-
-        # 添加上限柱
-        fig.add_trace(go.Bar(
-            name='上限（理想情况）',
-            x=devices,
-            y=max_values,
-            text=[f"{v:.1f}" for v in max_values],
-            textposition='outside'
-        ))
-
-        fig.update_layout(
-            title="分项节能量范围分布",
-            xaxis_title="设备类型",
-            yaxis_title="节能量 (万 kWh)",
-            barmode='group'
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    else:
-        # 旧版：单一值（向后兼容）
-        savings_data = {
-            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
-            "节能量 (万 kWh)": [
-                result.get("chiller_saving", 0),
-                result.get("pump_saving", 0),
-                result.get("tower_saving", 0),
-                result.get("total_saving", 0)
-            ]
-        }
-
-        df_savings = pd.DataFrame(savings_data)
-
-        # 计算百分比
-        total = result.get("total_saving", 0)
-        if total > 0:
-            df_savings["占比"] = df_savings["节能量 (万 kWh)"].apply(
-                lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+            fig.update_layout(
+                title="分项节能量范围分布",
+                xaxis_title="设备类型",
+                yaxis_title="节能量 (万 kWh)",
+                barmode='group'
             )
 
-        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-        # 柱状图
-        fig = px.bar(
-            df_savings[df_savings["设备类型"] != "合计"],
-            x="设备类型",
-            y="节能量 (万 kWh)",
-            title="分项节能量分布",
-            text="节能量 (万 kWh)"
-        )
-        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-        st.plotly_chart(fig, use_container_width=True)
+        else:
+            # 旧版：单一值（向后兼容）
+            savings_data = {
+                "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+                "节能量 (万 kWh)": [
+                    result.get("chiller_saving", 0),
+                    result.get("pump_saving", 0),
+                    result.get("tower_saving", 0),
+                    result.get("total_saving", 0)
+                ]
+            }
+
+            df_savings = pd.DataFrame(savings_data)
+
+            # 计算百分比
+            total = result.get("total_saving", 0)
+            if total > 0:
+                df_savings["占比"] = df_savings["节能量 (万 kWh)"].apply(
+                    lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+                )
+
+            st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+            # 柱状图
+            fig = px.bar(
+                df_savings[df_savings["设备类型"] != "合计"],
+                x="设备类型",
+                y="节能量 (万 kWh)",
+                title="分项节能量分布",
+                text="节能量 (万 kWh)"
+            )
+            fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        # 空压机模块的核心指标展示
+        # 检查是否为范围计算结果
+        if "energy_saving_rate_range" in result:
+            # 展示范围
+            st.metric(
+                "节能率范围",
+                result["energy_saving_rate_range"],
+                help="基于上限和下限两种估算方法"
+            )
+
+            # 详细展示：5 个核心指标
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            with col1:
+                st.metric(
+                    "下限（保守估计）",
+                    f"{result['energy_saving_rate_min'] * 100:.1f}%"
+                )
+
+            with col2:
+                st.metric(
+                    "上限（理想情况）",
+                    f"{result['energy_saving_rate_max'] * 100:.1f}%"
+                )
+
+            with col3:
+                # 添加总节能量范围
+                total_min = result.get('total_saving_min', 0)
+                total_max = result.get('total_saving_max', 0)
+                st.metric(
+                    "总节能量范围",
+                    f"{total_min:.1f} - {total_max:.1f} 万 kWh",
+                    help="预估的年度总节能量范围"
+                )
+
+            with col4:
+                completeness = result.get("completeness", 0)
+                st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+            with col5:
+                filled_count = result.get("filled_count", 0)
+                st.metric("填充字段数", filled_count)
+        else:
+            # 单一值
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                rate = result.get("energy_saving_rate", 0)
+                rate_min = result.get("energy_saving_rate_min", 0)
+                rate_max = result.get("energy_saving_rate_max", 0)
+
+                if rate_min > 0 and rate_max > 0:
+                    st.metric(
+                        "预估节能率",
+                        f"{rate * 100:.2f}%",
+                        delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+                    )
+                else:
+                    st.metric(
+                        "预估节能率",
+                        f"{rate * 100:.2f}%"
+                    )
+
+            with col2:
+                total_saving = result.get("energy_saving", 0) / 10000  # 转换为万 kWh
+                st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
+
+            with col3:
+                completeness = result.get("completeness", 0)
+                st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+            with col4:
+                filled_count = result.get("filled_count", 0)
+                st.metric("填充字段数", filled_count)
+
+        st.markdown("---")
+
+        # 分项节能明细 - 空压机
+        st.subheader("📊 系统能耗分析")
+        
+        # 显示空压机系统的能耗分析
+        current_energy = result.get("current_total_energy", 0) / 10000  # 转换为万 kWh
+        optimized_energy = result.get("optimized_total_energy", 0) / 10000  # 转换为万 kWh
+        energy_saving = result.get("energy_saving", 0) / 10000  # 转换为万 kWh
+        
+        energy_data = {
+            "项目": ["当前系统年能耗", "优化后系统年能耗", "年节能量"],
+            "数值 (万 kWh)": [current_energy, optimized_energy, energy_saving]
+        }
+        
+        df_energy = pd.DataFrame(energy_data)
+        st.dataframe(df_energy, use_container_width=True, hide_index=True)
+        
+        # 设备分析
+        if "equipment_analysis" in result:
+            st.subheader("🔧 设备分析")
+            analysis = result["equipment_analysis"]
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("空压机总台数", analysis.get("total_air_compressors", 0))
+            with col2:
+                st.metric("总装机功率 (kW)", f"{analysis.get('total_power', 0):.1f}")
+            with col3:
+                st.metric("平均效率", f"{analysis.get('average_efficiency', 0) * 100:.1f}%")
+            
+            # 设备类型分布
+            if analysis.get("equipment_types"):
+                st.subheader("设备类型分布")
+                types_df = pd.DataFrame(
+                    list(analysis["equipment_types"].items()),
+                    columns=["设备类型", "数量"]
+                )
+                st.dataframe(types_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
@@ -873,7 +1139,7 @@ def render_result_stage():
     st.info(confidence_msg)
 
     # 添加范围计算说明
-    if result.get("calculation_method") == "dual_sheet":
+    if result.get("calculation_method") == "dual_sheet" or result.get("calculation_method") == "air_compressor_standard":
         st.info(
             "📊 **节能率范围说明**\n\n"
             "- **下限（保守估计）**: 基于常规优化参数，考虑实际约束\n"
@@ -886,62 +1152,85 @@ def render_result_stage():
     # 下载区域
     st.subheader("📥 下载计算结果")
     
-    # 下载格式化结果（简化版）
-    st.info("**简化版表格**：只包含原始电量和节能量，单位为'万'")
-    
-    # 下载简化版 Excel 表格
-    st.subheader("📥 下载简化版 Excel 表格")
-    st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
-    
-    # 从会话目录读取简化版 Excel
-    session_dir = st.session_state.session_dir
-    simplified_excel_path = session_dir / "simplified_result.xlsx"
-    
-    if simplified_excel_path.exists():
-        with open(simplified_excel_path, "rb") as f:
-            simplified_excel_data = f.read()
+    if st.session_state.module_type == 'air_conditioner':
+        # 空调模块的下载内容
+        # 下载简化版 Excel 表格
+        st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
         
-        st.download_button(
-            label="📥 下载简化版 Excel 表格",
-            data=simplified_excel_data,
-            file_name=f"简化版节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-    else:
-        st.warning("⚠️ 简化版 Excel 文件未找到")
-    
-    st.markdown("---")
-    
-    st.subheader("📥 下载完整计算表格")
-    st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
-
-    password = st.text_input("请输入管理员密码", type="password", key="download_password")
-
-    if password:
-        admin_password = st.secrets.get("admin_password", "admin123")
-        if password == admin_password:
-            st.success("✅ 密码验证通过")
-
-            # 修改：从会话目录读取计算结果 Excel
-            session_dir = st.session_state.session_dir
-            excel_path = session_dir / "calculation_result.xlsx"
-
-            if excel_path.exists():
-                with open(excel_path, "rb") as f:
-                    excel_data = f.read()
-
-                st.download_button(
-                    label="📥 下载 Excel 计算表",
-                    data=excel_data,
-                    file_name=f"节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            else:
-                st.warning("⚠️ Excel 文件未找到")
+        # 从会话目录读取简化版 Excel
+        session_dir = st.session_state.session_dir
+        simplified_excel_path = session_dir / "simplified_result.xlsx"
+        
+        if simplified_excel_path.exists():
+            with open(simplified_excel_path, "rb") as f:
+                simplified_excel_data = f.read()
+            
+            st.download_button(
+                label="📥 下载简化版 Excel 表格",
+                data=simplified_excel_data,
+                file_name=f"简化版空调节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
         else:
-            st.error("❌ 密码错误，请联系管理员")
+            st.warning("⚠️ 简化版 Excel 文件未找到")
+        
+        st.markdown("---")
+        
+        st.subheader("📥 下载完整计算表格")
+        st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
+
+        password = st.text_input("请输入管理员密码", type="password", key="download_password")
+
+        if password:
+            admin_password = st.secrets.get("admin_password", "admin123")
+            if password == admin_password:
+                st.success("✅ 密码验证通过")
+
+                # 修改：从会话目录读取计算结果 Excel
+                session_dir = st.session_state.session_dir
+                excel_path = session_dir / "calculation_result.xlsx"
+
+                if excel_path.exists():
+                    with open(excel_path, "rb") as f:
+                        excel_data = f.read()
+
+                    st.download_button(
+                        label="📥 下载 Excel 计算表",
+                        data=excel_data,
+                        file_name=f"空调节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("⚠️ Excel 文件未找到")
+            else:
+                st.error("❌ 密码错误，请联系管理员")
+    else:
+        # 空压机模块的下载内容
+        st.subheader("📥 下载空压机节能方案")
+        
+        # 下载空压系统数智化升级方案
+        st.info("**空压系统数智化升级方案**：包含节能分析、优化建议和投资回报分析")
+        
+        # 下载报价单
+        session_dir = st.session_state.session_dir
+        quotation_files = list(session_dir.glob("空压系统报价单_*.xlsx"))
+        
+        if quotation_files:
+            quotation_file = quotation_files[0]
+            with open(quotation_file, "rb") as f:
+                quotation_data = f.read()
+            
+            st.download_button(
+                label="📥 下载空压系统报价单",
+                data=quotation_data,
+                file_name=quotation_file.name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            st.warning("⚠️ 报价单文件未找到")
 
     st.markdown("---")
 

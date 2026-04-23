@@ -30,3 +30,6 @@ build/
 # Temporary exports
 *_export.txt
 .worktrees/
+
+# Frontend (deleted, use Streamlit instead)
+frontend/
