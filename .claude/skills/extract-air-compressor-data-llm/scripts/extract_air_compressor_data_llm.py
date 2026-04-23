@@ -42,13 +42,24 @@ except ImportError:
     print("警告: python-pptx 未安装，PowerPoint文档读取功能将不可用")
     Presentation = None
 
-# LLM相关导入
+# LLM相关导入 - 使用Claude Agent SDK的方式
 try:
-    import openai
-    from openai import OpenAI
-except ImportError:
-    print("错误: 需要安装 openai 库")
-    print("请运行: pip install openai")
+    # 优先使用环境变量配置的AI提供商
+    ai_provider = os.getenv('AI_PROVIDER', 'openai')
+    
+    if ai_provider == 'openai':
+        import openai
+        from openai import OpenAI
+    elif ai_provider == 'anthropic':
+        import anthropic
+    else:
+        # 默认使用openai
+        import openai
+        from openai import OpenAI
+        
+except ImportError as e:
+    print(f"错误: 需要安装相应的AI库: {str(e)}")
+    print("请运行: pip install openai 或 pip install anthropic")
     sys.exit(1)
 
 
@@ -60,14 +71,24 @@ class LLMDataExtractor:
         # 从环境变量获取配置
         self.api_provider = os.getenv('AI_PROVIDER', 'openai')
         
+        print(f"🤖 [LLM初始化] 使用AI提供商: {self.api_provider}")
+        
         if self.api_provider == 'openai':
             self.client = OpenAI(
                 api_key=os.getenv('OPENAI_API_KEY'),
                 base_url=os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
             )
             self.model = os.getenv('OPENAI_MODEL', 'gpt-4')
+        elif self.api_provider == 'anthropic':
+            self.client = anthropic.Anthropic(
+                api_key=os.getenv('ANTHROPIC_API_KEY'),
+                base_url=os.getenv('ANTHROPIC_BASE_URL')
+            )
+            self.model = os.getenv('ANTHROPIC_MODEL', 'claude-3-sonnet-20240229')
         else:
             raise ValueError(f"不支持的AI提供商: {self.api_provider}")
+        
+        print(f"🤖 [LLM初始化] 使用模型: {self.model}")
     
     def extract_text_from_file(self, file_path: str) -> str:
         """从文件中提取文本内容"""
@@ -215,25 +236,40 @@ class LLMDataExtractor:
         prompt = self._build_extraction_prompt(text_content, original_filename)
         
         try:
-            # 调用LLM
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一个专业的空压机调研表数据提取专家。请仔细分析文档内容，提取所需的结构化数据。"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.1,  # 降低随机性，提高一致性
-                max_tokens=4000
-            )
+            # 根据不同的AI提供商调用
+            if self.api_provider == 'openai':
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你是一个专业的空压机调研表数据提取专家。请仔细分析文档内容，提取所需的结构化数据。"
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.1,  # 降低随机性，提高一致性
+                    max_tokens=4000
+                )
+                llm_response = response.choices[0].message.content
+                
+            elif self.api_provider == 'anthropic':
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4000,
+                    temperature=0.1,
+                    system="你是一个专业的空压机调研表数据提取专家。请仔细分析文档内容，提取所需的结构化数据。",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                )
+                llm_response = response.content[0].text
             
-            # 解析响应
-            llm_response = response.choices[0].message.content
             print(f"🤖 [LLM提取] 收到响应，长度: {len(llm_response)} 字符")
             
             # 提取JSON部分

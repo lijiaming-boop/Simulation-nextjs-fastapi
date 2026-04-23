@@ -267,7 +267,7 @@ class SkillCaller:
                 raise SkillError(
                     "extract-air-compressor-data-llm 需要至少2个参数"
                 )
-            cmd = f"python .trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
+            cmd = f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
             if len(args) >= 3:
                 cmd += f" '{args[2]}'"
             
@@ -358,7 +358,7 @@ class SkillCaller:
                     "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
                 )
             # 使用LLM版本的空压数据提取
-            cmd = f"python .trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
+             cmd = f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
             if len(args) >= 3:
                 cmd += f" '{args[2]}'"
             

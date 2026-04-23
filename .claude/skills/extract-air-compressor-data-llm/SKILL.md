@@ -45,7 +45,7 @@ description: "使用LLM智能提取空压机调研表数据并进行质量检查
 ## 使用方法
 
 ```bash
-python .trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py <输入文件路径> <输出JSON路径> [原始文件名]
+python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py <输入文件路径> <输出JSON路径> [原始文件名]
 ```
 
 ## 输出格式

@@ -23,7 +23,7 @@ def test_file_extraction(file_path, output_dir):
     
     try:
         # 调用数据提取脚本 - 使用新的LLM版本
-        script_path = Path(".trae/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py")
+        script_path = Path(".claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py")
         
         cmd = [
             sys.executable,
