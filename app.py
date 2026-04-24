@@ -214,7 +214,7 @@ def render_air_conditioner_extract_check_stage():
                 f.write(st.session_state.uploaded_file.getbuffer())
 
             streaming_texts = []
-            def log_callback(message: str):
+            def log_callback(message: str, *args):
                 streaming_texts.append(f"🔄 {message}")
                 update_streaming_container(container, streaming_texts)
                 time.sleep(0.1)
@@ -261,7 +261,7 @@ def render_air_conditioner_filling_stage():
             skill_caller = SkillCaller()
             
             streaming_texts = []
-            def log_callback(message: str):
+            def log_callback(message: str, *args):
                 streaming_texts.append(f"🔄 {message}")
                 update_streaming_container(container, streaming_texts)
                 time.sleep(0.1)
@@ -400,7 +400,7 @@ def render_air_compressor_extract_stage():
                 f.write(st.session_state.uploaded_file.getvalue())
             
             streaming_texts = []
-            def log_callback(message: str):
+            def log_callback(message: str, *args):
                 streaming_texts.append(f"🔄 {message}")
                 update_streaming_container(container, streaming_texts)
                 time.sleep(0.1)
@@ -481,7 +481,7 @@ def render_air_compressor_calculate_stage():
             skill_caller = SkillCaller()
             
             streaming_texts = []
-            def log_callback(message: str):
+            def log_callback(message: str, *args):
                 streaming_texts.append(f"🔄 {message}")
                 update_streaming_container(container, streaming_texts)
                 time.sleep(0.1)
