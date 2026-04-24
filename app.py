@@ -85,20 +85,16 @@ def main():
         layout="wide"
     )
     
-    # 添加全局CSS样式 - 符合Figma设计
+    # 添加全局CSS样式 - 现代化设计
     st.markdown("""
     <style>
+    /* 全局样式 */
     .main > div {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         min-height: 100vh;
         padding: 20px;
     }
-    .stApp > header {
-        background: transparent;
-    }
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    }
+    
     /* 隐藏Streamlit默认元素 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -106,13 +102,129 @@ def main():
     
     /* 自定义按钮样式 */
     .stButton > button {
-        border-radius: 10px;
+        border-radius: 12px;
         font-weight: 600;
         transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    
+    /* 主按钮样式 */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border: none !important;
+        color: white !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #5568d3 0%, #6a5acd 100%) !important;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
+    }
+    
+    /* 次要按钮样式 */
+    .stButton > button[kind="secondary"] {
+        background: white !important;
+        border: 2px solid #e9ecef !important;
+        color: #495057 !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        background: #f8f9fa !important;
+        border-color: #dee2e6 !important;
+    }
+    
+    /* 卡片样式 */
+    .stDataFrame {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    
+    /* 指标卡片 */
+    .stMetric {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        border: 1px solid #e9ecef;
+    }
+    
+    /* 信息框样式 */
+    .stInfo {
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    }
+    
+    /* 成功框样式 */
+    .stSuccess {
+        background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    }
+    
+    /* 警告框样式 */
+    .stWarning {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    }
+    
+    /* 错误框样式 */
+    .stError {
+        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    }
+    
+    /* 进度条样式 */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+        border-radius: 10px !important;
+    }
+    
+    /* 文件上传器样式 */
+    .stFileUploader {
+        border: 2px dashed #dee2e6 !important;
+        border-radius: 16px !important;
+        background: white !important;
+        padding: 30px !important;
+        transition: all 0.3s ease !important;
+    }
+    .stFileUploader:hover {
+        border-color: #667eea !important;
+        background: #f8f9fa !important;
+    }
+    
+    /* 展开器样式 */
+    .streamlit-expanderHeader {
+        background: white !important;
+        border-radius: 12px !important;
+        border: 1px solid #e9ecef !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+        margin-bottom: 10px !important;
+    }
+    
+    /* 滚动条样式 */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -137,19 +249,40 @@ def main():
     
     with col_title:
         if st.session_state.module_type == 'air_conditioner':
-            st.title("❄️ 空调节能率智能测算工具")
+            st.markdown("""
+            <div style="text-align: center; margin: 30px 0;">
+                <h1 style="color: #2c3e50; font-size: 2.2rem; font-weight: 700; margin: 0; letter-spacing: -0.5px;">
+                    ❄️ 空调节能率智能测算工具
+                </h1>
+                <p style="color: #6c757d; font-size: 1rem; margin-top: 10px; font-weight: 400;">
+                    基于AI的智能节能评估系统
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; margin: 20px 0;">
-                <h1 style="color: #333; font-size: 2.5rem; font-weight: 600; margin: 0;">空压AI节能率测算</h1>
+            <div style="text-align: center; margin: 30px 0;">
+                <h1 style="color: #2c3e50; font-size: 2.2rem; font-weight: 700; margin: 0; letter-spacing: -0.5px;">
+                    🔧 空压AI节能率测算
+                </h1>
+                <p style="color: #6c757d; font-size: 1rem; margin-top: 10px; font-weight: 400;">
+                    基于AI的智能节能评估系统
+                </p>
             </div>
             """, unsafe_allow_html=True)
     
     with col_logout:
         st.markdown("""
         <div style="display: flex; align-items: center; justify-content: center; height: 60px;">
-            <div style="background: #f0f0f0; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                <span style="font-weight: 600; color: #333;">冯</span>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        border-radius: 50%; 
+                        width: 40px; 
+                        height: 40px; 
+                        display: flex; 
+                        align-items: center; 
+                        justify-content: center;
+                        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+                <span style="font-size: 18px;">⚡</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -188,22 +321,22 @@ def main():
             {'id': 'calculate', 'name': '输出结果', 'number': '4'}
         ]
         
-        # 创建进度指示器容器 - 完全符合Figma设计
+        # 创建进度指示器容器 - 现代化设计
         st.markdown("""
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius: 60px; 
-                    padding: 25px 50px; 
+                    border-radius: 20px; 
+                    padding: 20px 40px; 
                     margin: 40px auto; 
-                    max-width: 800px;
+                    max-width: 900px;
                     position: relative;
-                    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);">
+                    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);">
             <!-- 连接线 -->
             <div style="position: absolute; 
                         top: 50%; 
-                        left: 15%; 
-                        right: 15%; 
+                        left: 10%; 
+                        right: 10%; 
                         height: 2px; 
-                        background: rgba(255,255,255,0.3); 
+                        background: rgba(255,255,255,0.2); 
                         z-index: 1;"></div>
         """, unsafe_allow_html=True)
         
@@ -365,67 +498,71 @@ def render_upload_stage():
             key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
         )
     else:
-        # 空压模块的上传区域 - 完全符合Figma设计，集成上传功能
+        # 空压模块的上传区域 - 现代化设计
         st.markdown("""
         <style>
-         .upload-container {
-             border: 2px dashed #9E9E9E; 
-             border-radius: 14px; 
-             padding: 20px; 
-             text-align: center; 
-             background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
-             margin: 25px auto;
-             max-width: 800px;
-             transition: all 0.3s ease;
-             position: relative;
-             overflow: hidden;
-         }
-         .upload-container:hover {
-             border-color: #667eea;
-             background: linear-gradient(135deg, #f8f9fc 0%, #f0f2ff 100%);
-         }
-         /* 隐藏默认的文件上传器样式 */
-         .stFileUploader {
-             width: 100% !important;
-         }
-         .stFileUploader > div {
-             border: none !important;
-             background: transparent !important;
-             padding: 0 !important;
-             margin: 0 !important;
-         }
-         .stFileUploader > div > div {
-             border: none !important;
-             background: transparent !important;
-             padding: 0 !important;
-             margin: 0 !important;
-         }
-         .stFileUploader > div > div > div {
-             border: none !important;
-             background: transparent !important;
-             padding: 0 !important;
-             margin: 0 !important;
-         }
-         .stFileUploader label {
-             display: none !important;
-         }
-         /* 自定义上传按钮样式 */
-         .stFileUploader > div > div > div > button {
-             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-             color: white !important;
-             border: none !important;
-             border-radius: 25px !important;
-             padding: 12px 30px !important;
-             font-weight: 600 !important;
-             font-size: 14px !important;
-             margin-top: 10px !important;
-             transition: all 0.3s ease !important;
-         }
-         .stFileUploader > div > div > div > button:hover {
-             transform: translateY(-2px) !important;
-             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
-         }
-         </style>
+        .upload-container {
+            border: 2px dashed #dee2e6; 
+            border-radius: 16px; 
+            padding: 40px 30px; 
+            text-align: center; 
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            margin: 30px auto;
+            max-width: 900px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        .upload-container:hover {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #f8f9fc 0%, #f0f2ff 100%);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+        /* 隐藏默认的文件上传器样式 */
+        .stFileUploader {
+            width: 100% !important;
+        }
+        .stFileUploader > div {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .stFileUploader > div > div {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .stFileUploader > div > div > div {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .stFileUploader label {
+            display: none !important;
+        }
+        /* 自定义上传按钮样式 */
+        .stFileUploader > div > div > div > button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 25px !important;
+            padding: 14px 40px !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            margin-top: 15px !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+        }
+        .stFileUploader > div > div > div > button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5) !important;
+        }
+        </style>
         
         <div class="upload-container">
             <!-- 背景装饰 -->
@@ -434,15 +571,15 @@ def render_upload_stage():
                         left: -50%; 
                         width: 200%; 
                         height: 200%; 
-                        background: radial-gradient(circle, rgba(102, 126, 234, 0.03) 0%, transparent 70%);
+                        background: radial-gradient(circle, rgba(102, 126, 234, 0.05) 0%, transparent 70%);
                         z-index: 0;"></div>
             <div style="position: relative; z-index: 1;">
-                <div style="font-size: 4rem; color: #9E9E9E; margin-bottom: 20px; 
-                           filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">📁</div>
-                <h3 style="color: #2c3e50; font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px;">
+                <div style="font-size: 4.5rem; color: #667eea; margin-bottom: 20px; 
+                           filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.2));">📁</div>
+                <h3 style="color: #2c3e50; font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px;">
                     点击上传或拖拽文件到此处
                 </h3>
-                <p style="color: #6c757d; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.4;">
+                <p style="color: #6c757d; font-size: 1rem; margin-bottom: 25px; line-height: 1.6;">
                     支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB
                 </p>
         """, unsafe_allow_html=True)
