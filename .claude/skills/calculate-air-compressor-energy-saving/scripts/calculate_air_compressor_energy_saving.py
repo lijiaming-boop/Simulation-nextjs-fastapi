@@ -21,27 +21,66 @@ class AirCompressorEnergyCalculator:
     def __init__(self):
         """初始化计算器"""
         self.calculation_details = {}
+        self.intermediate_data = {}  # 新增：保存中间数据
     
     def calculate_energy_saving(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """计算空压机系统节能率"""
         
         print(f"🔢 [节能计算] 开始计算空压机系统节能率...")
         
+        # 初始化中间数据
+        self.intermediate_data = {
+            "calculation_steps": [],
+            "input_data": {},
+            "calculated_parameters": {},
+            "energy_calculation": {},
+            "final_results": {}
+        }
+        
+        # 保存原始输入数据
+        self.intermediate_data["input_data"]["raw_data"] = raw_data
+        
         # 第一步：计算第二部分输入字段定义
         calculation_inputs = self._calculate_input_fields(raw_data)
+        self.intermediate_data["calculated_parameters"]["calculation_inputs"] = calculation_inputs
+        self._add_calculation_step("第一步", "计算第二部分输入字段定义", calculation_inputs)
         
         # 第二步：提取项目和设备数据
         project_data = self._extract_project_data(raw_data, calculation_inputs)
         equipment_data = self._extract_equipment_data(raw_data)
+        self.intermediate_data["calculated_parameters"]["project_data"] = project_data
+        self.intermediate_data["calculated_parameters"]["equipment_data"] = equipment_data
+        self._add_calculation_step("第二步", "提取项目和设备数据", {
+            "project_data": project_data,
+            "equipment_count": len(equipment_data)
+        })
         
         # 第三步：计算系统参数
         system_params = self._calculate_system_parameters(equipment_data)
+        self.intermediate_data["calculated_parameters"]["system_params"] = system_params
+        self._add_calculation_step("第三步", "计算系统参数", system_params)
         
         # 第四步：计算当前系统能耗
         current_energy = self._calculate_current_energy_consumption(project_data, system_params)
+        self.intermediate_data["energy_calculation"]["current_energy"] = {
+            "value": current_energy,
+            "details": self.calculation_details.copy()
+        }
+        self._add_calculation_step("第四步", "计算当前系统能耗", {
+            "current_total_energy": current_energy,
+            "unit": "kWh/年"
+        })
         
         # 第五步：计算优化后系统能耗
         optimized_energy = self._calculate_optimized_energy_consumption(project_data, system_params)
+        self.intermediate_data["energy_calculation"]["optimized_energy"] = {
+            "value": optimized_energy,
+            "details": self.calculation_details.copy()
+        }
+        self._add_calculation_step("第五步", "计算优化后系统能耗", {
+            "optimized_total_energy": optimized_energy,
+            "unit": "kWh/年"
+        })
         
         # 第六步：计算节能率和节能量
         energy_saving = current_energy - optimized_energy
@@ -52,6 +91,21 @@ class AirCompressorEnergyCalculator:
         energy_saving_rate_max = energy_saving_rate * 1.2
         total_saving_min = energy_saving * 0.8
         total_saving_max = energy_saving * 1.2
+        
+        # 保存最终结果
+        final_results = {
+            "current_total_energy": current_energy,
+            "optimized_total_energy": optimized_energy,
+            "energy_saving": energy_saving,
+            "energy_saving_rate": energy_saving_rate,
+            "energy_saving_rate_range": f"{energy_saving_rate_min * 100:.1f}% - {energy_saving_rate_max * 100:.1f}%",
+            "energy_saving_rate_min": energy_saving_rate_min,
+            "energy_saving_rate_max": energy_saving_rate_max,
+            "total_saving_min": total_saving_min,
+            "total_saving_max": total_saving_max
+        }
+        self.intermediate_data["final_results"] = final_results
+        self._add_calculation_step("第六步", "计算节能率和节能量", final_results)
         
         # 构建结果
         result = {
@@ -66,8 +120,8 @@ class AirCompressorEnergyCalculator:
             "total_saving_max": total_saving_max,
             "system_parameters": system_params,
             "calculation_details": self.calculation_details,
-            "completeness": filled_data.get("completeness", 1.0),
-            "filled_count": len(filled_data.get("fillable_suggestions", [])),
+            "completeness": raw_data.get("completeness", 1.0),
+            "filled_count": len(raw_data.get("fillable_suggestions", [])),
             "calculation_method": "air_compressor_standard",
             "equipment_analysis": self._analyze_equipment(equipment_data)
         }
@@ -79,6 +133,14 @@ class AirCompressorEnergyCalculator:
         print(f"📊 节能率: {energy_saving_rate * 100:.1f}%")
         
         return result
+    
+    def _add_calculation_step(self, step_name: str, step_description: str, step_data: Any):
+        """添加计算步骤到中间数据"""
+        self.intermediate_data["calculation_steps"].append({
+            "step": step_name,
+            "description": step_description,
+            "data": step_data
+        })
     
     def _calculate_input_fields(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """计算第二部分：输入字段定义（计算逻辑的直接输入）"""
@@ -517,9 +579,14 @@ def main():
     raw_data_path = sys.argv[1]
     output_path = sys.argv[2]
     
+    # 生成中间数据文件路径
+    output_path_obj = Path(output_path)
+    intermediate_data_path = output_path_obj.parent / f"{output_path_obj.stem}_intermediate.json"
+    
     print(f"🚀 [空压节能计算] 开始计算节能率")
     print(f"📁 [空压节能计算] 原始数据: {raw_data_path}")
     print(f"📁 [空压节能计算] 输出路径: {output_path}")
+    print(f"📁 [空压节能计算] 中间数据路径: {intermediate_data_path}")
     
     try:
         # 读取原始数据
@@ -530,12 +597,27 @@ def main():
         calculator = AirCompressorEnergyCalculator()
         result = calculator.calculate_energy_saving(raw_data)
         
-        # 保存结果
+        # 保存最终结果
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         
+        # 保存中间数据
+        intermediate_data = {
+            "calculation_metadata": {
+                "input_file": raw_data_path,
+                "output_file": output_path,
+                "calculation_method": "air_compressor_standard",
+                "timestamp": __import__('datetime').datetime.now().isoformat()
+            },
+            "intermediate_data": calculator.intermediate_data
+        }
+        
+        with open(intermediate_data_path, 'w', encoding='utf-8') as f:
+            json.dump(intermediate_data, f, ensure_ascii=False, indent=2)
+        
         print(f"✅ [空压节能计算] 计算完成")
         print(f"📄 结果已保存到: {output_path}")
+        print(f"📊 中间数据已保存到: {intermediate_data_path}")
         
     except Exception as e:
         print(f"❌ [空压节能计算] 计算失败: {str(e)}")
