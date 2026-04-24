@@ -503,7 +503,8 @@ def render_air_compressor_calculate_stage():
             
             result = skill_caller.call_skill(
                 'calculate-air-compressor-energy-saving',
-                f"{extracted_data_path} {result_path}",
+                str(extracted_data_path),
+                str(result_path),
                 callback=log_callback
             )
             
