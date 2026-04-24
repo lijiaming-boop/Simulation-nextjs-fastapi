@@ -602,10 +602,14 @@ def render_upload_stage():
         st.session_state.uploaded_file = uploaded_file
         st.session_state.original_filename = uploaded_file.name  # 新增：保存原始文件名
 
-        # 修改：保存到会话目录（不再使用硬编码的 tmp 目录）
+        # 修改：保存到会话目录（保留原始文件格式）
         session_dir = st.session_state.session_dir
-        upload_path = session_dir / "upload_survey.xlsx"
-
+        original_filename = uploaded_file.name
+        file_ext = Path(original_filename).suffix.lower()
+        
+        # 根据原始文件扩展名保存文件
+        upload_path = session_dir / f"upload_survey{file_ext}"
+        
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
@@ -712,9 +716,11 @@ def render_extract_check_stage():
 
                 caller = SkillCaller(timeout=300)
 
-                # 修改：使用会话目录
+                # 修改：使用会话目录（保留原始文件格式）
                 session_dir = st.session_state.session_dir
-                upload_path = session_dir / "upload_survey.xlsx"
+                original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
+                file_ext = Path(original_filename).suffix.lower()
+                upload_path = session_dir / f"upload_survey{file_ext}"
                 output_path = session_dir / "extract_check_result.json"
 
                 # 获取原始文件名
