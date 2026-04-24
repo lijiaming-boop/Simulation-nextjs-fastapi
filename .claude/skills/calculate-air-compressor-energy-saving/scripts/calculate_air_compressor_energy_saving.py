@@ -22,25 +22,28 @@ class AirCompressorEnergyCalculator:
         """初始化计算器"""
         self.calculation_details = {}
     
-    def calculate_energy_saving(self, filled_data: Dict[str, Any]) -> Dict[str, Any]:
+    def calculate_energy_saving(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """计算空压机系统节能率"""
         
         print(f"🔢 [节能计算] 开始计算空压机系统节能率...")
         
-        # 提取基础数据
-        project_data = self._extract_project_data(filled_data)
-        equipment_data = self._extract_equipment_data(filled_data)
+        # 第一步：计算第二部分输入字段定义
+        calculation_inputs = self._calculate_input_fields(raw_data)
         
-        # 计算系统参数
+        # 第二步：提取项目和设备数据
+        project_data = self._extract_project_data(raw_data, calculation_inputs)
+        equipment_data = self._extract_equipment_data(raw_data)
+        
+        # 第三步：计算系统参数
         system_params = self._calculate_system_parameters(equipment_data)
         
-        # 计算当前系统能耗
+        # 第四步：计算当前系统能耗
         current_energy = self._calculate_current_energy_consumption(project_data, system_params)
         
-        # 计算优化后系统能耗
+        # 第五步：计算优化后系统能耗
         optimized_energy = self._calculate_optimized_energy_consumption(project_data, system_params)
         
-        # 计算节能率和节能量
+        # 第六步：计算节能率和节能量
         energy_saving = current_energy - optimized_energy
         energy_saving_rate = energy_saving / current_energy if current_energy > 0 else 0
         
@@ -77,44 +80,214 @@ class AirCompressorEnergyCalculator:
         
         return result
     
-    def _extract_project_data(self, filled_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_input_fields(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """计算第二部分：输入字段定义（计算逻辑的直接输入）"""
+        
+        print(f"🧮 [输入字段计算] 计算第二部分输入字段定义...")
+        
+        # 提取原始数据
+        project_level = raw_data.get("rawData", {}).get("projectLevel", {})
+        equipment_level = raw_data.get("rawData", {}).get("equipmentLevel", [])
+        
+        # 基础字段（直接来源于原始数据）
+        alarm_pressure = project_level.get("alarmPressureLowerLimit")
+        average_pressure = project_level.get("averagePressure")
+        total_annual_energy = project_level.get("totalAnnualEnergyConsumption")
+        electricity_price = project_level.get("electricityPrice")
+        daily_hours = project_level.get("dailyRunningHours")
+        annual_days = project_level.get("annualRunningDays")
+        industry_type = project_level.get("industryType", "其他")
+        
+        # 查表字段（根据行业类型查表）
+        safety_margin, pressure_fluctuation = self._lookup_industry_parameters(industry_type)
+        
+        # 计算派生的设备字段
+        processed_equipment = self._calculate_equipment_derived_fields(equipment_level)
+        
+        # 计算字段
+        post_control_pressure = None
+        if alarm_pressure is not None:
+            post_control_pressure = alarm_pressure + safety_margin + pressure_fluctuation
+        
+        # 计算系统级参数
+        system_compressor_power_factor = self._calculate_system_compressor_power_factor(processed_equipment)
+        system_specific_power = self._calculate_system_specific_power(processed_equipment)
+        system_compressed_air_flow = self._calculate_system_compressed_air_flow(processed_equipment)
+        
+        # 计算平均年运行时间
+        average_annual_hours = self._calculate_average_annual_hours(daily_hours, annual_days)
+        
+        calculation_inputs = {
+            "alarmPressureLowerLimit": alarm_pressure,
+            "averagePressure": average_pressure,
+            "safetyMargin": safety_margin,
+            "pressureFluctuation": pressure_fluctuation,
+            "postControlAveragePressure": post_control_pressure,
+            "systemCompressorPowerFactor": system_compressor_power_factor,
+            "systemSpecificPower": system_specific_power,
+            "systemCompressedAirFlow": system_compressed_air_flow,
+            "totalAnnualEnergyConsumption": total_annual_energy,
+            "averageAnnualOperatingHours": average_annual_hours,
+            "electricityPrice": electricity_price,
+            "mainPipelineDirectConsumptionRatio": MAIN_PIPELINE_DIRECT_CONSUMPTION_RATIO
+        }
+        
+        print(f"📊 智控后平均压力: {post_control_pressure} bar")
+        print(f"📊 系统压缩机功率因子: {system_compressor_power_factor}")
+        print(f"📊 系统比功率: {system_specific_power} kW/(m³/min)")
+        print(f"📊 系统压缩空气流量: {system_compressed_air_flow} m³/min")
+        
+        return calculation_inputs
+    
+    def _lookup_industry_parameters(self, industry_type: str) -> tuple:
+        """根据行业类型查询压力波动和安全裕量"""
+        
+        industry_params = {
+            "电池": (0.10, 0.15),  # (安全保护裕量, 压力波动)
+            "整车及电子": (0.20, 0.20),
+            "钢铁有色": (0.20, 0.30),
+            "其他": (0.20, 0.20)  # 默认值
+        }
+        
+        return industry_params.get(industry_type, industry_params["其他"])
+    
+    def _calculate_equipment_derived_fields(self, equipment_level: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """计算设备级派生字段"""
+        
+        processed_equipment = []
+        current_year = 2026  # 当前年份
+        
+        for equipment in equipment_level:
+            processed_eq = equipment.copy()
+            
+            # 计算机龄
+            manufacture_year = equipment.get("manufactureYear")
+            if manufacture_year:
+                processed_eq["age"] = current_year - manufacture_year
+            else:
+                processed_eq["age"] = 10  # 默认机龄
+            
+            # 计算压缩机功率因子
+            brand = equipment.get("brand", "")
+            age = processed_eq["age"]
+            processed_eq["compressorPowerFactor"] = self._lookup_compressor_power_factor(brand, age)
+            
+            # 计算比功率
+            rated_power = equipment.get("ratedPower", 0)
+            rated_flow = equipment.get("ratedFlow", 1)  # 避免除零
+            if rated_flow > 0:
+                processed_eq["specificPower"] = (rated_power * 1.1) / rated_flow
+            else:
+                processed_eq["specificPower"] = 7.0  # 默认比功率
+            
+            processed_equipment.append(processed_eq)
+        
+        return processed_equipment
+    
+    def _lookup_compressor_power_factor(self, brand: str, age: int) -> float:
+        """根据品牌和机龄查询压缩机功率因子"""
+        
+        brand_lower = brand.lower() if brand else ""
+        
+        # 根据附表2查询
+        if any(b in brand_lower for b in ["三星", "国产", "复盛", "英格索兰卡梅隆"]) and age > 10:
+            return 0.32
+        elif any(b in brand_lower for b in ["寿力", "韩华"]):
+            return 0.34
+        elif any(b in brand_lower for b in ["阿特拉斯", "英格索兰"]):
+            if age < 5:
+                return 0.36
+            elif 5 <= age <= 10:
+                return 0.35
+            else:
+                return 0.35
+        else:
+            return 0.35  # 默认值
+    
+    def _calculate_system_compressor_power_factor(self, equipment_list: List[Dict[str, Any]]) -> float:
+        """计算系统压缩机功率因子（运行+备用设备的平均值）"""
+        
+        running_backup_equipment = [
+            eq for eq in equipment_list 
+            if eq.get("runningStatus") in ["运行", "备用"]
+        ]
+        
+        if not running_backup_equipment:
+            return 0.35  # 默认值
+        
+        total_factor = sum(eq.get("compressorPowerFactor", 0.35) for eq in running_backup_equipment)
+        return round(total_factor / len(running_backup_equipment), 3)
+    
+    def _calculate_system_specific_power(self, equipment_list: List[Dict[str, Any]]) -> float:
+        """计算系统比功率（仅运行设备的平均值）"""
+        
+        running_equipment = [
+            eq for eq in equipment_list 
+            if eq.get("runningStatus") == "运行"
+        ]
+        
+        if not running_equipment:
+            return 7.0  # 默认值
+        
+        total_power = sum(eq.get("specificPower", 7.0) for eq in running_equipment)
+        return round(total_power / len(running_equipment), 2)
+    
+    def _calculate_system_compressed_air_flow(self, equipment_list: List[Dict[str, Any]]) -> float:
+        """计算系统压缩空气流量（仅运行设备的流量求和）"""
+        
+        running_equipment = [
+            eq for eq in equipment_list 
+            if eq.get("runningStatus") == "运行"
+        ]
+        
+        total_flow = sum(eq.get("ratedFlow", 0) for eq in running_equipment)
+        return round(total_flow, 1)
+    
+    def _calculate_average_annual_hours(self, daily_hours: Optional[float], annual_days: Optional[int]) -> float:
+        """计算平均年运行时间"""
+        
+        if daily_hours and annual_days:
+            calculated_hours = daily_hours * annual_days
+            if 0 < calculated_hours <= 8760:
+                return calculated_hours
+        
+        return 8500  # 默认值
+    
+    def _extract_project_data(self, raw_data: Dict[str, Any], calculation_inputs: Dict[str, Any]) -> Dict[str, Any]:
         """提取项目级数据"""
         
+        # 从计算输入字段中获取数据
         return {
-            "totalAnnualEnergyConsumption": filled_data.get("totalAnnualEnergyConsumption", 0),
-            "electricityPrice": filled_data.get("electricityPrice", 0.6),
-            "alarmPressureLowerLimit": filled_data.get("alarmPressureLowerLimit", 5.0),
-            "averagePressure": filled_data.get("averagePressure", 6.0),
-            "dailyRunningHours": filled_data.get("dailyRunningHours", 20),
-            "annualRunningDays": filled_data.get("annualRunningDays", 330),
-            "averageAnnualOperatingHours": filled_data.get("averageAnnualOperatingHours", 8500),
-            "safetyMargin": filled_data.get("safetyMargin", 0.2),
-            "pressureFluctuation": filled_data.get("pressureFluctuation", 0.2),
-            "postControlAveragePressure": filled_data.get("postControlAveragePressure", 5.4),
-            "mainPipelineDirectConsumptionRatio": filled_data.get("mainPipelineDirectConsumptionRatio", 70)
+            "totalAnnualEnergyConsumption": calculation_inputs.get("totalAnnualEnergyConsumption", 0),
+            "electricityPrice": calculation_inputs.get("electricityPrice", 0.6),
+            "alarmPressureLowerLimit": calculation_inputs.get("alarmPressureLowerLimit", 5.0),
+            "averagePressure": calculation_inputs.get("averagePressure", 6.0),
+            "averageAnnualOperatingHours": calculation_inputs.get("averageAnnualOperatingHours", 8500),
+            "safetyMargin": calculation_inputs.get("safetyMargin", 0.2),
+            "pressureFluctuation": calculation_inputs.get("pressureFluctuation", 0.2),
+            "postControlAveragePressure": calculation_inputs.get("postControlAveragePressure", 5.4),
+            "mainPipelineDirectConsumptionRatio": calculation_inputs.get("mainPipelineDirectConsumptionRatio", 70)
         }
     
-    def _extract_equipment_data(self, filled_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_equipment_data(self, raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """提取设备级数据"""
         
-        equipment_list = filled_data.get("equipmentList", [])
+        # 从原始数据中获取设备清单
+        equipment_list = raw_data.get("rawData", {}).get("equipmentLevel", [])
         processed_equipment = []
         
         for equipment in equipment_list:
             # 确保所有必要字段存在
             processed_eq = {
-                "equipmentNumber": equipment.get("equipmentNumber", ""),
+                "equipmentId": equipment.get("equipmentId", ""),
+                "stationId": equipment.get("stationId", ""),
                 "brand": equipment.get("brand", ""),
                 "model": equipment.get("model", ""),
-                "equipmentType": equipment.get("equipmentType", "螺杆式"),
+                "equipmentType": equipment.get("equipmentType", "螺杆"),
                 "manufactureYear": equipment.get("manufactureYear", 2015),
                 "runningStatus": equipment.get("runningStatus", "运行"),
                 "ratedPower": equipment.get("ratedPower", 0),
-                "ratedFlow": equipment.get("ratedFlow", 0),
-                "station": equipment.get("station", "空压站"),
-                "age": equipment.get("age", 10),
-                "specificPower": equipment.get("specificPower", 7.0),
-                "compressorPowerFactor": equipment.get("compressorPowerFactor", 0.35)
+                "ratedFlow": equipment.get("ratedFlow", 0)
             }
             
             processed_equipment.append(processed_eq)
@@ -338,24 +511,24 @@ class AirCompressorEnergyCalculator:
 def main():
     """主函数"""
     if len(sys.argv) < 3:
-        print("用法: python calculate_air_compressor_energy_saving.py <填充数据JSON路径> <输出结果JSON路径>")
+        print("用法: python calculate_air_compressor_energy_saving.py <原始数据JSON路径> <输出结果JSON路径>")
         sys.exit(1)
     
-    filled_data_path = sys.argv[1]
+    raw_data_path = sys.argv[1]
     output_path = sys.argv[2]
     
     print(f"🚀 [空压节能计算] 开始计算节能率")
-    print(f"📁 [空压节能计算] 填充数据: {filled_data_path}")
+    print(f"📁 [空压节能计算] 原始数据: {raw_data_path}")
     print(f"📁 [空压节能计算] 输出路径: {output_path}")
     
     try:
-        # 读取填充后的数据
-        with open(filled_data_path, 'r', encoding='utf-8') as f:
-            filled_data = json.load(f)
+        # 读取原始数据
+        with open(raw_data_path, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
         
         # 执行节能计算
         calculator = AirCompressorEnergyCalculator()
-        result = calculator.calculate_energy_saving(filled_data)
+        result = calculator.calculate_energy_saving(raw_data)
         
         # 保存结果
         with open(output_path, 'w', encoding='utf-8') as f:

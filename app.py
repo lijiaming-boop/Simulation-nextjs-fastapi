@@ -85,14 +85,14 @@ def main():
         layout="wide"
     )
     
-    # 添加全局CSS样式 - 现代化设计
+    # 添加全局CSS样式 - 现代B端工业SaaS设计
     st.markdown("""
     <style>
-    /* 全局样式 */
+    /* 全局样式 - 现代B端工业SaaS */
     .main > div {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        background: #F8FAFC;
         min-height: 100vh;
-        padding: 20px;
+        padding: 0;
     }
     
     /* 隐藏Streamlit默认元素 */
@@ -100,131 +100,180 @@ def main():
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* 自定义按钮样式 */
-    .stButton > button {
-        border-radius: 12px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    /* 主容器 - 最大宽度1200px居中 */
+    .main .block-container {
+        max-width: 1200px !important;
+        margin: 0 auto !important;
+        padding: 0 24px !important;
     }
     
-    /* 主按钮样式 */
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        border: none !important;
-        color: white !important;
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #5568d3 0%, #6a5acd 100%) !important;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
-    }
-    
-    /* 次要按钮样式 */
-    .stButton > button[kind="secondary"] {
-        background: white !important;
-        border: 2px solid #e9ecef !important;
-        color: #495057 !important;
-    }
-    .stButton > button[kind="secondary"]:hover {
-        background: #f8f9fa !important;
-        border-color: #dee2e6 !important;
-    }
-    
-    /* 卡片样式 */
+    /* 卡片样式 - 12px圆角，专业阴影 */
     .stDataFrame {
-        border-radius: 12px;
+        border-radius: 12px !important;
         overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
+        border: 1px solid #E2E8F0 !important;
     }
     
     /* 指标卡片 */
     .stMetric {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        border: 1px solid #e9ecef;
+        background: #FFFFFF !important;
+        border-radius: 12px !important;
+        padding: 24px !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
+        border: 1px solid #E2E8F0 !important;
     }
     
-    /* 信息框样式 */
+    /* 信息框 - 使用品牌色 */
     .stInfo {
-        background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%) !important;
-        border: none !important;
+        background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%) !important;
+        border: 1px solid #BAE6FD !important;
         border-radius: 12px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
     }
     
-    /* 成功框样式 */
+    /* 成功框 - 绿色 */
     .stSuccess {
-        background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%) !important;
-        border: none !important;
+        background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%) !important;
+        border: 1px solid #A7F3D0 !important;
         border-radius: 12px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
     }
     
-    /* 警告框样式 */
+    /* 警告框 - 橙色 */
     .stWarning {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%) !important;
-        border: none !important;
+        background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%) !important;
+        border: 1px solid #FDE68A !important;
         border-radius: 12px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
     }
     
-    /* 错误框样式 */
+    /* 错误框 - 红色 */
     .stError {
-        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%) !important;
-        border: none !important;
+        background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%) !important;
+        border: 1px solid #FCA5A5 !important;
         border-radius: 12px !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
+    }
+    
+    /* 主按钮 - 靛蓝紫主色 */
+    .stButton > button[kind="primary"] {
+        background: #4F46E5 !important;
+        border: none !important;
+        color: white !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15) !important;
+        transition: all 200ms ease-out !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #4338CA !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    /* 次要按钮 - 白色边框 */
+    .stButton > button[kind="secondary"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        color: #475569 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+        transition: all 200ms ease-out !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        background: #F8FAFC !important;
+        border-color: #CBD5E1 !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+        transform: translateY(-1px) !important;
     }
     
-    /* 进度条样式 */
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
-        border-radius: 10px !important;
-    }
-    
-    /* 文件上传器样式 */
+    /* 文件上传器 - 现代化拖拽区域 */
     .stFileUploader {
-        border: 2px dashed #dee2e6 !important;
-        border-radius: 16px !important;
-        background: white !important;
-        padding: 30px !important;
-        transition: all 0.3s ease !important;
+        border: 2px dashed #CBD5E1 !important;
+        border-radius: 12px !important;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%) !important;
+        padding: 40px 30px !important;
+        transition: all 200ms ease-out !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
     }
     .stFileUploader:hover {
-        border-color: #667eea !important;
-        background: #f8f9fa !important;
+        border-color: #4F46E5 !important;
+        background: linear-gradient(135deg, #F8FAFC 0%, #F0F4FF 100%) !important;
+        box-shadow: 0 8px 30px rgba(79, 70, 229, 0.15) !important;
+        transform: translateY(-2px) !important;
     }
     
-    /* 展开器样式 */
+    /* 展开器 */
     .streamlit-expanderHeader {
-        background: white !important;
+        background: #FFFFFF !important;
         border-radius: 12px !important;
-        border: 1px solid #e9ecef !important;
+        border: 1px solid #E2E8F0 !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
     }
     
-    /* 滚动条样式 */
+    /* 滚动条 - 现代化样式 */
     ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
     }
     ::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 4px;
+        background: #F1F5F9;
+        border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 4px;
+        background: #CBD5E1;
+        border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
+        background: #94A3B8;
+    }
+    
+    /* 页面加载动画 */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .stApp {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* 卡片悬浮效果 */
+    .stDataFrame:hover,
+    .stMetric:hover,
+    .stInfo:hover,
+    .stSuccess:hover,
+    .stWarning:hover,
+    .stError:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12) !important;
+        transition: all 200ms ease-out !important;
+    }
+    
+    /* 标题样式 */
+    h1, h2, h3, h4, h5, h6 {
+        color: #1E293B !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    /* 正文文字 */
+    p, span, div {
+        color: #475569 !important;
+    }
+    
+    /* 辅助文字 */
+    .stMarkdown {
+        color: #94A3B8 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -250,22 +299,22 @@ def main():
     with col_title:
         if st.session_state.module_type == 'air_conditioner':
             st.markdown("""
-            <div style="text-align: center; margin: 30px 0;">
-                <h1 style="color: #2c3e50; font-size: 2.2rem; font-weight: 700; margin: 0; letter-spacing: -0.5px;">
+            <div style="text-align: center; margin: 40px 0 30px 0;">
+                <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
                     ❄️ 空调节能率智能测算工具
                 </h1>
-                <p style="color: #6c757d; font-size: 1rem; margin-top: 10px; font-weight: 400;">
+                <p style="color: #64748B; font-size: 14px; font-weight: 400; margin-top: 8px;">
                     基于AI的智能节能评估系统
                 </p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; margin: 30px 0;">
-                <h1 style="color: #2c3e50; font-size: 2.2rem; font-weight: 700; margin: 0; letter-spacing: -0.5px;">
+            <div style="text-align: center; margin: 40px 0 30px 0;">
+                <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
                     🔧 空压AI节能率测算
                 </h1>
-                <p style="color: #6c757d; font-size: 1rem; margin-top: 10px; font-weight: 400;">
+                <p style="color: #64748B; font-size: 14px; font-weight: 400; margin-top: 8px;">
                     基于AI的智能节能评估系统
                 </p>
             </div>
@@ -313,31 +362,24 @@ def main():
                 else:
                     st.text(f"⏸️ {stage_name}")
     else:
-        # 空压模块的进度指示器 - 完全符合Figma设计
+        # 空压模块的进度指示器 - 现代B端工业SaaS设计
         stages = [
-            {'id': 'upload', 'name': '上传调研表', 'number': '1'},
-            {'id': 'extract_check', 'name': '数据提取', 'number': '2'},
-            {'id': 'filling', 'name': '节能测算', 'number': '3'},
-            {'id': 'calculate', 'name': '输出结果', 'number': '4'}
+            {'id': 'upload', 'name': '上传调研表', 'number': '1', 'desc': '上传调研表文件'},
+            {'id': 'extract_check', 'name': '数据提取', 'number': '2', 'desc': '提取关键信息'},
+            {'id': 'filling', 'name': '节能测算', 'number': '3', 'desc': '计算节能率'},
+            {'id': 'calculate', 'name': '输出结果', 'number': '4', 'desc': '生成报告'}
         ]
         
-        # 创建进度指示器容器 - 现代化设计
+        # 创建进度指示器容器 - 现代B端工业SaaS设计
         st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    border-radius: 20px; 
-                    padding: 20px 40px; 
-                    margin: 40px auto; 
-                    max-width: 900px;
-                    position: relative;
-                    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);">
-            <!-- 连接线 -->
-            <div style="position: absolute; 
-                        top: 50%; 
-                        left: 10%; 
-                        right: 10%; 
-                        height: 2px; 
-                        background: rgba(255,255,255,0.2); 
-                        z-index: 1;"></div>
+        <div style="background: #FFFFFF; 
+                    border-radius: 12px; 
+                    padding: 24px; 
+                    margin: 24px auto; 
+                    max-width: 1200px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+                    border: 1px solid #E2E8F0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; position: relative;">
         """, unsafe_allow_html=True)
         
         # 创建水平布局
@@ -357,39 +399,50 @@ def main():
                             (st.session_state.stage == 'filling' and i == 2) or \
                             (st.session_state.stage in ['calculate', 'result'] and i == 3)
                 
-                # 根据Figma设计的圆形指示器
-                if is_completed or is_current:
-                    # 活跃状态 - 白色背景，蓝色边框
-                    circle_style = "background: white; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.15);"
-                    number_color = "#4A90E2"
-                    text_color = "white"
-                    text_opacity = "1"
+                # 节点样式 - 现代B端工业SaaS设计
+                if is_completed:
+                    # 已完成状态 - 绿色圆圈+勾号
+                    circle_style = "background: #10B981; border: 2px solid #10B981;"
+                    number_content = "✓"
+                    text_color = "#10B981"
+                    text_weight = "600"
+                    desc_color = "#10B981"
+                elif is_current:
+                    # 当前状态 - 主色圆圈+序号
+                    circle_style = "background: #4F46E5; border: 2px solid #4F46E5; box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.3);"
+                    number_content = stage["number"]
+                    text_color = "#4F46E5"
+                    text_weight = "600"
+                    desc_color = "#4F46E5"
                 else:
-                    # 未激活状态 - 半透明白色背景
-                    circle_style = "background: rgba(255,255,255,0.4); border: 2px solid rgba(255,255,255,0.4);"
-                    number_color = "white"
-                    text_color = "rgba(255,255,255,0.7)"
-                    text_opacity = "0.7"
+                    # 未完成状态 - 灰色圆圈+序号
+                    circle_style = "background: #E2E8F0; border: 2px solid #E2E8F0;"
+                    number_content = stage["number"]
+                    text_color = "#94A3B8"
+                    text_weight = "400"
+                    desc_color = "#94A3B8"
                 
                 st.markdown(f"""
-                <div style="display: flex; flex-direction: column; align-items: center; 
-                            position: relative; z-index: 2; margin: 15px 0;">
-                    <div style="width: 36px; height: 36px; border-radius: 50%; 
+                <div style="display: flex; flex-direction: column; align-items: center; margin: 0 8px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; 
                                 {circle_style}
                                 display: flex; align-items: center; justify-content: center; 
-                                margin-bottom: 12px;
-                                transition: all 0.3s ease;">
-                        <span style="color: {number_color}; font-weight: 700; font-size: 16px;">{stage["number"]}</span>
+                                margin-bottom: 8px;">
+                        <span style="color: white; font-size: 16px; font-weight: 700;">{number_content}</span>
                     </div>
-                    <div style="color: {text_color}; font-weight: 600; font-size: 13px; 
-                                text-align: center; opacity: {text_opacity};
-                                text-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                    <div style="color: {text_color}; font-size: 14px; font-weight: {text_weight}; text-align: center;">
                         {stage["name"]}
+                    </div>
+                    <div style="color: {desc_color}; font-size: 12px; font-weight: 400; text-align: center;">
+                        {stage["desc"]}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
         
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("""
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
 

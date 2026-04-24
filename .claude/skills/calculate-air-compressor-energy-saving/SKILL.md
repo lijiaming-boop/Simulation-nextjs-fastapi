@@ -47,16 +47,29 @@ description: "计算空压机系统节能率和节能量，基于需求文档的
 ## 使用方法
 
 ```bash
-python .claude/skills/calculate-air-compressor-energy-saving/scripts/calculate_air_compressor_energy_saving.py <填充数据JSON路径> <输出结果JSON路径>
+python .claude/skills/calculate-air-compressor-energy-saving/scripts/calculate_air_compressor_energy_saving.py <原始数据JSON路径> <输出结果JSON路径>
 ```
 
 ## 输入格式
 
-填充后的完整数据JSON，包含：
-- 项目基本信息
-- 系统运行参数  
-- 设备清单（含计算字段）
-- 填充建议应用后的数据
+来自数据提取技能的原始数据JSON，包含：
+- rawData.projectLevel: 项目级原始数据
+- rawData.equipmentLevel: 设备级原始数据  
+- rejectionCheck: 打回条件检查结果
+- quality_report: 数据质量报告
+
+## 计算流程
+
+1. **第一步**: 计算第二部分输入字段定义
+   - 根据行业类型查表获取安全裕量和压力波动
+   - 计算设备级派生字段（机龄、压缩机功率因子、比功率）
+   - 计算系统级参数（系统压缩机功率因子、系统比功率、系统流量）
+   - 计算智控后平均压力和平均年运行时间
+
+2. **第二步**: 执行节能率计算
+   - 基于当前压力和优化后压力计算节能潜力
+   - 应用压力优化和控制优化算法
+   - 生成保守、中性、乐观三种节能率估算
 
 ## 输出格式
 
