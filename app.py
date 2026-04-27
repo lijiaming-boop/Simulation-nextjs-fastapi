@@ -62,6 +62,92 @@ def update_streaming_container(container, texts: list):
     container.markdown(combined_text)
 
 
+def apply_filling_suggestions(data: dict, suggestions: dict) -> dict:
+    """应用空压机数据填充建议到数据中"""
+    import copy
+    filled_data = copy.deepcopy(data)
+    
+    fillable_suggestions = suggestions.get('fillable_suggestions', [])
+    
+    for suggestion in fillable_suggestions:
+        field = suggestion.get('field', '')
+        suggested_value = suggestion.get('suggested_value')
+        
+        # 处理设备列表字段
+        if field.startswith('equipmentList['):
+            try:
+                import re
+                match = re.match(r'equipmentList\[(\d+)\]\.(.+)', field)
+                if match:
+                    index = int(match.group(1))
+                    field_name = match.group(2)
+                    
+                    if 'equipmentLevel' not in filled_data:
+                        filled_data['equipmentLevel'] = []
+                    
+                    while len(filled_data['equipmentLevel']) <= index:
+                        filled_data['equipmentLevel'].append({})
+                    
+                    filled_data['equipmentLevel'][index][field_name] = suggested_value
+            except (ValueError, IndexError) as e:
+                print(f"应用设备字段填充建议失败: {field}, 错误: {e}")
+        
+        # 处理项目级字段
+        elif 'projectLevel' not in filled_data:
+            filled_data['projectLevel'] = {}
+        
+        if '.' in field and not field.startswith('equipmentList['):
+            field_name = field.split('.')[-1]
+            filled_data['projectLevel'][field_name] = suggested_value
+        elif not field.startswith('equipmentList['):
+            filled_data[field] = suggested_value
+    
+    return filled_data
+
+
+def apply_filling_suggestions(data: dict, suggestions: dict) -> dict:
+    """应用空压机数据填充建议到数据中"""
+    import copy
+    filled_data = copy.deepcopy(data)
+    
+    fillable_suggestions = suggestions.get('fillable_suggestions', [])
+    
+    for suggestion in fillable_suggestions:
+        field = suggestion.get('field', '')
+        suggested_value = suggestion.get('suggested_value')
+        
+        # 处理设备列表字段
+        if field.startswith('equipmentList['):
+            try:
+                import re
+                match = re.match(r'equipmentList\[(\d+)\]\.(.+)', field)
+                if match:
+                    index = int(match.group(1))
+                    field_name = match.group(2)
+                    
+                    if 'equipmentLevel' not in filled_data:
+                        filled_data['equipmentLevel'] = []
+                    
+                    while len(filled_data['equipmentLevel']) <= index:
+                        filled_data['equipmentLevel'].append({})
+                    
+                    filled_data['equipmentLevel'][index][field_name] = suggested_value
+            except (ValueError, IndexError) as e:
+                print(f"应用设备字段填充建议失败: {field}, 错误: {e}")
+        
+        # 处理项目级字段
+        elif 'projectLevel' not in filled_data:
+            filled_data['projectLevel'] = {}
+        
+        if '.' in field and not field.startswith('equipmentList['):
+            field_name = field.split('.')[-1]
+            filled_data['projectLevel'][field_name] = suggested_value
+        elif not field.startswith('equipmentList['):
+            filled_data[field] = suggested_value
+    
+    return filled_data
+
+
 def render_progress_indicator():
     """渲染进度指示器"""
     if st.session_state.module_type == 'air_conditioner':
@@ -385,6 +471,48 @@ def render_air_conditioner_result_stage():
 
 # ==================== 空压机模块阶段 ====================
 
+def apply_filling_suggestions(data: dict, suggestions: dict) -> dict:
+    """应用空压机数据填充建议到数据中"""
+    import copy
+    import re
+    filled_data = copy.deepcopy(data)
+    
+    # 确保rawData结构存在
+    if 'rawData' not in filled_data:
+        filled_data['rawData'] = {}
+    if 'projectLevel' not in filled_data['rawData']:
+        filled_data['rawData']['projectLevel'] = {}
+    if 'equipmentLevel' not in filled_data['rawData']:
+        filled_data['rawData']['equipmentLevel'] = []
+    
+    fillable_suggestions = suggestions.get('fillable_suggestions', [])
+    
+    for suggestion in fillable_suggestions:
+        field = suggestion.get('field', '')
+        suggested_value = suggestion.get('suggested_value')
+        
+        # 处理设备列表字段: equipmentList[{i}].fieldName
+        if field.startswith('equipmentList['):
+            try:
+                match = re.match(r'equipmentList\[(\d+)\]\.(.+)', field)
+                if match:
+                    index = int(match.group(1))
+                    field_name = match.group(2)
+                    
+                    equipment_list = filled_data['rawData']['equipmentLevel']
+                    while len(equipment_list) <= index:
+                        equipment_list.append({})
+                    
+                    equipment_list[index][field_name] = suggested_value
+            except (ValueError, IndexError) as e:
+                print(f"应用设备字段填充建议失败: {field}, 错误: {e}")
+        
+        # 处理项目级字段（直接字段名）
+        elif not field.startswith('equipmentList['):
+            filled_data['rawData']['projectLevel'][field] = suggested_value
+    
+    return filled_data
+
 def render_air_compressor_extract_stage():
     """空压机模块：数据提取阶段"""
     st.markdown("### 🔍 数据提取与验证")
@@ -417,10 +545,29 @@ def render_air_compressor_extract_stage():
             streaming_texts.append("✅ 数据提取完成！")
             update_streaming_container(container, streaming_texts)
             
-            st.session_state.extracted_data = result
+            # 处理提取结果 - 检查数据是否在 ai_responses 中
+            actual_extracted_data = result
+            if 'ai_responses' in result and len(result['ai_responses']) > 0:
+                try:
+                    # 尝试从 ai_responses[0] 中提取JSON数据
+                    import re
+                    response_text = result['ai_responses'][0]
+                    # 查找 JSON 代码块
+                    json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        actual_extracted_data = json.loads(json_str)
+                    else:
+                        # 如果没有代码块，尝试直接解析整个响应
+                        actual_extracted_data = json.loads(response_text)
+                except (json.JSONDecodeError, AttributeError) as e:
+                    print(f"解析 ai_responses 失败: {e}")
+                    actual_extracted_data = result
             
-            # 检查打回条件
-            rejection_check = result.get('rejectionCheck', {})
+            st.session_state.extracted_data = actual_extracted_data
+            
+            # 检查打回条件 - 使用处理后的数据
+            rejection_check = actual_extracted_data.get('rejectionCheck', {})
             if rejection_check.get('shouldReject', False):
                 st.error("❌ 数据质量检查未通过，请完善调研表后重新上传")
                 
@@ -489,6 +636,47 @@ def render_air_compressor_calculate_stage():
             extracted_data_path = st.session_state.session_dir / "extracted_data.json"
             with open(extracted_data_path, 'w', encoding='utf-8') as f:
                 json.dump(st.session_state.extracted_data, f, ensure_ascii=False, indent=2)
+            
+            streaming_texts.append("🧠 生成数据填充建议...")
+            update_streaming_container(container, streaming_texts)
+            
+            # 生成空压机数据填充建议
+            filling_suggestions_path = st.session_state.session_dir / "filling_suggestions.json"
+            quality_report_path = st.session_state.session_dir / "quality_report.json"
+            
+            # 创建质量报告（如果不存在）
+            if not quality_report_path.exists():
+                quality_report = {
+                    "completeness": 0.8,
+                    "confidence": "medium",
+                    "issues": []
+                }
+                with open(quality_report_path, 'w', encoding='utf-8') as f:
+                    json.dump(quality_report, f, ensure_ascii=False, indent=2)
+            
+            filling_result = skill_caller.call_skill(
+                'suggest-air-compressor-data-filling',
+                str(extracted_data_path),
+                str(quality_report_path),
+                str(filling_suggestions_path),
+                callback=log_callback
+            )
+            
+            # 应用填充建议到数据中
+            if filling_suggestions_path.exists():
+                with open(filling_suggestions_path, 'r', encoding='utf-8') as f:
+                    filling_suggestions = json.load(f)
+                
+                if filling_suggestions.get('can_proceed', False):
+                    streaming_texts.append("📝 应用填充建议...")
+                    update_streaming_container(container, streaming_texts)
+                    
+                    # 应用填充建议
+                    filled_data = apply_filling_suggestions(st.session_state.extracted_data, filling_suggestions)
+                    
+                    # 保存填充后的数据
+                    with open(extracted_data_path, 'w', encoding='utf-8') as f:
+                        json.dump(filled_data, f, ensure_ascii=False, indent=2)
             
             streaming_texts.append("🧮 开始计算第二部分输入字段...")
             update_streaming_container(container, streaming_texts)
