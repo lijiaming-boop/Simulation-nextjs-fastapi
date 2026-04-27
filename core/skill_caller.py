@@ -368,6 +368,34 @@ class SkillCaller:
                 f"请基于行业标准和附表查询提供智能填充建议。"
             )
 
+        elif skill_name == "extract-air-compressor-data-llm":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出文本路径, [原始文件名]"
+                )
+            prompt = (
+                f"请使用 extract-air-compressor-data-llm skill 从空压机调研表中提取结构化数据。\n\n"
+                f"第一步：执行以下命令提取文本内容：\n"
+                f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
+            )
+            if len(args) >= 3:
+                prompt += f" '{args[2]}'"
+            
+            prompt += (
+                f"\n\n第二步：读取提取的文本内容，按照SKILL.md中的指令进行智能分析：\n"
+                f"- 从文本中提取项目级数据（企业名称、行业类型、压力、能耗等）\n"
+                f"- 从文本中提取设备级数据（设备列表、运行状态、铭牌参数等）\n"
+                f"- 执行打回条件检查（检查是否有运行或备用设备）\n"
+                f"- 生成质量报告\n\n"
+                f"第三步：生成最终的结构化数据，保存到 extracted_data.json，格式如下：\n"
+                f'{{\n  "rawData": {{\n    "projectLevel": {{...}},\n    "equipmentLevel": [...]\n  }},\n  "rejectionCheck": {{\n    "shouldReject": false,\n    "criticalIssues": [],\n    "highSeverityIssues": []\n  }},\n  "quality_report": {{...}}\n}}\n\n'
+                f"注意：\n"
+                f"- runningStatus必须识别为“运行”、“备用”或“停用”\n"
+                f"- 如果没有找到运行或备用设备，shouldReject设为true\n"
+                f"- 数值字段必须是数字类型，不要字符串"
+            )
+            return prompt
+
         elif skill_name == "calculate-air-compressor-energy-saving":
             if len(args) < 2:
                 raise SkillError(
