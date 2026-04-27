@@ -47,7 +47,8 @@ class AirCompressorEnergyCalculator:
         
         # 第二步：提取项目和设备数据
         project_data = self._extract_project_data(raw_data, calculation_inputs)
-        equipment_data = self._extract_equipment_data(raw_data)
+        equipment_level = raw_data.get("rawData", {}).get("equipmentLevel", [])
+        equipment_data = self._calculate_equipment_derived_fields(equipment_level)
         self.intermediate_data["calculated_parameters"]["project_data"] = project_data
         self.intermediate_data["calculated_parameters"]["equipment_data"] = equipment_data
         self._add_calculation_step("第二步", "提取项目和设备数据", {
@@ -330,31 +331,6 @@ class AirCompressorEnergyCalculator:
             "postControlAveragePressure": calculation_inputs.get("postControlAveragePressure", 5.4),
             "mainPipelineDirectConsumptionRatio": calculation_inputs.get("mainPipelineDirectConsumptionRatio", 70)
         }
-    
-    def _extract_equipment_data(self, raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """提取设备级数据"""
-        
-        # 从原始数据中获取设备清单
-        equipment_list = raw_data.get("rawData", {}).get("equipmentLevel", [])
-        processed_equipment = []
-        
-        for equipment in equipment_list:
-            # 确保所有必要字段存在
-            processed_eq = {
-                "equipmentId": equipment.get("equipmentId", ""),
-                "stationId": equipment.get("stationId", ""),
-                "brand": equipment.get("brand", ""),
-                "model": equipment.get("model", ""),
-                "equipmentType": equipment.get("equipmentType", "螺杆"),
-                "manufactureYear": equipment.get("manufactureYear", 2015),
-                "runningStatus": equipment.get("runningStatus", "运行"),
-                "ratedPower": equipment.get("ratedPower", 0),
-                "ratedFlow": equipment.get("ratedFlow", 0)
-            }
-            
-            processed_equipment.append(processed_eq)
-        
-        return processed_equipment
     
     def _calculate_system_parameters(self, equipment_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """计算系统级参数"""
