@@ -247,7 +247,7 @@ class SkillCaller:
 
     def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
         """优化过长的提示词"""
-        # 对于LLM版本的空压机技能
+        # 对于LLM版本的空压机技能，不进行过度简化，保留核心指令
         if skill_name == "extract-air-compressor-data-llm":
             if len(args) < 2:
                 raise SkillError(
@@ -257,7 +257,37 @@ class SkillCaller:
             if len(args) >= 3:
                 cmd += f" '{args[2]}'"
             
-            optimized_prompt = f"执行LLM智能数据提取：\n{cmd}"
+            # 构建保留核心指令的提示词
+            optimized_prompt = f"""请使用 extract-air-compressor-data-llm skill 完成以下任务：
+
+1. 首先执行以下命令提取文本内容：
+{cmd}
+
+2. 读取提取的文本内容，按照SKILL.md中的指令进行智能分析：
+   - 从文本中提取项目级数据（企业名称、行业类型、压力、能耗等）
+   - 从文本中提取设备级数据（设备列表、运行状态、铭牌参数等）
+   - 执行打回条件检查（检查是否有运行或备用设备）
+   - 生成质量报告
+
+3. 生成最终的结构化数据，保存到 extracted_data.json，格式如下：
+{{
+  "rawData": {{
+    "projectLevel": {{...}},
+    "equipmentLevel": [...]
+  }},
+  "rejectionCheck": {{
+    "shouldReject": false,
+    "criticalIssues": [],
+    "highSeverityIssues": []
+  }},
+  "quality_report": {{...}}
+}}
+
+注意：
+- runningStatus必须识别为“运行”、“备用”或“停用”
+- 如果没有找到运行或备用设备，shouldReject设为true
+- 数值字段必须是数字类型，不要字符串
+"""
             return optimized_prompt
         
         # 对于其他技能，截断过长的内容

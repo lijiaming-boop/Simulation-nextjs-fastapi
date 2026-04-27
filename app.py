@@ -536,33 +536,46 @@ def render_air_compressor_extract_stage():
             streaming_texts.append("📋 开始提取空压机调研表数据...")
             update_streaming_container(container, streaming_texts)
             
+            # 准备输出文件路径
+            extracted_text_path = st.session_state.session_dir / "extracted_air_compressor_text.json"
+            
             result = skill_caller.call_skill(
                 'extract-air-compressor-data-llm',
                 str(file_path),
+                str(extracted_text_path),
+                st.session_state.original_filename,
                 callback=log_callback
             )
             
             streaming_texts.append("✅ 数据提取完成！")
             update_streaming_container(container, streaming_texts)
             
-            # 处理提取结果 - 检查数据是否在 ai_responses 中
-            actual_extracted_data = result
-            if 'ai_responses' in result and len(result['ai_responses']) > 0:
-                try:
-                    # 尝试从 ai_responses[0] 中提取JSON数据
-                    import re
-                    response_text = result['ai_responses'][0]
-                    # 查找 JSON 代码块
-                    json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-                    if json_match:
-                        json_str = json_match.group(1)
-                        actual_extracted_data = json.loads(json_str)
-                    else:
-                        # 如果没有代码块，尝试直接解析整个响应
-                        actual_extracted_data = json.loads(response_text)
-                except (json.JSONDecodeError, AttributeError) as e:
-                    print(f"解析 ai_responses 失败: {e}")
-                    actual_extracted_data = result
+            # 处理提取结果 - 从extracted_data.json文件中读取最终结构化数据
+            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
+            
+            if extracted_data_path.exists():
+                with open(extracted_data_path, 'r', encoding='utf-8') as f:
+                    actual_extracted_data = json.load(f)
+                print(f"✅ [数据处理] 从文件读取到结构化数据")
+            else:
+                # 如果文件不存在，尝试从ai_responses中解析
+                print(f"⚠️  [数据处理] extracted_data.json不存在，尝试从ai_responses解析")
+                actual_extracted_data = result
+                if 'ai_responses' in result and len(result['ai_responses']) > 0:
+                    try:
+                        import re
+                        response_text = result['ai_responses'][0]
+                        # 查找 JSON 代码块
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(1)
+                            actual_extracted_data = json.loads(json_str)
+                        else:
+                            # 如果没有代码块，尝试直接解析整个响应
+                            actual_extracted_data = json.loads(response_text)
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        print(f"解析 ai_responses 失败: {e}")
+                        actual_extracted_data = result
             
             st.session_state.extracted_data = actual_extracted_data
             
