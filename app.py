@@ -460,13 +460,17 @@ def render_air_conditioner_result_stage():
         st.metric("优化后年耗电量", f"{optimized:.1f} 万kWh")
     
     # 操作按钮
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("🔄 重新测算", type="secondary", use_container_width=True):
             reset_flow()
             st.rerun()
     with col2:
-        st.button("📥 导出报告", type="primary", use_container_width=True, disabled=True)
+        if st.button("📥 导出方案报告", type="primary", use_container_width=True):
+            generate_air_compressor_report()
+    with col3:
+        if st.button("💰 导出报价单", type="primary", use_container_width=True):
+            generate_air_compressor_quote()
 
 
 # ==================== 空压机模块阶段 ====================
@@ -790,6 +794,77 @@ def render_air_compressor_result_stage():
             st.rerun()
     with col2:
         st.button("📥 导出报告", type="primary", use_container_width=True, disabled=True)
+
+
+# ==================== 报告生成函数 ====================
+
+def generate_air_compressor_report():
+    """生成空压系统数智化升级方案报告"""
+    try:
+        # 获取数据
+        extracted_data = st.session_state.get('extracted_data', {})
+        result = st.session_state.get('result', {})
+        
+        if not extracted_data or not result:
+            st.error("没有可用的数据生成报告")
+            return
+        
+        # 保存数据到临时文件
+        output_dir = st.session_state.session_dir
+        extracted_data_path = output_dir / "extracted_data_for_report.json"
+        calculation_result_path = output_dir / "calculation_result_for_report.json"
+        
+        with open(extracted_data_path, 'w', encoding='utf-8') as f:
+            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+        
+        with open(calculation_result_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        
+        # 调用skill生成报告
+        skill_caller = SkillCaller()
+        skill_result = skill_caller.call_skill(
+            "generate-air-compressor-report",
+            str(extracted_data_path),
+            str(calculation_result_path),
+            str(output_dir)
+        )
+        
+        # 检查生成的文件
+        word_files = list(output_dir.glob("空压系统数智化升级方案_*.docx"))
+        excel_files = list(output_dir.glob("2026年空压云智控报价单_*.xlsx"))
+        
+        if word_files:
+            word_file = word_files[0]
+            with open(word_file, 'rb') as f:
+                st.download_button(
+                    label="📥 下载空压系统数智化升级方案",
+                    data=f.read(),
+                    file_name=word_file.name,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+        
+        if excel_files:
+            excel_file = excel_files[0]
+            with open(excel_file, 'rb') as f:
+                st.download_button(
+                    label="📥 下载空压云智控报价单",
+                    data=f.read(),
+                    file_name=excel_file.name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        
+        if word_files or excel_files:
+            st.success("报告生成完成！请点击上方按钮下载文件。")
+        else:
+            st.error("报告生成失败，请检查模板文件和数据完整性。")
+            
+    except Exception as e:
+        st.error(f"生成报告失败: {str(e)}")
+
+
+def generate_air_compressor_quote():
+    """生成空压云智控报价单（调用generate_air_compressor_report）"""
+    generate_air_compressor_report()
 
 
 # ==================== 主应用 ====================
