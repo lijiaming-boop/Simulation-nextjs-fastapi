@@ -223,7 +223,7 @@ def generate_word_report(extracted_data: Dict[str, Any], result: Dict[str, Any],
 
 
 def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
-    """使用pandoc转换MD文件"""
+    """使用pandoc转换MD文件（优化格式）"""
     import subprocess
     
     output_paths = []
@@ -239,19 +239,58 @@ def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
         return []
     
     try:
-        # 转换为Word
+        # 转换为Word（添加更多格式化选项）
         word_path = output_dir / f"{md_path.stem}.docx"
-        cmd = ['pandoc', str(md_path), '-o', str(word_path), '--toc']
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            output_paths.append(word_path)
-            print(f"✅ pandoc转换Word成功")
-        else:
-            print(f"⚠️ pandoc转换Word失败: {result.stderr}")
+        cmd = [
+            'pandoc', str(md_path), 
+            '-o', str(word_path), 
+            '--toc',
+            '--toc-depth=3',
+            '--highlight-style=tango',
+            '--reference-doc=00_sample/模板测算表/reference.docx'  # 使用自定义模板
+        ]
+        
+        # 如果没有自定义模板，使用默认格式
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                output_paths.append(word_path)
+                print(f"✅ pandoc转换Word成功（使用自定义模板）")
+            else:
+                raise Exception(result.stderr)
+        except:
+            # 如果自定义模板不存在，使用默认格式
+            cmd = [
+                'pandoc', str(md_path), 
+                '-o', str(word_path), 
+                '--toc',
+                '--toc-depth=3',
+                '--highlight-style=tango',
+                '-V', 'mainfont=Microsoft YaHei',
+                '-V', 'sansfont=Microsoft YaHei',
+                '-V', 'fontsize=12pt',
+                '-V', 'linestretch=1.5',
+                '-V', 'geometry:margin=2.5cm'
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                output_paths.append(word_path)
+                print(f"✅ pandoc转换Word成功（使用默认格式）")
+            else:
+                print(f"⚠️ pandoc转换Word失败: {result.stderr}")
         
         # 转换为PDF
         pdf_path = output_dir / f"{md_path.stem}.pdf"
-        cmd = ['pandoc', str(md_path), '-o', str(pdf_path), '--toc', '-V', 'geometry:margin=1in']
+        cmd = [
+            'pandoc', str(md_path), 
+            '-o', str(pdf_path), 
+            '--toc',
+            '--toc-depth=3',
+            '-V', 'geometry:margin=2.5cm',
+            '-V', 'fontsize=12pt',
+            '-V', 'linestretch=1.5',
+            '-V', 'mainfont=Microsoft YaHei'
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             output_paths.append(pdf_path)
