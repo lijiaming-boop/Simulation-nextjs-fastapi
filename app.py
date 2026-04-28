@@ -36,6 +36,8 @@ def init_session_state():
 def reset_flow():
     """重置流程"""
     st.session_state.stage = 'upload'
+    st.session_state.ac_stage = 'upload'  # 空调模块独立stage
+    st.session_state.compressor_stage = 'upload'  # 空压模块独立stage
     st.session_state.uploaded_file = None
     st.session_state.original_filename = None
     st.session_state.extracted_data = None
@@ -519,7 +521,11 @@ def apply_filling_suggestions(data: dict, suggestions: dict) -> dict:
 
 def render_air_compressor_extract_stage():
     """空压机模块：数据提取阶段"""
-    st.markdown("### 🔍 数据提取与验证")
+    st.markdown("### 📤 数据提取")
+    
+    # 使用空压模块独立stage
+    if st.session_state.get('compressor_stage') is None:
+        st.session_state.compressor_stage = 'upload'
     
     if st.session_state.extracted_data is None:
         expander, container = create_streaming_container("🤖 AI 正在分析调研表...")
@@ -606,7 +612,7 @@ def render_air_compressor_extract_stage():
                 return
             
             time.sleep(1)
-            st.session_state.stage = 'calculate'
+            st.session_state.compressor_stage = 'calculate'
             st.rerun()
             
         except Exception as e:
@@ -728,13 +734,17 @@ def render_air_compressor_extract_stage():
                 st.rerun()
         with col2:
             if st.button("➡️ 确认数据并计算", type="primary", use_container_width=True):
-                st.session_state.stage = 'calculate'
+                st.session_state.compressor_stage = 'calculate'
                 st.rerun()
 
 
 def render_air_compressor_calculate_stage():
     """空压机模块：节能计算阶段"""
     st.markdown("### 📊 节能率计算")
+    
+    # 使用空压模块独立stage
+    if st.session_state.get('compressor_stage') is None:
+        st.session_state.compressor_stage = 'upload'
     
     if st.session_state.result is None:
         expander, container = create_streaming_container("🧮 AI 正在计算节能率...")
@@ -841,7 +851,7 @@ def render_air_compressor_calculate_stage():
             update_streaming_container(container, streaming_texts)
             
             time.sleep(1)
-            st.session_state.stage = 'result'
+            st.session_state.compressor_stage = 'result'
             st.rerun()
             
         except Exception as e:
@@ -1087,13 +1097,16 @@ def main():
             render_air_conditioner_result_stage()
     else:
         # 空压机模块：4步简化流程
-        if stage == 'upload':
+        # 使用空压模块独立stage，避免与空调模块冲突
+        compressor_stage = st.session_state.get('compressor_stage', 'upload')
+        
+        if compressor_stage == 'upload' or stage == 'upload':
             render_upload_stage()
-        elif stage == 'extract_check':
+        elif compressor_stage == 'extract_check' or stage == 'extract_check':
             render_air_compressor_extract_stage()
-        elif stage == 'calculate':
+        elif compressor_stage == 'calculate' or stage == 'calculate':
             render_air_compressor_calculate_stage()
-        elif stage == 'result':
+        elif compressor_stage == 'result' or stage == 'result':
             render_air_compressor_result_stage()
 
 
