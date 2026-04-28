@@ -83,8 +83,9 @@ def generate_md_report(extracted_data: Dict[str, Any], result: Dict[str, Any], o
         electricity_price = extracted_data.get('rawData', {}).get('projectLevel', {}).get('electricityPrice', 0)
         annual_cost = annual_energy * electricity_price
         
-        # 计算节能数据
-        annual_saving = result.get('annual_energy_saving', 0) / 10000
+        # 计算节能数据（注意字段名称是energy_saving而不是annual_energy_saving）
+        energy_saving_value = result.get('energy_saving', result.get('annual_energy_saving', 0))
+        annual_saving = energy_saving_value / 10000
         energy_saving_rate = result.get('energy_saving_rate', 0) * 100
         annual_saving_cost = annual_saving * electricity_price
         
@@ -202,107 +203,104 @@ def generate_word_report(extracted_data: Dict[str, Any], result: Dict[str, Any],
     if not md_path:
         return None
     
-    # 转换为PDF
-    pdf_path = convert_md_to_pdf(md_path, output_dir)
-    if not pdf_path:
-        # 如果PDF转换失败，返回MD文件
+    # 将MD转换为Word
+    word_path = convert_md_to_word(md_path, output_dir)
+    if not word_path:
+        # 如果Word转换失败，返回MD文件
         return md_path
     
-    return pdf_path
+    return word_path
 
 
-def generate_excel_quote(extracted_data: Dict[str, Any], result: Dict[str, Any], output_dir: Path) -> Optional[Path]:
-    """生成Excel格式的报价单"""
+def convert_md_to_word(md_path: Path, output_dir: Path) -> Optional[Path]:
+    """将MD文件转换为Word"""
     try:
-        import openpyxl
-        from openpyxl import load_workbook
+        from docx import Document
+        from docx.shared import Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
         
-        # 读取模板
-        template_path = Path('00_sample/模板测算表/2026年空压云智控报价模板.xlsx')
-        if not template_path.exists():
-            print(f"❌ Excel模板文件不存在: {template_path}")
-            return None
+        # 读取MD文件
+        with open(md_path, 'r', encoding='utf-8') as f:
+            md_lines = f.readlines()
         
-        # 加载工作簿
-        wb = load_workbook(str(template_path))
+        # 创建Word文档
+        doc = Document()
         
-        # 获取第一个工作表
-        ws = wb.active
+        # 设置默认字体
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'SimSun'
+        font.size = Pt(11)
         
-        # 替换单元格中的占位符
-        for row in ws.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str):
-                    text = cell.value
+        # 解析MD内容
+        for line in md_lines:
+            line = line.rstrip()
+            
+            # 标题
+            if line.startswith('# '):
+                heading = doc.add_heading(line[2:], level=1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif line.startswith('## '):
+                doc.add_heading(line[3:], level=2)
+            elif line.startswith('### '):
+                doc.add_heading(line[4:], level=3)
+            elif line.startswith('#### '):
+                doc.add_heading(line[5:], level=4)
+            
+            # 列表
+            elif line.startswith('- '):
+                paragraph = doc.add_paragraph(line[2:], style='List Bullet')
+            elif line.startswith('1. ') or line.startswith('（1）') or line.startswith('（2）') or line.startswith('（3）'):
+                paragraph = doc.add_paragraph(line, style='List Number')
+            
+            # 表格
+            elif line.startswith('|'):
+                # 检查是否是表格行
+                parts = line.split('|')
+                if len(parts) > 2:
+                    # 创建表格（第一行作为表头）
+                    if not hasattr(doc, '_table_started'):
+                        doc._table_started = True
+                        doc._table = doc.add_table(rows=0, cols=len(parts)-2)
+                        doc._table.style = 'Table Grid'
                     
-                    # 项目信息
-                    if '{companyName}' in text:
-                        company_name = extracted_data.get('rawData', {}).get('projectLevel', {}).get('companyName', '')
-                        cell.value = text.replace('{companyName}', company_name)
-                    if '{projectLocation}' in text:
-                        project_location = extracted_data.get('rawData', {}).get('projectLevel', {}).get('projectLocation', '')
-                        cell.value = text.replace('{projectLocation}', project_location)
-                    if '{industryType}' in text:
-                        industry_type = extracted_data.get('rawData', {}).get('projectLevel', {}).get('industryType', '')
-                        cell.value = text.replace('{industryType}', industry_type)
-                    
-                    # 节能数据
-                    if '{energySavingRate}' in text:
-                        energy_saving_rate = result.get('energy_saving_rate_range', '0% - 0%')
-                        cell.value = text.replace('{energySavingRate}', energy_saving_rate)
-                    if '{currentEnergy}' in text:
-                        current_energy = result.get('current_total_energy', 0) / 10000
-                        cell.value = text.replace('{currentEnergy}', f"{current_energy:.1f}万kWh")
-                    if '{optimizedEnergy}' in text:
-                        optimized_energy = result.get('optimized_total_energy', 0) / 10000
-                        cell.value = text.replace('{optimizedEnergy}', f"{optimized_energy:.1f}万kWh")
-                    if '{annualSaving}' in text:
-                        annual_saving = result.get('annual_energy_saving', 0) / 10000
-                        cell.value = text.replace('{annualSaving}', f"{annual_saving:.1f}万kWh")
-                    
-                    # 系统参数
-                    system_params = result.get('system_parameters', {})
-                    if '{systemCompressorPowerFactor}' in text:
-                        power_factor = system_params.get('systemCompressorPowerFactor', 0)
-                        cell.value = text.replace('{systemCompressorPowerFactor}', f"{power_factor:.3f}")
-                    if '{systemSpecificPower}' in text:
-                        specific_power = system_params.get('systemSpecificPower', 0)
-                        cell.value = text.replace('{systemSpecificPower}', f"{specific_power:.2f}kW/(m³/min)")
-                    if '{systemCompressedAirFlow}' in text:
-                        air_flow = system_params.get('systemCompressedAirFlow', 0)
-                        cell.value = text.replace('{systemCompressedAirFlow}', f"{air_flow:.1f}m³/min")
-                    
-                    # 设备信息
-                    equipment_list = extracted_data.get('rawData', {}).get('equipmentLevel', [])
-                    if '{equipmentCount}' in text:
-                        cell.value = text.replace('{equipmentCount}', str(len(equipment_list)))
-                    
-                    # 电价信息
-                    electricity_price = extracted_data.get('rawData', {}).get('projectLevel', {}).get('electricityPrice', 0)
-                    if '{electricityPrice}' in text:
-                        cell.value = text.replace('{electricityPrice}', f"{electricity_price:.3f}元/kWh")
-                    
-                    # 压力信息
-                    alarm_pressure = extracted_data.get('rawData', {}).get('projectLevel', {}).get('alarmPressureLowerLimit', 0)
-                    if '{alarmPressure}' in text:
-                        cell.value = text.replace('{alarmPressure}', f"{alarm_pressure:.1f}bar")
-                    
-                    average_pressure = extracted_data.get('rawData', {}).get('projectLevel', {}).get('averagePressure', 0)
-                    if '{averagePressure}' in text:
-                        cell.value = text.replace('{averagePressure}', f"{average_pressure:.1f}bar")
+                    # 添加行
+                    row = doc._table.add_row()
+                    for i, part in enumerate(parts[1:-1]):
+                        row.cells[i].text = part.strip()
+                continue
+            
+            # 普通段落
+            elif line.strip():
+                # 检查是否在表格中
+                if hasattr(doc, '_table_started') and doc._table_started:
+                    # 表格结束
+                    doc._table_started = False
+                doc.add_paragraph(line)
+            
+            # 空行
+            else:
+                doc.add_paragraph()
         
-        # 保存文件
-        output_path = output_dir / f"2026年空压云智控报价单_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(str(output_path))
-        print(f"✅ Excel报价单已生成: {output_path}")
-        return output_path
+        # 保存Word文件
+        word_output_path = output_dir / f"{md_path.stem}.docx"
+        doc.save(str(word_output_path))
+        
+        print(f"✅ Word报告已生成: {word_output_path}")
+        return word_output_path
         
     except ImportError:
-        print("❌ 需要安装 openpyxl 库: pip install openpyxl")
+        print("❌ 需要安装 python-docx 库: pip install python-docx")
         return None
     except Exception as e:
-        print(f"❌ 生成Excel报价单失败: {str(e)}")
+        print(f"❌ 转换Word失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
+
+
+# 报价单功能已移除
+# def generate_excel_quote(extracted_data: Dict[str, Any], result: Dict[str, Any], output_dir: Path) -> Optional[Path]:
 
 
 def main():
@@ -333,19 +331,12 @@ def main():
         
         print(f"✅ [报告生成] 数据读取成功")
         
-        # 生成报告（MD + PDF）
+        # 生成报告（MD + Word）
         report_path = generate_word_report(extracted_data, result, output_dir)
-        
-        # 生成Excel报价单
-        excel_quote_path = generate_excel_quote(extracted_data, result, output_dir)
         
         # 输出结果
         if report_path:
             print(f"📄 报告: {report_path}")
-        if excel_quote_path:
-            print(f"📊 Excel报价单: {excel_quote_path}")
-        
-        if report_path or excel_quote_path:
             print(f"✅ [报告生成] 报告生成完成")
         else:
             print(f"❌ [报告生成] 报告生成失败")
