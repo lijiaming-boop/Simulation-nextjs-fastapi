@@ -621,17 +621,115 @@ def render_air_compressor_extract_stage():
         project_level = raw_data.get('projectLevel', {})
         equipment_level = raw_data.get('equipmentLevel', [])
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("企业名称", project_level.get('companyName', '未知'))
-        with col2:
-            st.metric("行业类型", project_level.get('industryType', '未知'))
-        with col3:
-            st.metric("设备数量", len(equipment_level))
+        # 显示质量报告
+        quality_report = st.session_state.extracted_data.get('quality_report', {})
+        confidence = quality_report.get('confidence', 'medium')
+        completeness = quality_report.get('completeness', 0)
         
-        if st.button("📊 开始节能计算", type="primary", use_container_width=True):
-            st.session_state.stage = 'calculate'
-            st.rerun()
+        # 主数据展示区域
+        st.markdown("---")
+        st.markdown("### 📋 提取的关键数据")
+        
+        # 企业信息
+        with st.expander("🏢 企业基本信息", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("企业名称", project_level.get('companyName', '未知'))
+            with col2:
+                st.metric("行业类型", project_level.get('industryType', '未知'))
+            with col3:
+                st.metric("项目地点", project_level.get('projectLocation', '未知'))
+        
+        # 能耗与压力数据
+        with st.expander("⚡ 能耗与压力数据", expanded=True):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                annual_energy = project_level.get('totalAnnualEnergyConsumption', 0)
+                st.metric("年耗电量", f"{annual_energy / 10000:.1f} 万kWh")
+            with col2:
+                st.metric("平均电价", f"{project_level.get('electricityPrice', 0):.4f} 元/kWh")
+            with col3:
+                st.metric("报警压力下限", f"{project_level.get('alarmPressureLowerLimit', 0):.1f} bar")
+            with col4:
+                st.metric("近14天平均压力", f"{project_level.get('averagePressure', 0):.1f} bar")
+        
+        # 设备清单
+        with st.expander("🔧 设备清单", expanded=True):
+            if equipment_level:
+                # 统计设备类型
+                type_counts = {}
+                running_count = 0
+                backup_count = 0
+                
+                for eq in equipment_level:
+                    eq_type = eq.get('equipmentType', '未知')
+                    type_counts[eq_type] = type_counts.get(eq_type, 0) + 1
+                    status = eq.get('runningStatus', '')
+                    if status == '运行':
+                        running_count += 1
+                    elif status == '备用':
+                        backup_count += 1
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("设备总数", len(equipment_level))
+                with col2:
+                    st.metric("运行中", running_count)
+                with col3:
+                    st.metric("备用", backup_count)
+                with col4:
+                    st.metric("螺杆/离心机", f"{type_counts.get('螺杆', 0)}/{type_counts.get('离心', 0)}")
+                
+                # 设备详情表格
+                st.markdown("**设备详情：**")
+                equipment_data = []
+                for eq in equipment_level:
+                    equipment_data.append({
+                        '设备编号': eq.get('equipmentId', ''),
+                        '类型': eq.get('equipmentType', ''),
+                        '品牌': eq.get('brand', ''),
+                        '功率(kW)': eq.get('ratedPower', 0),
+                        '流量(m³/min)': eq.get('ratedFlow', 0),
+                        '状态': eq.get('runningStatus', '')
+                    })
+                
+                st.dataframe(equipment_data, use_container_width=True)
+            else:
+                st.warning("暂无设备数据")
+        
+        # 质量评估
+        with st.expander("📊 数据质量评估", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("数据完整度", f"{completeness * 100:.0f}%")
+            with col2:
+                confidence_color = "green" if confidence == "high" else "yellow" if confidence == "medium" else "red"
+                st.metric("置信度", f":{confidence_color}[{confidence}]")
+            
+            # 问题列表
+            issues = quality_report.get('issues', [])
+            if issues:
+                st.markdown("**注意事项：**")
+                for issue in issues:
+                    severity = issue.get('severity', 'low')
+                    if severity == 'high':
+                        st.warning(f"⚠️ {issue.get('description', '')}")
+                    else:
+                        st.info(f"ℹ️ {issue.get('description', '')}")
+            else:
+                st.success("✅ 数据质量良好，未发现问题")
+        
+        # 确认按钮
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 重新上传", type="secondary", use_container_width=True):
+                reset_flow()
+                st.rerun()
+        with col2:
+            if st.button("➡️ 确认数据并计算", type="primary", use_container_width=True):
+                st.session_state.stage = 'calculate'
+                st.rerun()
 
 
 def render_air_compressor_calculate_stage():
@@ -793,7 +891,8 @@ def render_air_compressor_result_stage():
             reset_flow()
             st.rerun()
     with col2:
-        st.button("📥 导出报告", type="primary", use_container_width=True, disabled=True)
+        if st.button("📥 导出报告", type="primary", use_container_width=True):
+            generate_air_compressor_report()
 
 
 # ==================== 报告生成函数 ====================
@@ -843,17 +942,7 @@ def generate_air_compressor_report():
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
         
-        if excel_files:
-            excel_file = excel_files[0]
-            with open(excel_file, 'rb') as f:
-                st.download_button(
-                    label="📥 下载空压云智控报价单",
-                    data=f.read(),
-                    file_name=excel_file.name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-        
-        if word_files or excel_files:
+        if word_files:
             st.success("报告生成完成！请点击上方按钮下载文件。")
         else:
             st.error("报告生成失败，请检查模板文件和数据完整性。")

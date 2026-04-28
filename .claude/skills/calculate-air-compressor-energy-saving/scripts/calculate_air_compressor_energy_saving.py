@@ -398,7 +398,7 @@ class AirCompressorEnergyCalculator:
         return current_total_energy
     
     def _calculate_optimized_energy_consumption(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> float:
-        """计算优化后系统能耗"""
+        """计算优化后系统能耗（按照需求文档公式）"""
         
         print(f"⚡ [优化能耗] 计算优化后系统能耗...")
         
@@ -406,42 +406,64 @@ class AirCompressorEnergyCalculator:
         current_pressure = project_data["averagePressure"]  # bar
         optimized_pressure = project_data["postControlAveragePressure"]  # bar
         annual_energy = project_data["totalAnnualEnergyConsumption"]  # kWh
+        annual_hours = project_data["averageAnnualOperatingHours"]  # 小时/年
+        direct_consumption_ratio = project_data["mainPipelineDirectConsumptionRatio"] / 100  # 转换为小数
         
-        # 压力优化节能计算
+        # 系统参数
+        system_power_factor = system_params["systemCompressorPowerFactor"]  # kW/(m³/min)/bar
+        system_specific_power = system_params["systemSpecificPower"]  # kW/(m³/min)
+        system_flow = system_params["systemCompressedAirFlow"]  # m³/min
+        
         # 检查压力合理性：如果当前压力低于优化后压力，说明当前系统已经很高效
         if current_pressure <= optimized_pressure:
             print(f"⚠️  当前压力({current_pressure} bar)已经接近或低于优化目标({optimized_pressure} bar)")
             # 在这种情况下，节能主要来自控制优化，而非压力降低
-            # 使用保守的节能估算：5-15%的控制优化节能
             control_optimization_factor = 0.9  # 10%的控制优化节能
             optimized_total_energy = annual_energy * control_optimization_factor
             
             self.calculation_details["optimization_type"] = "控制优化为主"
             self.calculation_details["control_optimization_factor"] = control_optimization_factor
         else:
-            # 正常的压力优化计算
-            # 基于压缩机功率与压力的关系：P ∝ (P_out / P_in)^((γ-1)/γ)
-            # 简化模型：功率与压力比的1.3次方成正比
+            # ===== 按照需求文档公式计算 =====
             
-            pressure_ratio_current = (current_pressure + ATMOSPHERIC_PRESSURE) / ATMOSPHERIC_PRESSURE
-            pressure_ratio_optimized = (optimized_pressure + ATMOSPHERIC_PRESSURE) / ATMOSPHERIC_PRESSURE
+            # 6.1.2 压力降低值
+            deltaPressure = current_pressure - optimized_pressure  # bar
             
-            # 计算压力优化系数
-            pressure_optimization_factor = (pressure_ratio_optimized / pressure_ratio_current) ** 1.3
+            # 6.1.3 空气消耗降低百分比
+            airReductionPercent = 100 * (1 - (optimized_pressure + ATMOSPHERIC_PRESSURE) / (current_pressure + ATMOSPHERIC_PRESSURE))
             
-            # 优化后能耗 = 当前能耗 × 压力优化系数
-            optimized_total_energy = annual_energy * pressure_optimization_factor
+            # 6.1.4 空气流量降低值
+            deltaFlowRate = system_flow * (airReductionPercent / 100) * direct_consumption_ratio  # m³/min
             
+            # 6.3.1 压力降低节能量 (MWh)
+            E_pressure = deltaPressure * system_power_factor * system_flow * annual_hours / 1000
+            
+            # 6.3.2 空气消耗降低节能量 (MWh)
+            E_air = deltaFlowRate * system_specific_power * annual_hours / 1000
+            
+            # 6.3.3 总节能量 (MWh)
+            E_total_MWh = E_pressure + E_air
+            
+            # 总节能量 (kWh)
+            total_saving_kWh = E_total_MWh * 1000
+            
+            # 优化后能耗
+            optimized_total_energy = annual_energy - total_saving_kWh
+            
+            # 记录计算详情
             self.calculation_details["optimization_type"] = "压力优化为主"
-            self.calculation_details["pressure_ratio_current"] = pressure_ratio_current
-            self.calculation_details["pressure_ratio_optimized"] = pressure_ratio_optimized
-            self.calculation_details["pressure_optimization_factor"] = pressure_optimization_factor
+            self.calculation_details["deltaPressure"] = deltaPressure
+            self.calculation_details["airReductionPercent"] = airReductionPercent
+            self.calculation_details["deltaFlowRate"] = deltaFlowRate
+            self.calculation_details["E_pressure_MWh"] = E_pressure
+            self.calculation_details["E_air_MWh"] = E_air
+            self.calculation_details["E_total_MWh"] = E_total_MWh
         
         # 记录通用计算详情
         self.calculation_details.update({
             "optimized_pressure": optimized_pressure,
             "pressure_reduction": current_pressure - optimized_pressure,
-            "optimized_calculation_method": "基于压力比的功率关系计算"
+            "optimized_calculation_method": "按照需求文档公式计算"
         })
         
         print(f"📊 优化后系统平均压力: {optimized_pressure} bar")
@@ -450,8 +472,13 @@ class AirCompressorEnergyCalculator:
         # 根据优化类型显示不同信息
         if "control_optimization_factor" in self.calculation_details:
             print(f"📊 控制优化系数: {self.calculation_details['control_optimization_factor']:.3f}")
-        elif "pressure_optimization_factor" in self.calculation_details:
-            print(f"📊 压力优化系数: {self.calculation_details['pressure_optimization_factor']:.3f}")
+        else:
+            print(f"📊 压力降低值(deltaPressure): {self.calculation_details.get('deltaPressure', 0):.2f} bar")
+            print(f"📊 空气消耗降低百分比: {self.calculation_details.get('airReductionPercent', 0):.2f}%")
+            print(f"📊 空气流量降低值(deltaFlowRate): {self.calculation_details.get('deltaFlowRate', 0):.2f} m³/min")
+            print(f"📊 压力降低节能量(E_pressure): {self.calculation_details.get('E_pressure_MWh', 0):.2f} MWh")
+            print(f"📊 空气消耗降低节能量(E_air): {self.calculation_details.get('E_air_MWh', 0):.2f} MWh")
+            print(f"📊 总节能量(E_total): {self.calculation_details.get('E_total_MWh', 0):.2f} MWh")
         
         return optimized_total_energy
     

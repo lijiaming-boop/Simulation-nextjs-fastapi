@@ -100,14 +100,17 @@ class AirCompressorDataFiller:
     def _suggest_project_level_fields(self, data: Dict[str, Any]):
         """建议项目级字段填充"""
         
+        # 获取项目级数据（支持两种数据结构）
+        project_level = data.get("rawData", {}).get("projectLevel", data)
+        
         # 填充电价
-        if not data.get("electricityPrice"):
-            location = data.get("projectLocation", "")
+        if not project_level.get("electricityPrice"):
+            location = project_level.get("projectLocation", "")
             suggested_price = self._get_electricity_price_by_location(location)
             if suggested_price:
                 self.suggestions.append({
                     "field": "electricityPrice",
-                    "original_value": data.get("electricityPrice"),
+                    "original_value": project_level.get("electricityPrice"),
                     "suggested_value": suggested_price,
                     "method": "省份查表",
                     "confidence": "high" if location else "medium",
@@ -115,10 +118,10 @@ class AirCompressorDataFiller:
                 })
         
         # 填充年运行天数
-        if not data.get("annualRunningDays"):
+        if not project_level.get("annualRunningDays"):
             self.suggestions.append({
                 "field": "annualRunningDays",
-                "original_value": data.get("annualRunningDays"),
+                "original_value": project_level.get("annualRunningDays"),
                 "suggested_value": DEFAULT_ANNUAL_RUNNING_DAYS,
                 "method": "行业默认值",
                 "confidence": "medium",
@@ -126,10 +129,10 @@ class AirCompressorDataFiller:
             })
         
         # 填充每天开机时间
-        if not data.get("dailyRunningHours"):
+        if not project_level.get("dailyRunningHours"):
             self.suggestions.append({
                 "field": "dailyRunningHours",
-                "original_value": data.get("dailyRunningHours"),
+                "original_value": project_level.get("dailyRunningHours"),
                 "suggested_value": DEFAULT_DAILY_RUNNING_HOURS,
                 "method": "行业默认值",
                 "confidence": "medium",
@@ -139,7 +142,8 @@ class AirCompressorDataFiller:
     def _suggest_equipment_level_fields(self, data: Dict[str, Any]):
         """建议设备级字段填充"""
         
-        equipment_list = data.get("equipmentList", [])
+        # 获取设备列表（支持两种数据结构）
+        equipment_list = data.get("rawData", {}).get("equipmentLevel", data.get("equipmentList", []))
         
         for i, equipment in enumerate(equipment_list):
             # 填充运行状态
@@ -188,7 +192,9 @@ class AirCompressorDataFiller:
     def _suggest_calculated_fields(self, data: Dict[str, Any]):
         """建议计算字段"""
         
-        equipment_list = data.get("equipmentList", [])
+        # 获取项目级数据和设备列表（支持两种数据结构）
+        project_level = data.get("rawData", {}).get("projectLevel", data)
+        equipment_list = data.get("rawData", {}).get("equipmentLevel", data.get("equipmentList", []))
         
         for i, equipment in enumerate(equipment_list):
             # 计算机龄
@@ -233,7 +239,7 @@ class AirCompressorDataFiller:
             })
         
         # 计算系统级参数
-        industry_type = data.get("industryType", "其他")
+        industry_type = project_level.get("industryType", "其他")
         pressure_params = PRESSURE_SAFETY_TABLE.get(industry_type, PRESSURE_SAFETY_TABLE["其他"])
         
         # 安全保护裕量
@@ -257,7 +263,7 @@ class AirCompressorDataFiller:
         })
         
         # 计算智控后平均压力
-        alarm_pressure = data.get("alarmPressureLowerLimit")
+        alarm_pressure = project_level.get("alarmPressureLowerLimit")
         if alarm_pressure:
             post_control_pressure = alarm_pressure + pressure_params["safety_margin"] + pressure_params["pressure_fluctuation"]
             self.suggestions.append({
@@ -270,8 +276,8 @@ class AirCompressorDataFiller:
             })
         
         # 计算平均年运行时间
-        daily_hours = data.get("dailyRunningHours") or DEFAULT_DAILY_RUNNING_HOURS
-        annual_days = data.get("annualRunningDays") or DEFAULT_ANNUAL_RUNNING_DAYS
+        daily_hours = project_level.get("dailyRunningHours") or DEFAULT_DAILY_RUNNING_HOURS
+        annual_days = project_level.get("annualRunningDays") or DEFAULT_ANNUAL_RUNNING_DAYS
         
         if daily_hours and annual_days:
             annual_hours = daily_hours * annual_days
@@ -350,6 +356,10 @@ class AirCompressorDataFiller:
     def _check_can_proceed(self, data: Dict[str, Any]) -> bool:
         """检查是否可以继续计算"""
         
+        # 获取项目级数据和设备列表（支持两种数据结构）
+        project_level = data.get("rawData", {}).get("projectLevel", data)
+        equipment_list = data.get("rawData", {}).get("equipmentLevel", data.get("equipmentList", []))
+        
         # 检查关键字段
         critical_fields = [
             "totalAnnualEnergyConsumption",
@@ -358,15 +368,12 @@ class AirCompressorDataFiller:
         ]
         
         for field in critical_fields:
-            if not data.get(field):
+            if not project_level.get(field):
                 self.unfillable_fields.append({
                     "field": field,
                     "reason": "关键计算参数，必须从调研表中获取",
                     "severity": "critical"
                 })
-        
-        # 检查设备信息
-        equipment_list = data.get("equipmentList", [])
         if not equipment_list:
             self.unfillable_fields.append({
                 "field": "equipmentList",
