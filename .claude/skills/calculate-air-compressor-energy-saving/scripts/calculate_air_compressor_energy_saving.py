@@ -268,21 +268,33 @@ class AirCompressorEnergyCalculator:
             return 0.35  # 默认值
     
     def _calculate_system_compressor_power_factor(self, equipment_list: List[Dict[str, Any]]) -> float:
-        """计算系统压缩机功率因子（运行+备用设备的平均值）"""
+        """计算系统压缩机功率因子（运行设备的流量加权平均值）"""
         
-        running_backup_equipment = [
+        running_equipment = [
             eq for eq in equipment_list 
-            if eq.get("runningStatus") in ["运行", "备用"]
+            if eq.get("runningStatus") == "运行"
         ]
         
-        if not running_backup_equipment:
+        if not running_equipment:
             return 0.35  # 默认值
         
-        total_factor = sum(eq.get("compressorPowerFactor", 0.35) for eq in running_backup_equipment)
-        return round(total_factor / len(running_backup_equipment), 3)
+        # 流量加权平均
+        total_weighted_factor = 0.0
+        total_flow = 0.0
+        
+        for eq in running_equipment:
+            flow = eq.get("ratedFlow", 0)
+            factor = eq.get("compressorPowerFactor", 0.35)
+            total_weighted_factor += flow * factor
+            total_flow += flow
+        
+        if total_flow == 0:
+            return 0.35
+        
+        return round(total_weighted_factor / total_flow, 3)
     
     def _calculate_system_specific_power(self, equipment_list: List[Dict[str, Any]]) -> float:
-        """计算系统比功率（仅运行设备的平均值）"""
+        """计算系统比功率（运行设备的流量加权平均值）"""
         
         running_equipment = [
             eq for eq in equipment_list 
@@ -292,9 +304,21 @@ class AirCompressorEnergyCalculator:
         if not running_equipment:
             return 7.0  # 默认值
         
-        total_power = sum(eq.get("specificPower", 7.0) for eq in running_equipment)
-        return round(total_power / len(running_equipment), 2)
-    
+        # 流量加权平均
+        total_weighted_power = 0.0
+        total_flow = 0.0
+        
+        for eq in running_equipment:
+            flow = eq.get("ratedFlow", 0)
+            spec_power = eq.get("specificPower", 7.0)
+            total_weighted_power += flow * spec_power
+            total_flow += flow
+        
+        if total_flow == 0:
+            return 7.0
+        
+        return round(total_weighted_power / total_flow, 2)
+        
     def _calculate_system_compressed_air_flow(self, equipment_list: List[Dict[str, Any]]) -> float:
         """计算系统压缩空气流量（仅运行设备的流量求和）"""
         
