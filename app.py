@@ -418,12 +418,12 @@ def render_air_conditioner_filling_stage():
         except Exception as e:
             st.error(f"❌ 生成填充建议失败: {str(e)}")
             if st.button("🔄 重新生成", type="secondary"):
-                st.session_state.filling_suggestions = None
+                st.session_state.ac_filling_suggestions = None
                 st.rerun()
     else:
         st.success("✅ 填充建议已生成")
         
-        suggestions = st.session_state.filling_suggestions.get('fillable_suggestions', [])
+        suggestions = st.session_state.ac_filling_suggestions.get('fillable_suggestions', [])
         if suggestions:
             st.info(f"发现 {len(suggestions)} 个可填充字段")
             
