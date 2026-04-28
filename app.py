@@ -391,10 +391,19 @@ def render_air_conditioner_filling_stage():
             extracted_data_path = st.session_state.session_dir / "ac_extracted_data.json"
             with open(extracted_data_path, 'w', encoding='utf-8') as f:
                 json.dump(st.session_state.ac_extracted_data, f, ensure_ascii=False, indent=2)
+            
+            # 构建质量报告路径和输出建议路径
+            quality_report_path = st.session_state.session_dir / "ac_quality_report.json"
+            with open(quality_report_path, 'w', encoding='utf-8') as f:
+                json.dump(st.session_state.ac_quality_report, f, ensure_ascii=False, indent=2)
+            
+            filling_suggestions_path = st.session_state.session_dir / "ac_filling_suggestions.json"
 
             result = skill_caller.call_skill(
                 'suggest-data-filling',
                 str(extracted_data_path),
+                str(quality_report_path),
+                str(filling_suggestions_path),
                 callback=log_callback
             )
 
