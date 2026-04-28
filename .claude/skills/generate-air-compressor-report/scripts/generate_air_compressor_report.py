@@ -197,105 +197,216 @@ def convert_md_to_pdf(md_path: Path, output_dir: Path) -> Optional[Path]:
 
 
 def generate_word_report(extracted_data: Dict[str, Any], result: Dict[str, Any], output_dir: Path) -> Optional[Path]:
-    """生成Word格式的方案报告"""
+    """生成报告（优先使用pandoc转换）"""
     # 先生成MD报告
     md_path = generate_md_report(extracted_data, result, output_dir)
     if not md_path:
         return None
     
-    # 将MD转换为Word
-    word_path = convert_md_to_word(md_path, output_dir)
-    if not word_path:
-        # 如果Word转换失败，返回MD文件
-        return md_path
+    # 尝试使用pandoc转换
+    output_paths = convert_md_with_pandoc(md_path, output_dir)
     
-    return word_path
+    if output_paths:
+        # 返回生成的文件路径列表
+        for path in output_paths:
+            print(f"✅ 报告已生成: {path}")
+        return output_paths[0]  # 返回第一个生成的文件
+    else:
+        # 如果pandoc不可用，生成HTML格式
+        html_path = generate_html_report(md_path, output_dir)
+        if html_path:
+            print(f"✅ HTML报告已生成: {html_path}")
+            return html_path
+        
+        # 最后返回MD文件
+        return md_path
 
 
-def convert_md_to_word(md_path: Path, output_dir: Path) -> Optional[Path]:
-    """将MD文件转换为Word"""
+def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
+    """使用pandoc转换MD文件"""
+    import subprocess
+    
+    output_paths = []
+    
+    # 检查pandoc是否安装
     try:
-        from docx import Document
-        from docx.shared import Pt
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        result = subprocess.run(['pandoc', '--version'], capture_output=True)
+        if result.returncode != 0:
+            print("⚠️ pandoc未安装，尝试生成HTML报告")
+            return []
+    except FileNotFoundError:
+        print("⚠️ pandoc未安装，尝试生成HTML报告")
+        return []
+    
+    try:
+        # 转换为Word
+        word_path = output_dir / f"{md_path.stem}.docx"
+        cmd = ['pandoc', str(md_path), '-o', str(word_path), '--toc']
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            output_paths.append(word_path)
+            print(f"✅ pandoc转换Word成功")
+        else:
+            print(f"⚠️ pandoc转换Word失败: {result.stderr}")
+        
+        # 转换为PDF
+        pdf_path = output_dir / f"{md_path.stem}.pdf"
+        cmd = ['pandoc', str(md_path), '-o', str(pdf_path), '--toc', '-V', 'geometry:margin=1in']
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            output_paths.append(pdf_path)
+            print(f"✅ pandoc转换PDF成功")
+        else:
+            print(f"⚠️ pandoc转换PDF失败: {result.stderr}")
+        
+    except Exception as e:
+        print(f"❌ pandoc转换失败: {str(e)}")
+    
+    return output_paths
+
+
+def generate_html_report(md_path: Path, output_dir: Path) -> Optional[Path]:
+    """生成美观的HTML报告"""
+    try:
+        import markdown
         
         # 读取MD文件
         with open(md_path, 'r', encoding='utf-8') as f:
-            md_lines = f.readlines()
+            md_content = f.read()
         
-        # 创建Word文档
-        doc = Document()
+        # 转换为HTML
+        html_body = markdown.markdown(md_content, extensions=['tables', 'toc'])
         
-        # 设置默认字体
-        style = doc.styles['Normal']
-        font = style.font
-        font.name = 'SimSun'
-        font.size = Pt(11)
+        # 添加美观的CSS样式
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空压系统数智化升级方案</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #f5f5f5;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 60px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 28px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #3498db;
+            font-size: 22px;
+            margin-top: 35px;
+            margin-bottom: 20px;
+            padding-left: 15px;
+            border-left: 4px solid #3498db;
+        }
+        h3 {
+            color: #2c3e50;
+            font-size: 18px;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        p {
+            margin-bottom: 15px;
+            text-indent: 2em;
+        }
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 15px;
+            text-align: left;
+        }
+        th {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e8f4fc;
+        }
+        .summary-box {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .highlight {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #777;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {content}
+        <div class="footer">
+            报告生成时间: {timestamp}
+        </div>
+    </div>
+</body>
+</html>
+        """.format(
+            content=html_body,
+            timestamp=datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')
+        )
         
-        # 解析MD内容
-        for line in md_lines:
-            line = line.rstrip()
-            
-            # 标题
-            if line.startswith('# '):
-                heading = doc.add_heading(line[2:], level=1)
-                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            elif line.startswith('## '):
-                doc.add_heading(line[3:], level=2)
-            elif line.startswith('### '):
-                doc.add_heading(line[4:], level=3)
-            elif line.startswith('#### '):
-                doc.add_heading(line[5:], level=4)
-            
-            # 列表
-            elif line.startswith('- '):
-                paragraph = doc.add_paragraph(line[2:], style='List Bullet')
-            elif line.startswith('1. ') or line.startswith('（1）') or line.startswith('（2）') or line.startswith('（3）'):
-                paragraph = doc.add_paragraph(line, style='List Number')
-            
-            # 表格
-            elif line.startswith('|'):
-                # 检查是否是表格行
-                parts = line.split('|')
-                if len(parts) > 2:
-                    # 创建表格（第一行作为表头）
-                    if not hasattr(doc, '_table_started'):
-                        doc._table_started = True
-                        doc._table = doc.add_table(rows=0, cols=len(parts)-2)
-                        doc._table.style = 'Table Grid'
-                    
-                    # 添加行
-                    row = doc._table.add_row()
-                    for i, part in enumerate(parts[1:-1]):
-                        row.cells[i].text = part.strip()
-                continue
-            
-            # 普通段落
-            elif line.strip():
-                # 检查是否在表格中
-                if hasattr(doc, '_table_started') and doc._table_started:
-                    # 表格结束
-                    doc._table_started = False
-                doc.add_paragraph(line)
-            
-            # 空行
-            else:
-                doc.add_paragraph()
+        # 保存HTML文件
+        html_path = output_dir / f"{md_path.stem}.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
         
-        # 保存Word文件
-        word_output_path = output_dir / f"{md_path.stem}.docx"
-        doc.save(str(word_output_path))
-        
-        print(f"✅ Word报告已生成: {word_output_path}")
-        return word_output_path
+        return html_path
         
     except ImportError:
-        print("❌ 需要安装 python-docx 库: pip install python-docx")
+        print("❌ 需要安装 markdown 库: pip install markdown")
         return None
     except Exception as e:
-        print(f"❌ 转换Word失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ 生成HTML报告失败: {str(e)}")
         return None
 
 
