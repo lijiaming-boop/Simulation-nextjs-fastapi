@@ -337,9 +337,13 @@ def render_air_conditioner_extract_check_stage():
             streaming_texts.append("📋 开始提取调研表数据...")
             update_streaming_container(container, streaming_texts)
 
+            # 构建输出JSON路径
+            output_json_path = st.session_state.session_dir / "ac_extracted_data.json"
+            
             result = skill_caller.call_skill(
                 'extract-and-check-data',
                 str(file_path),
+                str(output_json_path),
                 callback=log_callback
             )
 
