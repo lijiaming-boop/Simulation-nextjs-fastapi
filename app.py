@@ -354,8 +354,7 @@ def render_air_conditioner_extract_check_stage():
             st.session_state.ac_quality_report = result.get('quality_report', {})
 
             time.sleep(1)
-            st.session_state.stage = 'filling'
-            st.rerun()
+            st.rerun()  # 只刷新页面，不自动跳转
 
         except Exception as e:
             st.error(f"❌ 数据提取失败: {str(e)}")
@@ -364,9 +363,50 @@ def render_air_conditioner_extract_check_stage():
                 st.rerun()
     else:
         st.success("✅ 数据提取和质量检查完成")
-        if st.button("➡️ 继续数据填充", type="primary"):
-            st.session_state.stage = 'filling'
-            st.rerun()
+        
+        # 展示提取的数据
+        extracted_data = st.session_state.ac_extracted_data
+        
+        # 企业信息
+        st.markdown("---")
+        st.subheader("🏢 企业信息")
+        company_name = extracted_data.get('companyName', '未提取')
+        st.info(f"**企业名称**: {company_name}")
+        
+        # 能耗数据
+        st.markdown("---")
+        st.subheader("⚡ 能耗数据")
+        total_energy = extracted_data.get('totalAnnualEnergyConsumption', '未提取')
+        electricity_price = extracted_data.get('electricityPrice', '未提取')
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("年耗电量", f"{total_energy} 万kWh" if total_energy != '未提取' else "未提取")
+        with col2:
+            st.metric("电价", f"{electricity_price} 元/kWh" if electricity_price != '未提取' else "未提取")
+        
+        # 质量评估
+        st.markdown("---")
+        st.subheader("📊 数据质量评估")
+        quality_report = st.session_state.ac_quality_report
+        completeness = quality_report.get('completeness', 0) if quality_report else 0
+        st.progress(completeness, text=f"数据完整度: {completeness:.0%}")
+        
+        if quality_report and quality_report.get('issues'):
+            st.warning("⚠️ 发现以下数据问题:")
+            for issue in quality_report['issues']:
+                st.write(f"- {issue}")
+        
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 重新上传", type="secondary", use_container_width=True):
+                reset_flow()
+                st.rerun()
+        with col2:
+            if st.button("➡️ 确认数据并继续", type="primary", use_container_width=True):
+                st.session_state.stage = 'filling'
+                st.rerun()
 
 
 def render_air_conditioner_filling_stage():
