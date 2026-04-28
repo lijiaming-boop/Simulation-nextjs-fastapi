@@ -281,6 +281,11 @@ def render_upload_stage():
 
         if st.button("🚀 开始数据提取", type="primary", use_container_width=True):
             st.session_state.stage = 'extract_check'
+            # 根据模块类型设置对应的独立stage
+            if st.session_state.module_type == 'air_conditioner':
+                st.session_state.ac_stage = 'extract_check'
+            else:
+                st.session_state.compressor_stage = 'extract_check'
             st.session_state.scroll_to_top = True
             st.rerun()
 
