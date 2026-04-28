@@ -739,6 +739,7 @@ def render_air_compressor_extract_stage():
                 st.rerun()
         with col2:
             if st.button("➡️ 确认数据并计算", type="primary", use_container_width=True):
+                st.session_state.stage = 'calculate'
                 st.session_state.compressor_stage = 'calculate'
                 st.rerun()
 
