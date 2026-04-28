@@ -19,12 +19,29 @@ def init_session_state():
     """初始化 session state"""
     if 'stage' not in st.session_state:
         st.session_state.stage = 'upload'
+        st.session_state.ac_stage = 'upload'  # 空调模块独立stage
+        st.session_state.compressor_stage = 'upload'  # 空压模块独立stage
         st.session_state.uploaded_file = None
         st.session_state.original_filename = None
+        
+        # 通用数据状态（保持向后兼容）
         st.session_state.extracted_data = None
         st.session_state.quality_report = None
         st.session_state.filling_suggestions = None
         st.session_state.result = None
+        
+        # 空调模块独立数据状态
+        st.session_state.ac_extracted_data = None
+        st.session_state.ac_quality_report = None
+        st.session_state.ac_filling_suggestions = None
+        st.session_state.ac_result = None
+        
+        # 空压模块独立数据状态
+        st.session_state.compressor_extracted_data = None
+        st.session_state.compressor_quality_report = None
+        st.session_state.compressor_filling_suggestions = None
+        st.session_state.compressor_result = None
+        
         st.session_state.uploader_key = 0
         st.session_state.scroll_to_top = False
 
