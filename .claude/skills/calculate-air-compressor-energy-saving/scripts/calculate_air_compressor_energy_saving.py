@@ -371,13 +371,9 @@ class AirCompressorEnergyCalculator:
         if not active_equipment:
             raise ValueError("没有找到运行状态的空压机设备")
         
-        # 计算系统压缩机功率因子（运行+备用设备的平均值）
-        total_power_factor = sum(eq["compressorPowerFactor"] for eq in running_equipment)
-        system_compressor_power_factor = total_power_factor / len(running_equipment)
-        
-        # 计算系统比功率（仅运行设备的平均值）
-        total_specific_power = sum(eq["specificPower"] for eq in active_equipment)
-        system_specific_power = total_specific_power / len(active_equipment)
+        # 使用流量加权平均计算系统参数
+        system_compressor_power_factor = self._calculate_system_compressor_power_factor(equipment_data)
+        system_specific_power = self._calculate_system_specific_power(equipment_data)
         
         # 计算系统压缩空气流量（仅运行设备的流量求和）
         system_compressed_air_flow = sum(eq["ratedFlow"] for eq in active_equipment)

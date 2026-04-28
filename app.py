@@ -821,6 +821,25 @@ def render_air_compressor_calculate_stage():
             streaming_texts.append("✅ 节能率计算完成！")
             update_streaming_container(container, streaming_texts)
             
+            streaming_texts.append("📄 正在生成报告...")
+            update_streaming_container(container, streaming_texts)
+            
+            # 自动生成报告
+            try:
+                report_path = generate_air_compressor_report()
+                if report_path:
+                    streaming_texts.append(f"✅ 报告生成完成: {report_path.name}")
+                    st.session_state.report_generated = True
+                    st.session_state.report_path = report_path
+                else:
+                    streaming_texts.append("⚠️ 报告生成失败")
+                    st.session_state.report_generated = False
+            except Exception as e:
+                streaming_texts.append(f"⚠️ 报告生成异常: {str(e)}")
+                st.session_state.report_generated = False
+            
+            update_streaming_container(container, streaming_texts)
+            
             time.sleep(1)
             st.session_state.stage = 'result'
             st.rerun()
@@ -891,8 +910,35 @@ def render_air_compressor_result_stage():
             reset_flow()
             st.rerun()
     with col2:
-        if st.button("📥 导出报告", type="primary", use_container_width=True):
-            generate_air_compressor_report()
+        # 检查报告是否已生成
+        report_generated = st.session_state.get('report_generated', False)
+        report_path = st.session_state.get('report_path', None)
+        
+        if report_generated and report_path and report_path.exists():
+            # 报告已生成，提供下载按钮
+            with open(report_path, 'rb') as f:
+                st.download_button(
+                    label="📥 下载报告",
+                    data=f.read(),
+                    file_name=report_path.name,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    type="primary"
+                )
+        else:
+            # 报告未生成或生成失败，显示生成按钮
+            if st.button("🔄 重新生成报告", type="secondary", use_container_width=True):
+                try:
+                    report_path = generate_air_compressor_report()
+                    if report_path:
+                        st.session_state.report_generated = True
+                        st.session_state.report_path = report_path
+                        st.success("✅ 报告生成成功！")
+                        st.rerun()
+                    else:
+                        st.error("❌ 报告生成失败")
+                except Exception as e:
+                    st.error(f"❌ 报告生成失败: {str(e)}")
 
 
 # ==================== 报告生成函数 ====================
@@ -906,7 +952,7 @@ def generate_air_compressor_report():
         
         if not extracted_data or not result:
             st.error("没有可用的数据生成报告")
-            return
+            return None
         
         # 保存数据到临时文件
         output_dir = st.session_state.session_dir
@@ -930,25 +976,15 @@ def generate_air_compressor_report():
         
         # 检查生成的文件
         word_files = list(output_dir.glob("空压系统数智化升级方案_*.docx"))
-        excel_files = list(output_dir.glob("2026年空压云智控报价单_*.xlsx"))
         
         if word_files:
-            word_file = word_files[0]
-            with open(word_file, 'rb') as f:
-                st.download_button(
-                    label="📥 下载空压系统数智化升级方案",
-                    data=f.read(),
-                    file_name=word_file.name,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-        
-        if word_files:
-            st.success("报告生成完成！请点击上方按钮下载文件。")
+            return word_files[0]  # 返回报告文件路径
         else:
-            st.error("报告生成失败，请检查模板文件和数据完整性。")
+            return None
             
     except Exception as e:
-        st.error(f"生成报告失败: {str(e)}")
+        print(f"生成报告失败: {str(e)}")
+        return None
 
 
 def generate_air_compressor_quote():
