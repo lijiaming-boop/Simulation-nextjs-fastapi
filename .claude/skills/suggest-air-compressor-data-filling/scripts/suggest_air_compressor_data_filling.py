@@ -117,27 +117,9 @@ class AirCompressorDataFiller:
                     "reasoning": f"根据{self._extract_province(location) or '默认'}省份工业用电参考价格"
                 })
         
-        # 填充年运行天数
-        if not project_level.get("annualRunningDays"):
-            self.suggestions.append({
-                "field": "annualRunningDays",
-                "original_value": project_level.get("annualRunningDays"),
-                "suggested_value": DEFAULT_ANNUAL_RUNNING_DAYS,
-                "method": "行业默认值",
-                "confidence": "medium",
-                "reasoning": f"工业空压系统典型年运行天数为{DEFAULT_ANNUAL_RUNNING_DAYS}天"
-            })
-        
-        # 填充每天开机时间
-        if not project_level.get("dailyRunningHours"):
-            self.suggestions.append({
-                "field": "dailyRunningHours",
-                "original_value": project_level.get("dailyRunningHours"),
-                "suggested_value": DEFAULT_DAILY_RUNNING_HOURS,
-                "method": "行业默认值",
-                "confidence": "medium",
-                "reasoning": f"工业空压系统典型每天开机时间为{DEFAULT_DAILY_RUNNING_HOURS}小时"
-            })
+        # NOTE: 根据用户要求，dailyRunningHours 和 annualRunningDays 不自动填充
+        # 如果这两个字段为空，计算阶段会使用默认年运行时间8500小时
+        # 这样符合需求文档要求，避免"瞎提取"
     
     def _suggest_equipment_level_fields(self, data: Dict[str, Any]):
         """建议设备级字段填充"""
