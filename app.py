@@ -40,10 +40,15 @@ def reset_flow():
     st.session_state.compressor_stage = 'upload'  # 空压模块独立stage
     st.session_state.uploaded_file = None
     st.session_state.original_filename = None
-    st.session_state.extracted_data = None
-    st.session_state.quality_report = None
-    st.session_state.filling_suggestions = None
-    st.session_state.result = None
+    # 为每个模块创建独立的数据状态
+    st.session_state.ac_extracted_data = None
+    st.session_state.ac_quality_report = None
+    st.session_state.ac_filling_suggestions = None
+    st.session_state.ac_result = None
+    st.session_state.compressor_extracted_data = None
+    st.session_state.compressor_quality_report = None
+    st.session_state.compressor_filling_suggestions = None
+    st.session_state.compressor_result = None
     st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
     st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
 
@@ -296,7 +301,7 @@ def render_air_conditioner_extract_check_stage():
     """空调模块：数据提取与质量检查阶段"""
     st.header("🔍 步骤 2: 数据提取 + 质量检查")
     
-    if st.session_state.extracted_data is None:
+    if st.session_state.ac_extracted_data is None:
         expander, container = create_streaming_container("🤖 AI 正在分析调研表...")
         
         try:
@@ -324,8 +329,8 @@ def render_air_conditioner_extract_check_stage():
             streaming_texts.append("✅ 数据提取和质量检查完成！")
             update_streaming_container(container, streaming_texts)
 
-            st.session_state.extracted_data = result.get('extracted_data', {})
-            st.session_state.quality_report = result.get('quality_report', {})
+            st.session_state.ac_extracted_data = result.get('extracted_data', {})
+            st.session_state.ac_quality_report = result.get('quality_report', {})
 
             time.sleep(1)
             st.session_state.stage = 'filling'
@@ -334,7 +339,7 @@ def render_air_conditioner_extract_check_stage():
         except Exception as e:
             st.error(f"❌ 数据提取失败: {str(e)}")
             if st.button("🔄 重新尝试", type="secondary"):
-                st.session_state.extracted_data = None
+                st.session_state.ac_extracted_data = None
                 st.rerun()
     else:
         st.success("✅ 数据提取和质量检查完成")
@@ -347,7 +352,7 @@ def render_air_conditioner_filling_stage():
     """空调模块：数据填充阶段"""
     st.header("📝 步骤 3: 数据填充")
     
-    if st.session_state.filling_suggestions is None:
+    if st.session_state.ac_filling_suggestions is None:
         expander, container = create_streaming_container("🤖 AI 正在生成填充建议...")
         
         try:
@@ -362,9 +367,9 @@ def render_air_conditioner_filling_stage():
             streaming_texts.append("🧠 分析数据缺失情况...")
             update_streaming_container(container, streaming_texts)
 
-            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
+            extracted_data_path = st.session_state.session_dir / "ac_extracted_data.json"
             with open(extracted_data_path, 'w', encoding='utf-8') as f:
-                json.dump(st.session_state.extracted_data, f, ensure_ascii=False, indent=2)
+                json.dump(st.session_state.ac_extracted_data, f, ensure_ascii=False, indent=2)
 
             result = skill_caller.call_skill(
                 'suggest-data-filling',
@@ -375,7 +380,7 @@ def render_air_conditioner_filling_stage():
             streaming_texts.append("✅ 填充建议生成完成！")
             update_streaming_container(container, streaming_texts)
 
-            st.session_state.filling_suggestions = result
+            st.session_state.ac_filling_suggestions = result
 
             time.sleep(1)
             st.rerun()
@@ -408,22 +413,22 @@ def render_air_conditioner_calculate_stage():
     """空调模块：节能测算阶段"""
     st.header("⚡ 步骤 4: 节能测算")
     
-    if st.session_state.result is None:
+    if st.session_state.ac_result is None:
         expander, container = create_streaming_container("🧮 AI 正在计算节能率...")
         
         try:
             # 应用填充建议
             data_filler = DataFiller()
             filled_data = data_filler.apply_suggestions(
-                st.session_state.extracted_data,
-                st.session_state.filling_suggestions
+                st.session_state.ac_extracted_data,
+                st.session_state.ac_filling_suggestions
             )
             
             # Excel计算
             calculator = ExcelCalculator()
             result = calculator.calculate_energy_saving(filled_data)
             
-            st.session_state.result = result
+            st.session_state.ac_result = result
             
             time.sleep(1)
             st.session_state.stage = 'result'
@@ -432,7 +437,7 @@ def render_air_conditioner_calculate_stage():
         except Exception as e:
             st.error(f"❌ 节能测算失败: {str(e)}")
             if st.button("🔄 重新计算", type="secondary"):
-                st.session_state.result = None
+                st.session_state.ac_result = None
                 st.rerun()
     else:
         st.success("✅ 节能测算完成")
@@ -445,7 +450,7 @@ def render_air_conditioner_result_stage():
     """空调模块：结果展示阶段"""
     st.header("📊 步骤 5: 结果展示")
     
-    result = st.session_state.result
+    result = st.session_state.ac_result
     
     # 主要指标
     col1, col2, col3, col4 = st.columns(4)
@@ -532,7 +537,7 @@ def render_air_compressor_extract_stage():
     if st.session_state.get('compressor_stage') is None:
         st.session_state.compressor_stage = 'upload'
     
-    if st.session_state.extracted_data is None:
+    if st.session_state.compressor_extracted_data is None:
         expander, container = create_streaming_container("🤖 AI 正在分析调研表...")
         
         try:
@@ -592,7 +597,7 @@ def render_air_compressor_extract_stage():
                         print(f"解析 ai_responses 失败: {e}")
                         actual_extracted_data = result
             
-            st.session_state.extracted_data = actual_extracted_data
+            st.session_state.compressor_extracted_data = actual_extracted_data
             
             # 检查打回条件 - 使用处理后的数据
             rejection_check = actual_extracted_data.get('rejectionCheck', {})
@@ -628,7 +633,7 @@ def render_air_compressor_extract_stage():
     else:
         st.success("✅ 数据提取完成")
         
-        raw_data = st.session_state.extracted_data.get('rawData', {})
+        raw_data = st.session_state.compressor_extracted_data.get('rawData', {})
         project_level = raw_data.get('projectLevel', {})
         equipment_level = raw_data.get('equipmentLevel', [])
         
@@ -752,7 +757,7 @@ def render_air_compressor_calculate_stage():
     if st.session_state.get('compressor_stage') is None:
         st.session_state.compressor_stage = 'upload'
     
-    if st.session_state.result is None:
+    if st.session_state.compressor_result is None:
         expander, container = create_streaming_container("🧮 AI 正在计算节能率...")
         
         try:
@@ -764,9 +769,9 @@ def render_air_compressor_calculate_stage():
                 update_streaming_container(container, streaming_texts)
                 time.sleep(0.1)
             
-            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
+            extracted_data_path = st.session_state.session_dir / "compressor_extracted_data.json"
             with open(extracted_data_path, 'w', encoding='utf-8') as f:
-                json.dump(st.session_state.extracted_data, f, ensure_ascii=False, indent=2)
+                json.dump(st.session_state.compressor_extracted_data, f, ensure_ascii=False, indent=2)
             
             streaming_texts.append("🧠 生成数据填充建议...")
             update_streaming_container(container, streaming_texts)
@@ -803,7 +808,7 @@ def render_air_compressor_calculate_stage():
                     update_streaming_container(container, streaming_texts)
                     
                     # 应用填充建议
-                    filled_data = apply_filling_suggestions(st.session_state.extracted_data, filling_suggestions)
+                    filled_data = apply_filling_suggestions(st.session_state.compressor_extracted_data, filling_suggestions)
                     
                     # 保存填充后的数据
                     with open(extracted_data_path, 'w', encoding='utf-8') as f:
@@ -830,9 +835,9 @@ def render_air_compressor_calculate_stage():
             if result_path.exists():
                 with open(result_path, 'r', encoding='utf-8') as f:
                     calculation_result = json.load(f)
-                st.session_state.result = calculation_result
+                st.session_state.compressor_result = calculation_result
             else:
-                st.session_state.result = result
+                st.session_state.compressor_result = result
             
             streaming_texts.append("✅ 节能率计算完成！")
             update_streaming_container(container, streaming_texts)
@@ -868,7 +873,7 @@ def render_air_compressor_calculate_stage():
     else:
         st.success("✅ 节能率计算完成")
         
-        result = st.session_state.result
+        result = st.session_state.compressor_result
         energy_saving_rate = result.get('energy_saving_rate', 0) * 100
         st.metric("节能率", f"{energy_saving_rate:.1f}%")
         
@@ -881,7 +886,7 @@ def render_air_compressor_result_stage():
     """空压机模块：结果展示阶段"""
     st.markdown("### 📋 节能测算结果")
     
-    result = st.session_state.result
+    result = st.session_state.compressor_result
     
     # 主要指标
     col1, col2, col3, col4 = st.columns(4)
