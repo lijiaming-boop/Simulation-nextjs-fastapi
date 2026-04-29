@@ -613,13 +613,14 @@ def render_air_conditioner_filling_stage():
         suggestions = st.session_state.ac_filling_suggestions
 
         # 检查是否可以继续
-        can_proceed = suggestions.get("can_proceed", False)
+        can_proceed = suggestions.get("can_proceed", suggestions.get("canProceed", False))
+
 
         if not can_proceed:
             # 有不可填充字段，中断流程
             st.error("❌ 发现关键数据缺失，无法继续计算")
 
-            unfillable = suggestions.get("unfillable_fields", [])
+            unfillable = suggestions.get("unfillable_fields", suggestions.get("unfillableFields", []))
             st.subheader("以下关键字段必须补充:")
 
             for field_info in unfillable:
