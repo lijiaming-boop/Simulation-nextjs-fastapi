@@ -958,43 +958,126 @@ def render_air_conditioner_result_stage():
         }
 
         df_savings = pd.DataFrame(savings_data)
+
+        # 计算百分比
+        total = result.get("total_saving", 0)
+        if total > 0:
+            df_savings["占比"] = df_savings["节能量 (万 kWh)"].apply(
+                lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+            )
+
         st.dataframe(df_savings, use_container_width=True, hide_index=True)
 
         # 柱状图
-        devices = ["冷机", "水泵", "冷却塔"]
-        values = [
-            result.get("chiller_saving", 0),
-            result.get("pump_saving", 0),
-            result.get("tower_saving", 0)
-        ]
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=devices,
-            y=values,
-            marker_color='rgba(55, 128, 191, 0.7)'
-        ))
-
-        fig.update_layout(
-            title="各设备节能量",
-            xaxis_title="设备类型",
-            yaxis_title="节能量 (万 kWh)",
-            height=400
+        fig = px.bar(
+            df_savings[df_savings["设备类型"] != "合计"],
+            x="设备类型",
+            y="节能量 (万 kWh)",
+            title="分项节能量分布",
+            text="节能量 (万 kWh)"
         )
-
+        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
 
-    # 操作按钮
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 重新测算", type="secondary", use_container_width=True):
-            reset_flow()
-            st.rerun()
-    with col2:
-        if st.button("📥 导出方案报告", type="primary", use_container_width=True):
-            generate_air_compressor_report()
+    # 置信度说明
+    if result.get("mock"):
+        st.warning("⚠️ 注意：此结果为模拟数据 (formulas 库不可用)")
+
+    completeness = result.get("completeness", 0)
+    if completeness >= 0.9:
+        confidence_msg = "🟢 高置信度 - 数据完整，结果可靠"
+    elif completeness >= 0.7:
+        confidence_msg = "🟡 中等置信度 - 部分数据通过智能填充，建议谨慎使用"
+    else:
+        confidence_msg = "🔴 低置信度 - 较多数据缺失，结果仅供参考"
+
+    st.info(confidence_msg)
+
+    # 添加范围计算说明
+    if result.get("calculation_method") == "dual_sheet":
+        st.info(
+            "📊 **节能率范围说明**\n\n"
+            "- **下限（保守估计）**: 基于常规优化参数，考虑实际约束\n"
+            "- **上限（理想情况）**: 基于最优运行条件，理想化假设\n"
+            "- **实际节能效果**: 通常在此范围内，具体取决于项目实施情况"
+        )
+
+    st.markdown("---")
+
+    # 下载区域
+    st.subheader("📥 下载计算结果")
+    
+    # 下载格式化结果（简化版）
+    st.info("**简化版表格**：只包含原始电量和节能量，单位为'万'")
+    
+    # 下载简化版 Excel 表格
+    st.subheader("📥 下载简化版 Excel 表格")
+    st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
+    
+    # 从会话目录读取简化版 Excel
+    session_dir = st.session_state.session_dir
+    simplified_excel_path = session_dir / "simplified_result.xlsx"
+    
+    if simplified_excel_path.exists():
+        with open(simplified_excel_path, "rb") as f:
+            simplified_excel_data = f.read()
+        
+        st.download_button(
+            label="📥 下载简化版 Excel 表格",
+            data=simplified_excel_data,
+            file_name=f"简化版节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ 简化版 Excel 文件未找到")
+    
+    st.markdown("---")
+    
+    st.subheader("📥 下载完整计算表格")
+    st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
+
+    password = st.text_input("请输入管理员密码", type="password", key="download_password")
+
+    if password:
+        admin_password = st.secrets.get("admin_password", "admin123")
+        if password == admin_password:
+            st.success("✅ 密码验证通过")
+
+            # 修改：从会话目录读取计算结果 Excel
+            session_dir = st.session_state.session_dir
+            excel_path = session_dir / "calculation_result.xlsx"
+
+            if excel_path.exists():
+                with open(excel_path, "rb") as f:
+                    excel_data = f.read()
+
+                st.download_button(
+                    label="📥 下载 Excel 计算表",
+                    data=excel_data,
+                    file_name=f"节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.warning("⚠️ Excel 文件未找到")
+        else:
+            st.error("❌ 密码错误，请联系管理员")
+
+    st.markdown("---")
+
+    # 元数据
+    with st.expander("🔍 查看计算元数据", expanded=True):
+        st.json(result)
+
+    st.markdown("---")
+
+    # 重新开始
+    if st.button("🔄 开始新的测算", type="primary", use_container_width=True):
+        reset_flow()
+        st.rerun()
 
 
 # ==================== 空压机模块阶段 ====================
@@ -1110,6 +1193,13 @@ def render_air_compressor_extract_stage():
                         actual_extracted_data = result
             
             st.session_state.compressor_extracted_data = actual_extracted_data
+            
+            # 从AI生成的数据中提取质量报告
+            ai_quality_report = actual_extracted_data.get('quality_report', {})
+            if ai_quality_report:
+                st.session_state.compressor_quality_report = ai_quality_report
+            else:
+                st.session_state.compressor_quality_report = None
             
             # 检查打回条件 - 使用处理后的数据
             rejection_check = actual_extracted_data.get('rejectionCheck', {})
@@ -1290,21 +1380,20 @@ def render_air_compressor_calculate_stage():
             
             # 生成空压机数据填充建议（使用空压模块独立文件）
             filling_suggestions_path = st.session_state.session_dir / "compressor_filling_suggestions.json"
-            quality_report_path = st.session_state.session_dir / "compressor_quality_report.json"
             
-            # 创建质量报告（如果不存在）
-            if not quality_report_path.exists():
+            # 使用AI生成的质量报告，如果没有则创建默认报告
+            if st.session_state.compressor_quality_report is None:
                 quality_report = {
                     "completeness": 0.8,
                     "confidence": "medium",
                     "issues": []
                 }
-                with open(quality_report_path, 'w', encoding='utf-8') as f:
-                    json.dump(quality_report, f, ensure_ascii=False, indent=2)
+                st.session_state.compressor_quality_report = quality_report
             
-            # 读取质量报告到session_state
-            with open(quality_report_path, 'r', encoding='utf-8') as f:
-                st.session_state.compressor_quality_report = json.load(f)
+            # 保存质量报告到文件
+            quality_report_path = st.session_state.session_dir / "compressor_quality_report.json"
+            with open(quality_report_path, 'w', encoding='utf-8') as f:
+                json.dump(st.session_state.compressor_quality_report, f, ensure_ascii=False, indent=2)
             
             filling_result = skill_caller.call_skill(
                 'suggest-air-compressor-data-filling',
@@ -1366,14 +1455,14 @@ def render_air_compressor_calculate_stage():
                 report_path = generate_air_compressor_report()
                 if report_path:
                     streaming_texts.append(f"✅ 报告生成完成: {report_path.name}")
-                    st.session_state.report_generated = True
-                    st.session_state.report_path = report_path
+                    st.session_state.compressor_report_generated = True
+                    st.session_state.compressor_report_path = report_path
                 else:
                     streaming_texts.append("⚠️ 报告生成失败")
-                    st.session_state.report_generated = False
+                    st.session_state.compressor_report_generated = False
             except Exception as e:
                 streaming_texts.append(f"⚠️ 报告生成异常: {str(e)}")
-                st.session_state.report_generated = False
+                st.session_state.compressor_report_generated = False
             
             update_streaming_container(container, streaming_texts)
             
@@ -1447,9 +1536,9 @@ def render_air_compressor_result_stage():
             reset_flow()
             st.rerun()
     with col2:
-        # 检查报告是否已生成
-        report_generated = st.session_state.get('report_generated', False)
-        report_path = st.session_state.get('report_path', None)
+        # 检查报告是否已生成（使用空压模块独立的键名）
+        report_generated = st.session_state.get('compressor_report_generated', False)
+        report_path = st.session_state.get('compressor_report_path', None)
         
         if report_generated and report_path and report_path.exists():
             # 报告已生成，提供下载按钮
@@ -1468,13 +1557,14 @@ def render_air_compressor_result_stage():
                 try:
                     report_path = generate_air_compressor_report()
                     if report_path:
-                        st.session_state.report_generated = True
-                        st.session_state.report_path = report_path
+                        st.session_state.compressor_report_generated = True
+                        st.session_state.compressor_report_path = report_path
                         st.success("✅ 报告生成成功！")
                         st.rerun()
                     else:
                         st.error("❌ 报告生成失败")
                 except Exception as e:
+                    st.error(f"❌ 报告生成异常: {str(e)}")
                     st.error(f"❌ 报告生成失败: {str(e)}")
 
 
@@ -1515,8 +1605,11 @@ def generate_air_compressor_report():
         word_files = list(output_dir.glob("空压系统数智化升级方案_*.docx"))
         
         if word_files:
+            print(f"✅ [报告生成] 成功生成报告: {word_files[0]}")
             return word_files[0]  # 返回报告文件路径
         else:
+            print(f"⚠️ [报告生成] 未找到生成的Word文档")
+            print(f"⚠️ [报告生成] 目录中的文件: {list(output_dir.glob('*'))}")
             return None
             
     except Exception as e:
