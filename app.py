@@ -728,8 +728,7 @@ def render_air_conditioner_calculate_stage():
             status_text.text("正在调用 AI 计算引擎...")
             progress_bar.progress(60)
 
-            # 使用气象数据服务
-            from core.weather_service import WeatherService
+            # 使用气象数据服务（已在文件顶部导入）
             weather_service = WeatherService()
             calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
 
