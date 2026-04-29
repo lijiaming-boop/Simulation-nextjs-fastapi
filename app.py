@@ -1138,8 +1138,8 @@ def render_air_compressor_extract_stage():
         project_level = raw_data.get('projectLevel', {})
         equipment_level = raw_data.get('equipmentLevel', [])
         
-        # 显示质量报告
-        quality_report = st.session_state.extracted_data.get('quality_report', {})
+        # 显示质量报告（使用空压模块独立状态）
+        quality_report = st.session_state.compressor_quality_report or {}
         confidence = quality_report.get('confidence', 'medium')
         completeness = quality_report.get('completeness', 0)
         
