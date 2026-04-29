@@ -80,261 +80,22 @@ def main():
     """主函数"""
     # 页面配置
     st.set_page_config(
-        page_title="节能率智能测算工具",
-        page_icon="⚡",
+        page_title="空调节能率智能测算工具",
+        page_icon="❄️",
         layout="wide"
     )
-    
-    # 添加全局CSS样式 - 现代B端工业SaaS设计
-    st.markdown("""
-    <style>
-    /* 全局样式 - 现代B端工业SaaS */
-    .main > div {
-        background: #F8FAFC;
-        min-height: 100vh;
-        padding: 0;
-    }
-    
-    /* 隐藏Streamlit默认元素 */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* 主容器 - 最大宽度1200px居中 */
-    .main .block-container {
-        max-width: 1200px !important;
-        margin: 0 auto !important;
-        padding: 0 24px !important;
-    }
-    
-    /* 卡片样式 - 12px圆角，专业阴影 */
-    .stDataFrame {
-        border-radius: 12px !important;
-        overflow: hidden;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-        border: 1px solid #E2E8F0 !important;
-    }
-    
-    /* 指标卡片 */
-    .stMetric {
-        background: #FFFFFF !important;
-        border-radius: 12px !important;
-        padding: 24px !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-        border: 1px solid #E2E8F0 !important;
-    }
-    
-    /* 信息框 - 使用品牌色 */
-    .stInfo {
-        background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%) !important;
-        border: 1px solid #BAE6FD !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-    }
-    
-    /* 成功框 - 绿色 */
-    .stSuccess {
-        background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%) !important;
-        border: 1px solid #A7F3D0 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-    }
-    
-    /* 警告框 - 橙色 */
-    .stWarning {
-        background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%) !important;
-        border: 1px solid #FDE68A !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-    }
-    
-    /* 错误框 - 红色 */
-    .stError {
-        background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%) !important;
-        border: 1px solid #FCA5A5 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-    }
-    
-    /* 主按钮 - 靛蓝紫主色 */
-    .stButton > button[kind="primary"] {
-        background: #4F46E5 !important;
-        border: none !important;
-        color: white !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15) !important;
-        transition: all 200ms ease-out !important;
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: #4338CA !important;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
-        transform: translateY(-1px) !important;
-    }
-    
-    /* 次要按钮 - 白色边框 */
-    .stButton > button[kind="secondary"] {
-        background: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        color: #475569 !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
-        transition: all 200ms ease-out !important;
-    }
-    .stButton > button[kind="secondary"]:hover {
-        background: #F8FAFC !important;
-        border-color: #CBD5E1 !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
-        transform: translateY(-1px) !important;
-    }
-    
-    /* 文件上传器 - 现代化拖拽区域 */
-    .stFileUploader {
-        border: 2px dashed #CBD5E1 !important;
-        border-radius: 12px !important;
-        background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%) !important;
-        padding: 40px 30px !important;
-        transition: all 200ms ease-out !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06) !important;
-    }
-    .stFileUploader:hover {
-        border-color: #4F46E5 !important;
-        background: linear-gradient(135deg, #F8FAFC 0%, #F0F4FF 100%) !important;
-        box-shadow: 0 8px 30px rgba(79, 70, 229, 0.15) !important;
-        transform: translateY(-2px) !important;
-    }
-    
-    /* 展开器 */
-    .streamlit-expanderHeader {
-        background: #FFFFFF !important;
-        border-radius: 12px !important;
-        border: 1px solid #E2E8F0 !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
-        margin-bottom: 12px !important;
-    }
-    
-    /* 滚动条 - 现代化样式 */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #F1F5F9;
-        border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #CBD5E1;
-        border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #94A3B8;
-    }
-    
-    /* 页面加载动画 */
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .stApp {
-        animation: fadeInUp 0.6s ease-out;
-    }
-    
-    /* 卡片悬浮效果 */
-    .stDataFrame:hover,
-    .stMetric:hover,
-    .stInfo:hover,
-    .stSuccess:hover,
-    .stWarning:hover,
-    .stError:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 30px rgba(0,0,0,0.12) !important;
-        transition: all 200ms ease-out !important;
-    }
-    
-    /* 标题样式 */
-    h1, h2, h3, h4, h5, h6 {
-        color: #1E293B !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.02em !important;
-    }
-    
-    /* 正文文字 */
-    p, span, div {
-        color: #475569 !important;
-    }
-    
-    /* 辅助文字 */
-    .stMarkdown {
-        color: #94A3B8 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     # ==================== 应用主逻辑 ====================
 
     # 初始化
     init_session_state()
-    
-    # 如果还没有选择模块类型，显示模块选择页面
-    if 'module_type' not in st.session_state:
-        render_module_selection()
-        return
 
     # 标题和退出按钮
-    col_back, col_title, col_logout = st.columns([1, 6, 1])
-    
-    with col_back:
-        if st.button("←", help="返回模块选择", use_container_width=True):
-            del st.session_state.module_type
-            st.rerun()
-    
+    col_title, col_logout = st.columns([6, 1])
     with col_title:
-        if st.session_state.module_type == 'air_conditioner':
-            st.markdown("""
-            <div style="text-align: center; margin: 40px 0 30px 0;">
-                <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
-                    ❄️ 空调节能率智能测算工具
-                </h1>
-                <p style="color: #64748B; font-size: 14px; font-weight: 400; margin-top: 8px;">
-                    基于AI的智能节能评估系统
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="text-align: center; margin: 40px 0 30px 0;">
-                <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
-                    🔧 空压AI节能率测算
-                </h1>
-                <p style="color: #64748B; font-size: 14px; font-weight: 400; margin-top: 8px;">
-                    基于AI的智能节能评估系统
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-    
+        st.title("❄️ 空调节能率智能测算工具")
     with col_logout:
-        st.markdown("""
-        <div style="display: flex; align-items: center; justify-content: center; height: 60px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        border-radius: 50%; 
-                        width: 40px; 
-                        height: 40px; 
-                        display: flex; 
-                        align-items: center; 
-                        justify-content: center;
-                        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-                <span style="font-size: 18px;">⚡</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.link_button("🚪 退出", "/logout", use_container_width=True)
     
     st.markdown("---")
 
@@ -344,412 +105,72 @@ def main():
         st.session_state.scroll_to_top = False  # 重置标志
 
     # 流程进度指示器
-    if st.session_state.module_type == 'air_conditioner':
-        stages = ['上传调研表', '数据提取 + 质量检查', '数据填充', '节能测算', '结果展示']
-        stage_map = {
-            'upload': 0, 'extract_check': 1,
-            'filling': 2, 'calculate': 3, 'result': 4
-        }
-        current_stage = stage_map.get(st.session_state.stage, 0)
+    stages = ['上传调研表', '数据提取 + 质量检查', '数据填充', '节能测算', '结果展示']
+    stage_map = {
+        'upload': 0, 'extract_check': 1,
+        'filling': 2, 'calculate': 3, 'result': 4
+    }
+    current_stage = stage_map.get(st.session_state.stage, 0)
 
-        cols = st.columns(len(stages))
-        for i, (col, stage_name) in enumerate(zip(cols, stages)):
-            with col:
-                if i < current_stage:
-                    st.success(f"✅ {stage_name}")
-                elif i == current_stage:
-                    st.info(f"▶️ {stage_name}")
-                else:
-                    st.text(f"⏸️ {stage_name}")
-    else:
-        # 空压模块的进度指示器 - 现代B端工业SaaS设计
-        stages = [
-            {'id': 'upload', 'name': '上传调研表', 'number': '1', 'desc': '上传调研表文件'},
-            {'id': 'extract_check', 'name': '数据提取', 'number': '2', 'desc': '提取并验证关键数据'},
-            {'id': 'calculate', 'name': '节能计算', 'number': '3', 'desc': '计算节能率和节能量'},
-            {'id': 'result', 'name': '结果展示', 'number': '4', 'desc': '查看节能测算结果'}
-        ]
-        
-        # 创建进度指示器容器 - 现代B端工业SaaS设计
-        st.markdown("""
-        <div style="background: #FFFFFF; 
-                    border-radius: 12px; 
-                    padding: 24px; 
-                    margin: 24px auto; 
-                    max-width: 1200px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-                    border: 1px solid #E2E8F0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; position: relative;">
-        """, unsafe_allow_html=True)
-        
-        # 创建水平布局
-        col1, col2, col3, col4 = st.columns(4)
-        cols = [col1, col2, col3, col4]
-        
-        for i, stage in enumerate(stages):
-            with cols[i]:
-                # 检查当前阶段
-                is_completed = st.session_state.stage in ['extract_check', 'calculate', 'result'] if i == 0 else \
-                              st.session_state.stage in ['calculate', 'result'] if i == 1 else \
-                              st.session_state.stage in ['result'] if i == 2 else \
-                              st.session_state.stage == 'result' if i == 3 else False
-                
-                is_current = (st.session_state.stage == 'upload' and i == 0) or \
-                            (st.session_state.stage == 'extract_check' and i == 1) or \
-                            (st.session_state.stage == 'calculate' and i == 2) or \
-                            (st.session_state.stage == 'result' and i == 3)
-                
-                # 节点样式 - 现代B端工业SaaS设计
-                if is_completed:
-                    # 已完成状态 - 绿色圆圈+勾号
-                    circle_style = "background: #10B981; border: 2px solid #10B981;"
-                    number_content = "✓"
-                    text_color = "#10B981"
-                    text_weight = "600"
-                    desc_color = "#10B981"
-                elif is_current:
-                    # 当前状态 - 主色圆圈+序号
-                    circle_style = "background: #4F46E5; border: 2px solid #4F46E5; box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.3);"
-                    number_content = stage["number"]
-                    text_color = "#4F46E5"
-                    text_weight = "600"
-                    desc_color = "#4F46E5"
-                else:
-                    # 未完成状态 - 灰色圆圈+序号
-                    circle_style = "background: #E2E8F0; border: 2px solid #E2E8F0;"
-                    number_content = stage["number"]
-                    text_color = "#94A3B8"
-                    text_weight = "400"
-                    desc_color = "#94A3B8"
-                
-                st.markdown(f"""
-                <div style="display: flex; flex-direction: column; align-items: center; margin: 0 8px;">
-                    <div style="width: 32px; height: 32px; border-radius: 50%; 
-                                {circle_style}
-                                display: flex; align-items: center; justify-content: center; 
-                                margin-bottom: 8px;">
-                        <span style="color: white; font-size: 16px; font-weight: 700;">{number_content}</span>
-                    </div>
-                    <div style="color: {text_color}; font-size: 14px; font-weight: {text_weight}; text-align: center;">
-                        {stage["name"]}
-                    </div>
-                    <div style="color: {desc_color}; font-size: 12px; font-weight: 400; text-align: center;">
-                        {stage["desc"]}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        st.markdown("""
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    cols = st.columns(len(stages))
+    for i, (col, stage_name) in enumerate(zip(cols, stages)):
+        with col:
+            if i < current_stage:
+                st.success(f"✅ {stage_name}")
+            elif i == current_stage:
+                st.info(f"▶️ {stage_name}")
+            else:
+                st.text(f"⏸️ {stage_name}")
 
     st.markdown("---")
 
     # 根据阶段渲染不同界面
     stage = st.session_state.stage
 
-    # 根据模块类型使用不同的流程
-    if st.session_state.module_type == 'air_conditioner':
-        # 空调模块：5步流程
-        if stage == 'upload':
-            render_upload_stage()
-        elif stage == 'extract_check':
-            render_extract_check_stage()
-        elif stage == 'filling':
-            render_filling_stage()
-        elif stage == 'calculate':
-            render_calculate_stage()
-        elif stage == 'result':
-            render_result_stage()
-    else:
-        # 空压机模块：4步简化流程
-        if stage == 'upload':
-            render_upload_stage()
-        elif stage == 'extract_check':
-            render_air_compressor_extract_stage()
-        elif stage == 'calculate':
-            render_air_compressor_calculate_stage()
-        elif stage == 'result':
-            render_air_compressor_result_stage()
-
-
-def render_module_selection():
-    """模块选择页面"""
-    st.title("⚡ 节能率智能测算工具")
-    st.markdown("---")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 📁 项目结构")
-        st.info("""
-        该工具包含两个主要模块：
-        - **空调节能率计算**：针对中央空调系统的节能评估
-        - **空压机节能率计算**：针对压缩空气系统的节能评估
-        """)
-    
-    with col2:
-        st.markdown("### 🛠️ 选择模块")
-        
-        if st.button("❄️ 空调节能率计算", use_container_width=True, type="primary"):
-            st.session_state.module_type = 'air_conditioner'
-            st.rerun()
-        
-        if st.button("🔧 空压机节能率计算", use_container_width=True, type="primary"):
-            st.session_state.module_type = 'air_compressor'
-            st.rerun()
-    
-    st.markdown("---")
-    st.markdown("### ℹ️ 使用说明")
-    st.markdown("""
-    1. 选择您需要使用的计算模块
-    2. 上传对应的调研表（Excel格式）
-    3. 系统将自动提取数据并进行质量检查
-    4. 如有缺失数据，系统会提供智能填充建议
-    5. 确认数据后，系统将进行节能率计算
-    6. 查看计算结果并下载相关报告
-    """)
+    if stage == 'upload':
+        render_upload_stage()
+    elif stage == 'extract_check':
+        render_extract_check_stage()
+    elif stage == 'filling':
+        render_filling_stage()
+    elif stage == 'calculate':
+        render_calculate_stage()
+    elif stage == 'result':
+        render_result_stage()
 
 
 def render_upload_stage():
     """阶段 1: 上传调研表"""
-    if st.session_state.module_type == 'air_conditioner':
-        st.header("📁 步骤 1: 上传调研表")
-        st.info("请上传标准的中央空调节能调研表 (Excel 格式)")
-        file_description = "中央空调节能调研表"
-    else:
-        # 空压模块的上传页面 - 完全符合Figma设计
-        st.markdown("""
-        <div style="background: white; 
-                    border-radius: 16px; 
-                    padding: 35px; 
-                    margin: 30px auto;
-                    max-width: 900px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-                    border: 1px solid rgba(255,255,255,0.8);
-                    position: relative;
-                    overflow: hidden;">
-            <!-- 顶部渐变条 -->
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        height: 4px; 
-                        border-radius: 2px; 
-                        margin: -35px -35px 30px -35px;"></div>
-            <!-- 背景渐变 -->
-            <div style="position: absolute; 
-                        top: 0; 
-                        left: 0; 
-                        right: 0; 
-                        height: 60px; 
-                        background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-                        z-index: 0;"></div>
-            <div style="position: relative; z-index: 1;">
-                <h2 style="color: #2c3e50; font-size: 1.9rem; font-weight: 700; margin-bottom: 18px; letter-spacing: -0.5px;">
-                    步骤 1: 上传调研表
-                </h2>
-                <p style="color: #5a6c7d; font-size: 1.05rem; margin-bottom: 30px; line-height: 1.6;">
-                    请上传空压节能调研表，支持同时上传多个文件（最多10个，支持 Excel、PPT、Word 格式）
-                </p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        file_description = "空压机节能调研表"
+    st.header("📁 步骤 1: 上传调研表")
 
-    # 上传区域
-    if st.session_state.module_type == 'air_conditioner':
-        uploaded_file = st.file_uploader(
-            f"选择{file_description}",
-            type=['xlsx', 'xls'],
-            help="请使用标准调研表模板",
-            key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
-        )
-    else:
-        # 空压模块的上传区域 - 现代化设计
-        st.markdown("""
-        <style>
-        .upload-container {
-            border: 2px dashed #dee2e6; 
-            border-radius: 16px; 
-            padding: 40px 30px; 
-            text-align: center; 
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-            margin: 30px auto;
-            max-width: 900px;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        }
-        .upload-container:hover {
-            border-color: #667eea;
-            background: linear-gradient(135deg, #f8f9fc 0%, #f0f2ff 100%);
-            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
-            transform: translateY(-2px);
-        }
-        /* 隐藏默认的文件上传器样式 */
-        .stFileUploader {
-            width: 100% !important;
-        }
-        .stFileUploader > div {
-            border: none !important;
-            background: transparent !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        .stFileUploader > div > div {
-            border: none !important;
-            background: transparent !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        .stFileUploader > div > div > div {
-            border: none !important;
-            background: transparent !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        .stFileUploader label {
-            display: none !important;
-        }
-        /* 自定义上传按钮样式 */
-        .stFileUploader > div > div > div > button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 25px !important;
-            padding: 14px 40px !important;
-            font-weight: 600 !important;
-            font-size: 15px !important;
-            margin-top: 15px !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
-        }
-        .stFileUploader > div > div > div > button:hover {
-            transform: translateY(-2px) !important;
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5) !important;
-        }
-        </style>
-        
-        <div class="upload-container">
-            <!-- 背景装饰 -->
-            <div style="position: absolute; 
-                        top: -50%; 
-                        left: -50%; 
-                        width: 200%; 
-                        height: 200%; 
-                        background: radial-gradient(circle, rgba(102, 126, 234, 0.05) 0%, transparent 70%);
-                        z-index: 0;"></div>
-            <div style="position: relative; z-index: 1;">
-                <div style="font-size: 4.5rem; color: #667eea; margin-bottom: 20px; 
-                           filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.2));">📁</div>
-                <h3 style="color: #2c3e50; font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.3px;">
-                    点击上传或拖拽文件到此处
-                </h3>
-                <p style="color: #6c757d; font-size: 1rem; margin-bottom: 25px; line-height: 1.6;">
-                    支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB
-                </p>
-        """, unsafe_allow_html=True)
-        
-        # 在拖拽区域内放置文件上传器
-        uploaded_file = st.file_uploader(
-            "选择调研表文件",
-            type=['xlsx', 'xls', 'pptx', 'ppt', 'docx', 'doc'],
-            help="支持 Excel、PPT、Word 格式，最多上传10个文件，单个文件不超过 200MB",
-            key=f"file_uploader_{st.session_state.uploader_key}",
-            label_visibility="collapsed"
-        )
-        
-        st.markdown("""
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.info("请上传标准的中央空调节能调研表 (Excel 格式)")
+
+    uploaded_file = st.file_uploader(
+        "选择文件",
+        type=['xlsx', 'xls'],
+        help="请使用标准调研表模板",
+        key=f"file_uploader_{st.session_state.uploader_key}"  # 动态 key，reset 时强制刷新
+    )
 
     if uploaded_file:
         st.session_state.uploaded_file = uploaded_file
         st.session_state.original_filename = uploaded_file.name  # 新增：保存原始文件名
 
-        # 修改：保存到会话目录（保留原始文件格式）
+        # 修改：保存到会话目录（不再使用硬编码的 tmp 目录）
         session_dir = st.session_state.session_dir
-        original_filename = uploaded_file.name
-        file_ext = Path(original_filename).suffix.lower()
-        
-        # 根据原始文件扩展名保存文件
-        upload_path = session_dir / f"upload_survey{file_ext}"
-        
+        upload_path = session_dir / "upload_survey.xlsx"
+
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        if st.session_state.module_type == 'air_conditioner':
-            st.success(f"✅ 文件已上传：{uploaded_file.name}")
-            st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
-            st.info(f"📂 会话目录：{session_dir.name}")  # 新增：显示会话目录名
+        st.success(f"✅ 文件已上传：{uploaded_file.name}")
+        st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
+        st.info(f"📂 会话目录：{session_dir.name}")  # 新增：显示会话目录名
 
-            if st.button("🚀 开始分析", type="primary", use_container_width=True):
-                st.session_state.stage = 'extract_check'
-                st.session_state.scroll_to_top = True  # 新增：触发滚动
-                st.rerun()
-        else:
-            # 空压模块的文件上传成功提示
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); 
-                        border: 1px solid #4CAF50; 
-                        border-radius: 12px; 
-                        padding: 20px; 
-                        margin: 25px auto;
-                        max-width: 800px;
-                        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
-                        position: relative;
-                        overflow: hidden;">
-                <!-- 成功图标背景 -->
-                <div style="position: absolute; 
-                            top: -10px; 
-                            right: -10px; 
-                            width: 60px; 
-                            height: 60px; 
-                            background: rgba(76, 175, 80, 0.1); 
-                            border-radius: 50%;
-                            z-index: 0;"></div>
-                <div style="position: relative; z-index: 1;">
-                    <div style="color: #2E7D32; font-weight: 700; font-size: 1.1rem; margin-bottom: 8px;">
-                        ✅ 文件已上传：{filename}
-                    </div>
-                    <div style="color: #5a6c7d; font-size: 0.95rem; font-weight: 500;">
-                        文件大小：{size:.2f} KB
-                    </div>
-                </div>
-            </div>
-            """.format(filename=uploaded_file.name, size=uploaded_file.size / 1024), unsafe_allow_html=True)
-
-    # 空压模块的按钮区域 - 符合Figma设计
-    if st.session_state.module_type == 'air_compressor':
-        st.markdown("""
-        <div style="display: flex; gap: 15px; margin: 30px 0; justify-content: flex-end;">
-        """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.markdown("""
-            <div style="margin-right: 10px;">
-            """, unsafe_allow_html=True)
-            if st.button("上一步", use_container_width=True, type="secondary"):
-                if st.session_state.get('module_type'):
-                    del st.session_state.module_type
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-        with col2:
-            st.markdown("""
-            <div style="margin-left: 10px;">
-            """, unsafe_allow_html=True)
-            if uploaded_file:
-                if st.button("下一步", use_container_width=True, type="primary"):
-                    st.session_state.stage = 'extract_check'
-                    st.session_state.scroll_to_top = True  # 新增：触发滚动
-                    st.rerun()
-            else:
-                st.button("下一步", use_container_width=True, type="primary", disabled=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        if st.button("🚀 开始分析", type="primary", use_container_width=True):
+            st.session_state.stage = 'extract_check'
+            st.session_state.scroll_to_top = True  # 新增：触发滚动
+            st.rerun()
 
 
 def render_extract_check_stage():
@@ -782,25 +203,17 @@ def render_extract_check_stage():
 
                 caller = SkillCaller(timeout=300)
 
-                # 修改：使用会话目录（保留原始文件格式）
+                # 修改：使用会话目录
                 session_dir = st.session_state.session_dir
-                original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
-                file_ext = Path(original_filename).suffix.lower()
-                upload_path = session_dir / f"upload_survey{file_ext}"
+                upload_path = session_dir / "upload_survey.xlsx"
                 output_path = session_dir / "extract_check_result.json"
 
                 # 获取原始文件名
                 original_filename = st.session_state.get('original_filename', 'unknown.xlsx')
 
-                # 根据模块类型选择不同的技能
-                if st.session_state.module_type == 'air_conditioner':
-                    skill_name = "extract-and-check-data"
-                else:
-                    skill_name = "extract-air-compressor-data-llm"
-                    
                 # 调用合并的 Skill: 提取和质量检查，传递原始文件名和回调
                 skill_result = caller.call_skill(
-                    skill_name,
+                    "extract-and-check-data",
                     str(upload_path),
                     str(output_path),
                     original_filename,  # 新增：传递原始文件名
@@ -851,593 +264,104 @@ def render_extract_check_stage():
     # 下面的代码对缓存和新获取的结果都生效
     # =================================================================
 
-    # 根据模块类型显示不同的数据提取结果
-    if st.session_state.module_type == 'air_conditioner':
-        # 空调模块的显示逻辑
-        st.success("✅ 数据提取完成")
+    # 展示提取结果
+    st.success("✅ 数据提取完成")
 
-        # 新增：展示站房类型（3 列布局）
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("项目地区", extracted_data.get("project_region", "未识别"))
-        with col2:
-            station_type = extracted_data.get("station_type", "unknown")
-            station_type_names = {
-                "standard": "标准站房",
-                "secondary_pump": "二次泵站房",
-                "unsupported": "⚠️ 不支持类型"
-            }
-            st.metric("站房类型", station_type_names.get(station_type, station_type))
-        with col3:
-            st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
+    # 新增：展示站房类型（3 列布局）
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("项目地区", extracted_data.get("project_region", "未识别"))
+    with col2:
+        station_type = extracted_data.get("station_type", "unknown")
+        station_type_names = {
+            "standard": "标准站房",
+            "secondary_pump": "二次泵站房",
+            "unsupported": "⚠️ 不支持类型"
+        }
+        st.metric("站房类型", station_type_names.get(station_type, station_type))
+    with col3:
+        st.metric("月度数据记录", len(extracted_data.get("monthly_data", [])))
 
-        # 新增：展示站房类型识别详情
-        station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
-        station_type_reason = extracted_data.get("station_type_reason", "")
+    # 新增：展示站房类型识别详情
+    station_type_confidence = extracted_data.get("station_type_confidence", "unknown")
+    station_type_reason = extracted_data.get("station_type_reason", "")
 
-        if station_type_confidence != "high":
-            st.info(
-                f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
-                f"**识别依据**: {station_type_reason}"
-            )
+    if station_type_confidence != "high":
+        st.info(
+            f"ℹ️ **站房类型识别置信度**: {station_type_confidence}\n\n"
+            f"**识别依据**: {station_type_reason}"
+        )
 
-        # 新增：检查是否为不支持类型（在质量检查之前）
-        if station_type == "unsupported":
-            st.markdown("---")
-            st.error("⛔ **该类型站房不支持自动节能评估**")
+    # 新增：检查是否为不支持类型（在质量检查之前）
+    if station_type == "unsupported":
+        st.markdown("---")
+        st.error("⛔ **该类型站房不支持自动节能评估**")
 
-            st.warning(
-                "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
-                "- 热水泵\n"
-                "- 水蓄冷/冰蓄冷\n"
-                "- 中低温机组\n\n"
-                "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
-                f"**识别依据**: {station_type_reason}"
-            )
+        st.warning(
+            "⚠️ 检测到您的站房包含以下特殊配置之一：\n\n"
+            "- 热水泵\n"
+            "- 水蓄冷/冰蓄冷\n"
+            "- 中低温机组\n\n"
+            "**这些特殊类型的站房节能计算逻辑较为复杂，暂不在本工具的自动评估范围内。**\n\n"
+            f"**识别依据**: {station_type_reason}"
+        )
 
-            # 提供重新上传按钮
-            if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
-                reset_flow()
-                st.rerun()
+        # 提供重新上传按钮
+        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+            reset_flow()
+            st.rerun()
 
-            # 终止函数执行
-            return
+        # 终止函数执行
+        return
 
-        # 展示质量报告
-        st.success("✅ 质量检查完成")
+    # 展示质量报告
+    st.success("✅ 质量检查完成")
 
-        # 核心指标卡
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            completeness = quality_report.get("completeness", 0)
-            st.metric(
-                "数据完整率",
-                f"{completeness * 100:.1f}%",
-                delta=None if completeness >= 0.8 else "需要改进"
-            )
-        with col2:
-            confidence = quality_report.get("confidence_level", "unknown")
-            confidence_map = {"high": "高", "medium": "中", "low": "低"}
-            st.metric("置信水平", confidence_map.get(confidence, confidence))
-        with col3:
-            issues = quality_report.get("issues", [])
-            critical_issues = len([i for i in issues if i.get("severity") == "critical"])
-            st.metric("严重问题数", critical_issues)
-    else:
-        # 空压机模块的显示逻辑 - 根据Figma设计稿
-        # 空压模块的数据提取页面 - 符合Figma设计
-        st.markdown("""
-        <div style="background: white; 
-                    border-radius: 16px; 
-                    padding: 35px; 
-                    margin: 30px auto;
-                    max-width: 900px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-                    border: 1px solid rgba(255,255,255,0.8);
-                    position: relative;
-                    overflow: hidden;">
-            <!-- 顶部渐变条 -->
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        height: 4px; 
-                        border-radius: 2px; 
-                        margin: -35px -35px 30px -35px;"></div>
-            <!-- 背景渐变 -->
-            <div style="position: absolute; 
-                        top: 0; 
-                        left: 0; 
-                        right: 0; 
-                        height: 60px; 
-                        background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-                        z-index: 0;"></div>
-            <div style="position: relative; z-index: 1;">
-                <h2 style="color: #2c3e50; font-size: 1.9rem; font-weight: 700; margin-bottom: 25px; letter-spacing: -0.5px;">
-                    步骤 2: 数据提取
-                </h2>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 数据完整度显示
+    # 核心指标卡
+    col1, col2, col3 = st.columns(3)
+    with col1:
         completeness = quality_report.get("completeness", 0)
-        
-        # 创建数据完整度卡片 - 符合Figma设计
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                    padding: 30px; 
-                    border-radius: 16px; 
-                    border: 1px solid #e9ecef; 
-                    margin: 25px auto;
-                    max-width: 900px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-                    position: relative;
-                    overflow: hidden;">
-            <!-- 装饰元素 -->
-            <div style="position: absolute; 
-                        top: -20px; 
-                        right: -20px; 
-                        width: 80px; 
-                        height: 80px; 
-                        background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
-                        border-radius: 50%;"></div>
-        """, unsafe_allow_html=True)
-            
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.markdown(f"""
-            <div style="text-align: center; position: relative; z-index: 1;">
-                <div style="width: 100px; height: 100px; 
-                           background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); 
-                           border-radius: 50%; 
-                           display: flex; 
-                           align-items: center; 
-                           justify-content: center; 
-                           margin: 0 auto 15px auto;
-                           box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);">
-                    <div style="color: white; font-size: 24px; font-weight: 800;">{completeness * 100:.0f}%</div>
-                </div>
-                <div style="color: #5a6c7d; font-size: 16px; font-weight: 600;">数据完整度</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col2:
-            # 缺失字段显示 - 符合Figma设计
-            issues = quality_report.get("issues", [])
-            missing_fields = [issue for issue in issues if "缺失" in issue.get("description", "")]
-            
-            st.markdown("""
-            <div style="position: relative; z-index: 1; padding: 10px 0;">
-            """, unsafe_allow_html=True)
-            
-            if missing_fields:
-                st.markdown(f"""
-                <div style="margin-bottom: 20px;">
-                    <div style="color: #e74c3c; font-weight: 700; font-size: 16px; margin-bottom: 15px;">
-                        ⚠️ 缺失字段（{len(missing_fields)}项，均为非必填）
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # 显示缺失字段标签 - 现代化设计
-                missing_tags_html = ""
-                for i, issue in enumerate(missing_fields[:5]):  # 最多显示5个
-                    field_name = issue.get("field", "未知字段")
-                    missing_tags_html += f"""
-                    <span style="display: inline-block; 
-                                 background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%); 
-                                 color: #c62828; 
-                                 padding: 8px 12px; 
-                                 border-radius: 20px; 
-                                 font-size: 13px; 
-                                 font-weight: 600; 
-                                 margin: 4px 8px 4px 0;
-                                 border: 1px solid #ffcdd2;
-                                 box-shadow: 0 2px 4px rgba(198, 40, 40, 0.1);">
-                        {field_name}
-                    </span>
-                    """
-                
-                if len(missing_fields) > 5:
-                    missing_tags_html += f"""
-                    <span style="display: inline-block; 
-                                 background: #f5f5f5; 
-                                 color: #666; 
-                                 padding: 8px 12px; 
-                                 border-radius: 20px; 
-                                 font-size: 13px; 
-                                 font-weight: 600; 
-                                 margin: 4px 8px 4px 0;">
-                        +{len(missing_fields) - 5}项
-                    </span>
-                    """
-                
-                st.markdown(missing_tags_html, unsafe_allow_html=True)
-            else:
-                st.markdown("""
-                <div style="color: #2E7D32; font-weight: 700; font-size: 16px;">
-                    ✅ 所有必填字段完整
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.metric(
+            "数据完整率",
+            f"{completeness * 100:.1f}%",
+            delta=None if completeness >= 0.8 else "需要改进"
+        )
+    with col2:
+        confidence = quality_report.get("confidence_level", "unknown")
+        confidence_map = {"high": "高", "medium": "中", "low": "低"}
+        st.metric("置信水平", confidence_map.get(confidence, confidence))
+    with col3:
+        issues = quality_report.get("issues", [])
+        critical_issues = len([i for i in issues if i.get("severity") == "critical"])
+        st.metric("严重问题数", critical_issues)
 
-        # 项目核心信息 - 符合Figma设计
-        st.markdown("""
-        <div style="background: white; 
-                    border-radius: 16px; 
-                    padding: 30px; 
-                    margin: 25px auto;
-                    max-width: 900px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-                    border: 1px solid #e9ecef;">
-            <h3 style="color: #2c3e50; font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px;">
-                📋 项目核心信息
-            </h3>
-        """, unsafe_allow_html=True)
-        
-        # 企业信息卡片 - 符合Figma设计
-        company_name = extracted_data.get("companyName", "未知企业")
-        project_name = extracted_data.get("projectName", "未知项目")
-        project_location = extracted_data.get("projectLocation", "未知地址")
-        industry_type = extracted_data.get("industryType", "未知行业")
-        
-        # 创建信息网格
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                        padding: 20px; 
-                        border-radius: 12px; 
-                        border: 1px solid #e9ecef; 
-                        margin-bottom: 15px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                        transition: all 0.3s ease;">
-                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    企业名称
-                </div>
-                <div style="font-weight: 700; color: #2c3e50; font-size: 16px; line-height: 1.4;">
-                    {company_name}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                        padding: 20px; 
-                        border-radius: 12px; 
-                        border: 1px solid #e9ecef; 
-                        margin-bottom: 15px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                        transition: all 0.3s ease;">
-                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    项目地址
-                </div>
-                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
-                    {project_location}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                        padding: 20px; 
-                        border-radius: 12px; 
-                        border: 1px solid #e9ecef; 
-                        margin-bottom: 15px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                        transition: all 0.3s ease;">
-                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    项目名称
-                </div>
-                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
-                    {project_name}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                        padding: 20px; 
-                        border-radius: 12px; 
-                        border: 1px solid #e9ecef; 
-                        margin-bottom: 15px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                        transition: all 0.3s ease;">
-                <div style="color: #6c757d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    行业类型
-                </div>
-                <div style="font-weight: 600; color: #2c3e50; font-size: 15px; line-height: 1.4;">
-                    <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                 color: white; 
-                                 padding: 6px 12px; 
-                                 border-radius: 20px; 
-                                 font-size: 13px; 
-                                 font-weight: 700;">
-                        {industry_type}
-                    </span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 企业简称
-        company_short = extracted_data.get("companyShortName", "未知")
-        st.markdown(f"""
-        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
-            <span style="color: #666; font-size: 12px;">企业简称</span><br>
-            <span style="font-weight: 500; color: #333;">{company_short}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 项目名称（高亮显示）
-        project_name = extracted_data.get("projectName", "空压系统节能项目")
-        st.markdown(f"""
-        <div style="background-color: #e8f5e8; padding: 12px; border-radius: 10px; 
-                    border: 1px solid #4caf50; margin-bottom: 8px;">
-            <span style="color: #666; font-size: 12px;">项目名称</span><br>
-            <span style="font-weight: 500; color: #333;">{project_name}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 项目所在地
-        location = extracted_data.get("projectLocation", "未填写")
-        st.markdown(f"""
-        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
-            <span style="color: #666; font-size: 12px;">项目所在地（省市）</span><br>
-            <span style="font-weight: 500; color: #333;">{location}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 行业类型
-        industry = extracted_data.get("industryType", "其他")
-        st.markdown(f"""
-        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                    border: 1px solid #e0e0e0; margin-bottom: 8px;">
-            <span style="color: #666; font-size: 12px;">行业类型</span><br>
-            <span style="font-weight: 500; color: #333;">{industry}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 空压系统年度总用量（高亮显示）
-        total_energy = extracted_data.get("totalAnnualEnergyConsumption")
-        if total_energy:
-            st.markdown(f"""
-            <div style="background-color: #fff3e0; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #ff9800; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">空压系统年度总用量</span><br>
-                <span style="font-weight: bold; color: #e65100; font-size: 18px;">{total_energy}</span>
-                <span style="color: #e65100; font-size: 14px;"> 万 kWh</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">空压系统年度总用量</span><br>
-                <span style="font-weight: 500; color: #333;">未填写</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 其他关键参数
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # 平均电价
-            electricity_price = extracted_data.get("electricityPrice")
-            price_text = f"{electricity_price} 元/kWh" if electricity_price else "未填写"
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">平均电价</span><br>
-                <span style="font-weight: 500; color: #333;">{price_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 近14天系统平均压力
-            avg_pressure = extracted_data.get("averagePressure")
-            pressure_text = f"{avg_pressure} bar" if avg_pressure else "未填写"
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">近14天系统平均压力</span><br>
-                <span style="font-weight: 500; color: #333;">{pressure_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 年运行天数
-            annual_days = extracted_data.get("annualRunningDays")
-            days_text = f"{annual_days} 天" if annual_days else "未填写"
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">年运行天数</span><br>
-                <span style="font-weight: 500; color: #333;">{days_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            # 现有系统报警压力（下限）
-            alarm_pressure = extracted_data.get("alarmPressureLowerLimit")
-            alarm_text = f"{alarm_pressure} bar" if alarm_pressure else "未填写"
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">现有系统报警压力（下限）</span><br>
-                <span style="font-weight: 500; color: #333;">{alarm_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 每天开机时间
-            daily_hours = extracted_data.get("dailyRunningHours")
-            hours_text = f"{daily_hours} 小时" if daily_hours else "未填写"
-            st.markdown(f"""
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 10px; 
-                        border: 1px solid #e0e0e0; margin-bottom: 8px;">
-                <span style="color: #666; font-size: 12px;">每天开机时间</span><br>
-                <span style="font-weight: 500; color: #333;">{hours_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
+    # 问题列表
+    if issues:
+        st.subheader("📋 发现的问题")
 
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # 设备清单 - 符合Figma设计
-        st.markdown("""
-        <div style="background: white; 
-                    border-radius: 16px; 
-                    padding: 30px; 
-                    margin: 25px auto;
-                    max-width: 900px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-                    border: 1px solid #e9ecef;">
-            <h3 style="color: #2c3e50; font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px;">
-                🔧 设备清单
-            </h3>
-        """, unsafe_allow_html=True)
-        
-        equipment_list = extracted_data.get("equipmentList", [])
-        if equipment_list:
-            # 按站房分组显示设备
-            stations = {}
-            for equipment in equipment_list:
-                station = equipment.get("station", "未知站房")
-                if station not in stations:
-                    stations[station] = []
-                stations[station].append(equipment)
-            
-            for i, (station_name, equipments) in enumerate(stations.items()):
-                # 站房标题
-                st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            color: white; 
-                            padding: 15px 20px; 
-                            border-radius: 12px; 
-                            margin: 20px 0 15px 0;
-                            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-                    <h4 style="margin: 0; font-size: 1.2rem; font-weight: 700;">
-                        🏭 {station_name}
-                    </h4>
-                </div>
-                """, unsafe_allow_html=True)
-                    # 创建设备卡片 - 符合Figma设计
-                if equipments:
-                    for j, eq in enumerate(equipments):
-                        # 设备状态颜色
-                        status = eq.get("runningStatus", "未知")
-                        if status == "运行":
-                            status_color = "#4CAF50"
-                            status_bg = "#e8f5e8"
-                        elif status == "备用":
-                            status_color = "#FF9800"
-                            status_bg = "#fff3e0"
-                        else:
-                            status_color = "#9E9E9E"
-                            status_bg = "#f5f5f5"
-                        
-                        st.markdown(f"""
-                        <div style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); 
-                                    border: 1px solid #e9ecef; 
-                                    border-radius: 12px; 
-                                    padding: 20px; 
-                                    margin-bottom: 15px;
-                                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                                    transition: all 0.3s ease;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <h5 style="color: #2c3e50; font-size: 1.1rem; font-weight: 700; margin: 0;">
-                                    {eq.get("equipmentNumber", "未知设备")}
-                                </h5>
-                                <span style="background: {status_bg}; 
-                                             color: {status_color}; 
-                                             padding: 6px 12px; 
-                                             border-radius: 20px; 
-                                             font-size: 12px; 
-                                             font-weight: 700;">
-                                    {status}
-                                </span>
-                            </div>
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div>
-                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">品牌型号</div>
-                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("brand", "未知")} {eq.get("model", "")}</div>
-                                </div>
-                                <div>
-                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">设备类型</div>
-                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("equipmentType", "未知")}</div>
-                                </div>
-                                <div>
-                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">铭牌功率</div>
-                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("ratedPower", "未知")} kW</div>
-                                </div>
-                                <div>
-                                    <div style="color: #6c757d; font-size: 12px; font-weight: 600; margin-bottom: 4px;">铭牌流量</div>
-                                    <div style="color: #2c3e50; font-weight: 600;">{eq.get("ratedFlow", "未知")} m³/min</div>
-                                </div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.markdown("""
-                    <div style="background: #f8f9fa; 
-                                border: 1px solid #e9ecef; 
-                                border-radius: 12px; 
-                                padding: 20px; 
-                                text-align: center;
-                                color: #6c757d;">
-                        该站房暂无设备信息
-                    </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background: #f8f9fa; 
-                        border: 1px solid #e9ecef; 
-                        border-radius: 12px; 
-                        padding: 30px; 
-                        text-align: center;
-                        color: #6c757d;">
-                <div style="font-size: 2rem; margin-bottom: 15px;">📦</div>
-                <div style="font-weight: 600; font-size: 1.1rem;">未检测到设备信息</div>
-                <div style="font-size: 0.9rem; margin-top: 8px;">请检查调研表中的设备清单部分</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
+        for issue in issues:
+            severity = issue.get("severity", "low")
+            severity_groups.get(severity, []).append(issue)
 
-    # 根据模块类型显示不同的问题列表
-    if st.session_state.module_type == 'air_conditioner':
-        # 空调模块的问题列表显示
-        if issues:
-            st.subheader("📋 发现的问题")
+        severity_labels = {
+            "critical": "🔴 严重问题",
+            "high": "🟠 高优先级",
+            "medium": "🟡 中优先级",
+            "low": "🔵 低优先级"
+        }
 
-            severity_groups = {"critical": [], "high": [], "medium": [], "low": []}
-            for issue in issues:
-                severity = issue.get("severity", "low")
-                severity_groups.get(severity, []).append(issue)
-
-            severity_labels = {
-                "critical": "🔴 严重问题",
-                "high": "🟠 高优先级",
-                "medium": "🟡 中优先级",
-                "low": "🔵 低优先级"
-            }
-
-            for severity in ["critical", "high", "medium", "low"]:
-                group = severity_groups[severity]
-                if group:
-                    with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
-                        for issue in group:
-                            st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
-        else:
-            st.success("✨ 未发现任何问题，数据质量优秀!")
-
-        # 总结
-        st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
+        for severity in ["critical", "high", "medium", "low"]:
+            group = severity_groups[severity]
+            if group:
+                with st.expander(f"{severity_labels[severity]} ({len(group)}个)", expanded=(severity == "critical")):
+                    for issue in group:
+                        st.warning(f"**字段**: {issue.get('field')}\n\n{issue.get('message')}")
     else:
-        # 空压机模块的问题列表显示 - 已在数据完整度卡片中显示，这里不重复显示
-        pass
+        st.success("✨ 未发现任何问题，数据质量优秀!")
+
+    # 总结
+    st.info(f"**总结**: {quality_report.get('summary', '数据检查完成')}")
 
     # 检查置信度级别
     confidence = quality_report.get("confidence_level", "unknown")
@@ -1494,33 +418,18 @@ def render_extract_check_stage():
     with st.expander("查看提取的原始数据"):
         st.json(extracted_data)
 
-    # 提供确认按钮进入下一阶段 - 符合Figma设计
-    if st.session_state.module_type == 'air_compressor':
-        st.markdown("""
-        <div style="margin: 40px auto; max-width: 900px; text-align: center;">
-        """, unsafe_allow_html=True)
-        
-        if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
-            st.session_state.stage = 'filling'
-            st.session_state.scroll_to_top = True
-            st.rerun()
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("---")
-        if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
-            st.session_state.stage = 'filling'
-            st.session_state.scroll_to_top = True
-            st.rerun()
+    # 提供确认按钮进入下一阶段 (仅当置信度不是 low 时)
+    st.markdown("---")
+    if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
+        st.session_state.stage = 'filling'
+        st.session_state.scroll_to_top = True  # 新增：触发滚动
+        st.rerun()
 
 
 
 def render_filling_stage():
     """阶段 3: 填充建议 (需要用户确认)"""
-    if st.session_state.module_type == 'air_conditioner':
-        st.header("🔧 步骤 3: 数据填充建议")
-    else:
-        st.markdown("## 步骤 3：节能测算")
+    st.header("🔧 步骤 3: 数据填充建议")
 
     # 检查是否已经生成填充建议
     if st.session_state.filling_suggestions is None:
@@ -1547,15 +456,9 @@ def render_filling_stage():
                 quality_path = session_dir / "quality_report.json"
                 output_path = session_dir / "filling_suggestions.json"
 
-                # 根据模块类型选择不同的技能
-                if st.session_state.module_type == 'air_conditioner':
-                    skill_name = "suggest-data-filling"
-                else:
-                    skill_name = "suggest-air-compressor-data-filling"
-                    
                 # 调用 Skill 3: 填充建议，传递回调
                 skill_result = caller.call_skill(
-                    skill_name,
+                    "suggest-data-filling",
                     str(extracted_path),
                     str(quality_path),
                     str(output_path),
@@ -1611,75 +514,29 @@ def render_filling_stage():
         fillable = suggestions.get("fillable_suggestions", [])
 
         if fillable:
-            if st.session_state.module_type == 'air_conditioner':
-                st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
+            st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
 
-                st.subheader("📝 填充建议详情")
+            st.subheader("📝 填充建议详情")
 
-                # 转换为 DataFrame 展示
-                suggestions_data = []
-                for s in fillable:
-                    suggestions_data.append({
-                        "字段": s.get("field"),
-                        "原始值": s.get("original_value") or "缺失",
-                        "建议值": s.get("suggested_value"),
-                        "方法": s.get("method"),
-                        "置信度": s.get("confidence"),
-                        "推理说明": s.get("reasoning")
-                    })
+            # 转换为 DataFrame 展示
+            suggestions_data = []
+            for s in fillable:
+                suggestions_data.append({
+                    "字段": s.get("field"),
+                    "原始值": s.get("original_value") or "缺失",
+                    "建议值": s.get("suggested_value"),
+                    "方法": s.get("method"),
+                    "置信度": s.get("confidence"),
+                    "推理说明": s.get("reasoning")
+                })
 
-                df = pd.DataFrame(suggestions_data)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+            df = pd.DataFrame(suggestions_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
 
-                st.info(
-                    "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
-                    "如果您同意这些建议，点击下方按钮继续计算。"
-                )
-            else:
-                # 空压机模块的填充建议显示
-                st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
-                
-                st.markdown("### 📝 填充建议详情")
-                
-                # 使用卡片式布局显示填充建议
-                for i, s in enumerate(fillable):
-                    field_name = s.get("field", "未知字段")
-                    original_value = s.get("original_value") or "缺失"
-                    suggested_value = s.get("suggested_value", "")
-                    method = s.get("method", "")
-                    confidence = s.get("confidence", "")
-                    reasoning = s.get("reasoning", "")
-                    
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 16px; border-radius: 10px; 
-                                border: 1px solid #e0e0e0; margin-bottom: 12px;">
-                        <div style="font-weight: bold; color: #333; margin-bottom: 8px;">
-                            📊 {field_name}
-                        </div>
-                        <div style="display: flex; gap: 20px; margin-bottom: 8px;">
-                            <div>
-                                <span style="color: #666; font-size: 12px;">原始值:</span><br>
-                                <span style="color: #e74c3c;">{original_value}</span>
-                            </div>
-                            <div>
-                                <span style="color: #666; font-size: 12px;">建议值:</span><br>
-                                <span style="color: #27ae60; font-weight: bold;">{suggested_value}</span>
-                            </div>
-                            <div>
-                                <span style="color: #666; font-size: 12px;">置信度:</span><br>
-                                <span style="color: #3498db;">{confidence}</span>
-                            </div>
-                        </div>
-                        <div style="color: #666; font-size: 14px;">
-                            <strong>推理说明:</strong> {reasoning}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.info(
-                    "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
-                    "如果您同意这些建议，点击下方按钮继续计算。"
-                )
+            st.info(
+                "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
+                "如果您同意这些建议，点击下方按钮继续计算。"
+            )
         else:
             st.success("✨ 数据完整，无需填充!")
 
@@ -1699,10 +556,7 @@ def render_filling_stage():
 
 def render_calculate_stage():
     """阶段 4: 执行计算 (自动执行)"""
-    if st.session_state.module_type == 'air_conditioner':
-        st.header("⚙️ 步骤 4: 执行计算")
-    else:
-        st.markdown("## 步骤 4：输出结果")
+    st.header("⚙️ 步骤 4: 执行计算")
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -1745,42 +599,23 @@ def render_calculate_stage():
         status_text.text("正在调用 AI 计算引擎...")
         progress_bar.progress(60)
 
-        if st.session_state.module_type == 'air_conditioner':
-            # 使用气象数据服务（空调需要）
-            weather_service = WeatherService()
-            calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
+        # 使用气象数据服务
+        weather_service = WeatherService()
+        calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
 
-            result_path = calculator.calculate(
-                filled_path,
-                str(session_dir / "result_data.json")
-            )
-        else:
-            # 空压机计算逻辑 - 使用新的计算skill
-            print("🔢 [空压计算] 调用空压机节能计算skill...")
-            
-            # 调用空压机节能计算skill
-            calc_caller = SkillCaller(timeout=300)
-            calc_result = calc_caller.call_skill(
-                "calculate-air-compressor-energy-saving",
-                filled_path,
-                str(session_dir / "result_data.json")
-            )
-            
-            result_path = str(session_dir / "result_data.json")
+        result_path = calculator.calculate(
+            filled_path,
+            str(session_dir / "result_data.json")
+        )
 
         # 读取结果
         with open(result_path, 'r', encoding='utf-8') as f:
             result = json.load(f)
 
         # 保存格式化结果
-        if st.session_state.module_type == 'air_conditioner':
-            formatted_result = calculator.format_export_results(filled_data, result)
-            with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
-                json.dump(formatted_result, f, ensure_ascii=False, indent=2)
-        else:
-            # 空压机模块直接使用计算结果
-            with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
-                json.dump(result, f, ensure_ascii=False, indent=2)
+        formatted_result = calculator.format_export_results(filled_data, result)
+        with open(session_dir / "formatted_result.json", 'w', encoding='utf-8') as f:
+            json.dump(formatted_result, f, ensure_ascii=False, indent=2)
 
         progress_bar.progress(80)
 
@@ -1823,10 +658,7 @@ def render_result_stage():
     # 打印提示
     st.info("📋 **呼叫 SR 前，请点击右上角打印本页**")
 
-    if st.session_state.module_type == 'air_conditioner':
-        st.header("📈 测算结果")
-    else:
-        st.markdown("## 📈 测算结果")
+    st.header("📈 测算结果")
 
     result = st.session_state.result
 
@@ -1840,307 +672,189 @@ def render_result_stage():
     # 核心指标卡
     st.subheader("🎯 核心指标")
 
-    # 根据模块类型显示不同的核心指标
-    if st.session_state.module_type == 'air_conditioner':
-        # 空调模块的核心指标展示
-        # 检查是否为范围计算结果
-        if "energy_saving_rate_range" in result:
-            # 新版：展示范围
+    # 检查是否为范围计算结果
+    if "energy_saving_rate_range" in result:
+        # 新版：展示范围
+        st.metric(
+            "节能率范围",
+            result["energy_saving_rate_range"],
+            help="基于上限和下限两种估算方法"
+        )
+
+        # 详细展示：5 个核心指标
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
             st.metric(
-                "节能率范围",
-                result["energy_saving_rate_range"],
-                help="基于上限和下限两种估算方法"
+                "下限（保守估计）",
+                f"{result['energy_saving_rate_min'] * 100:.1f}%"
             )
 
-            # 详细展示：5 个核心指标
-            col1, col2, col3, col4, col5 = st.columns(5)
+        with col2:
+            st.metric(
+                "上限（理想情况）",
+                f"{result['energy_saving_rate_max'] * 100:.1f}%"
+            )
 
-            with col1:
+        with col3:
+            # P0 修复：添加总节能量范围
+            total_min = result.get('total_saving_min', 0)
+            total_max = result.get('total_saving_max', 0)
+            st.metric(
+                "总节能量范围",
+                f"{total_min:.1f} - {total_max:.1f} 万 kWh",
+                help="预估的年度总节能量范围"
+            )
+
+        with col4:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+        with col5:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
+    else:
+        # 旧版：单一值（向后兼容）
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            rate = result.get("energy_saving_rate", 0)
+            rate_min = result.get("energy_saving_rate_min", 0)
+            rate_max = result.get("energy_saving_rate_max", 0)
+
+            # P1 修复：恢复 delta 显示（如果 min/max 存在）
+            if rate_min > 0 and rate_max > 0:
                 st.metric(
-                    "下限（保守估计）",
-                    f"{result['energy_saving_rate_min'] * 100:.1f}%"
+                    "预估节能率",
+                    f"{rate * 100:.2f}%",
+                    delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+                )
+            else:
+                st.metric(
+                    "预估节能率",
+                    f"{rate * 100:.2f}%"
                 )
 
-            with col2:
-                st.metric(
-                    "上限（理想情况）",
-                    f"{result['energy_saving_rate_max'] * 100:.1f}%"
-                )
+        with col2:
+            total_saving = result.get("total_saving", 0)
+            st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
 
-            with col3:
-                # P0 修复：添加总节能量范围
-                total_min = result.get('total_saving_min', 0)
-                total_max = result.get('total_saving_max', 0)
-                st.metric(
-                    "总节能量范围",
-                    f"{total_min:.1f} - {total_max:.1f} 万 kWh",
-                    help="预估的年度总节能量范围"
-                )
+        with col3:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
 
-            with col4:
-                completeness = result.get("completeness", 0)
-                st.metric("数据完整度", f"{completeness * 100:.1f}%")
+        with col4:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
 
-            with col5:
-                filled_count = result.get("filled_count", 0)
-                st.metric("填充字段数", filled_count)
-        else:
-            # 旧版：单一值（向后兼容）
-            col1, col2, col3, col4 = st.columns(4)
+    st.markdown("---")
 
-            with col1:
-                rate = result.get("energy_saving_rate", 0)
-                rate_min = result.get("energy_saving_rate_min", 0)
-                rate_max = result.get("energy_saving_rate_max", 0)
+    # 分项节能明细
+    st.subheader("📊 分项节能明细")
 
-                # P1 修复：恢复 delta 显示（如果 min/max 存在）
-                if rate_min > 0 and rate_max > 0:
-                    st.metric(
-                        "预估节能率",
-                        f"{rate * 100:.2f}%",
-                        delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
-                    )
-                else:
-                    st.metric(
-                        "预估节能率",
-                        f"{rate * 100:.2f}%"
-                    )
-
-            with col2:
-                total_saving = result.get("total_saving", 0)
-                st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
-
-            with col3:
-                completeness = result.get("completeness", 0)
-                st.metric("数据完整度", f"{completeness * 100:.1f}%")
-
-            with col4:
-                filled_count = result.get("filled_count", 0)
-                st.metric("填充字段数", filled_count)
-
-        st.markdown("---")
-
-        # 分项节能明细 - 空调
-        st.subheader("📊 分项节能明细")
-
-        # 检查是否为范围计算结果
-        if "chiller_saving_min" in result:
-            # 新版：展示范围
-            savings_data = {
-                "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
-                "节能量范围 (万 kWh)": [
-                    f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
-                    f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
-                    f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
-                    f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
-                ],
-                "下限 (万 kWh)": [
-                    result.get("chiller_saving_min", 0),
-                    result.get("pump_saving_min", 0),
-                    result.get("tower_saving_min", 0),
-                    result.get("total_saving_min", 0)
-                ],
-                "上限 (万 kWh)": [
-                    result.get("chiller_saving_max", 0),
-                    result.get("pump_saving_max", 0),
-                    result.get("tower_saving_max", 0),
-                    result.get("total_saving_max", 0)
-                ]
-            }
-
-            df_savings = pd.DataFrame(savings_data)
-            st.dataframe(df_savings, use_container_width=True, hide_index=True)
-
-            # 柱状图 - 展示范围
-            devices = ["冷机", "水泵", "冷却塔"]
-            min_values = [
+    # 检查是否为范围计算结果
+    if "chiller_saving_min" in result:
+        # 新版：展示范围
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量范围 (万 kWh)": [
+                f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
+                f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
+                f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
+                f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
+            ],
+            "下限 (万 kWh)": [
                 result.get("chiller_saving_min", 0),
                 result.get("pump_saving_min", 0),
-                result.get("tower_saving_min", 0)
-            ]
-            max_values = [
+                result.get("tower_saving_min", 0),
+                result.get("total_saving_min", 0)
+            ],
+            "上限 (万 kWh)": [
                 result.get("chiller_saving_max", 0),
                 result.get("pump_saving_max", 0),
-                result.get("tower_saving_max", 0)
+                result.get("tower_saving_max", 0),
+                result.get("total_saving_max", 0)
             ]
-
-            fig = go.Figure()
-
-            # 添加下限柱
-            fig.add_trace(go.Bar(
-                name='下限（保守估计）',
-                x=devices,
-                y=min_values,
-                text=[f"{v:.1f}" for v in min_values],
-                textposition='outside'
-            ))
-
-            # 添加上限柱
-            fig.add_trace(go.Bar(
-                name='上限（理想情况）',
-                x=devices,
-                y=max_values,
-                text=[f"{v:.1f}" for v in max_values],
-                textposition='outside'
-            ))
-
-            fig.update_layout(
-                title="分项节能量范围分布",
-                xaxis_title="设备类型",
-                yaxis_title="节能量 (万 kWh)",
-                barmode='group'
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-
-        else:
-            # 旧版：单一值（向后兼容）
-            savings_data = {
-                "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
-                "节能量 (万 kWh)": [
-                    result.get("chiller_saving", 0),
-                    result.get("pump_saving", 0),
-                    result.get("tower_saving", 0),
-                    result.get("total_saving", 0)
-                ]
-            }
-
-            df_savings = pd.DataFrame(savings_data)
-
-            # 计算百分比
-            total = result.get("total_saving", 0)
-            if total > 0:
-                df_savings["占比"] = df_savings["节能量 (万 kWh)"].apply(
-                    lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
-                )
-
-            st.dataframe(df_savings, use_container_width=True, hide_index=True)
-
-            # 柱状图
-            fig = px.bar(
-                df_savings[df_savings["设备类型"] != "合计"],
-                x="设备类型",
-                y="节能量 (万 kWh)",
-                title="分项节能量分布",
-                text="节能量 (万 kWh)"
-            )
-            fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        # 空压机模块的核心指标展示
-        # 检查是否为范围计算结果
-        if "energy_saving_rate_range" in result:
-            # 展示范围
-            st.metric(
-                "节能率范围",
-                result["energy_saving_rate_range"],
-                help="基于上限和下限两种估算方法"
-            )
-
-            # 详细展示：5 个核心指标
-            col1, col2, col3, col4, col5 = st.columns(5)
-
-            with col1:
-                st.metric(
-                    "下限（保守估计）",
-                    f"{result['energy_saving_rate_min'] * 100:.1f}%"
-                )
-
-            with col2:
-                st.metric(
-                    "上限（理想情况）",
-                    f"{result['energy_saving_rate_max'] * 100:.1f}%"
-                )
-
-            with col3:
-                # 添加总节能量范围
-                total_min = result.get('total_saving_min', 0)
-                total_max = result.get('total_saving_max', 0)
-                st.metric(
-                    "总节能量范围",
-                    f"{total_min:.1f} - {total_max:.1f} 万 kWh",
-                    help="预估的年度总节能量范围"
-                )
-
-            with col4:
-                completeness = result.get("completeness", 0)
-                st.metric("数据完整度", f"{completeness * 100:.1f}%")
-
-            with col5:
-                filled_count = result.get("filled_count", 0)
-                st.metric("填充字段数", filled_count)
-        else:
-            # 单一值
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                rate = result.get("energy_saving_rate", 0)
-                rate_min = result.get("energy_saving_rate_min", 0)
-                rate_max = result.get("energy_saving_rate_max", 0)
-
-                if rate_min > 0 and rate_max > 0:
-                    st.metric(
-                        "预估节能率",
-                        f"{rate * 100:.2f}%",
-                        delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
-                    )
-                else:
-                    st.metric(
-                        "预估节能率",
-                        f"{rate * 100:.2f}%"
-                    )
-
-            with col2:
-                total_saving = result.get("energy_saving", 0) / 10000  # 转换为万 kWh
-                st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
-
-            with col3:
-                completeness = result.get("completeness", 0)
-                st.metric("数据完整度", f"{completeness * 100:.1f}%")
-
-            with col4:
-                filled_count = result.get("filled_count", 0)
-                st.metric("填充字段数", filled_count)
-
-        st.markdown("---")
-
-        # 分项节能明细 - 空压机
-        st.subheader("📊 系统能耗分析")
-        
-        # 显示空压机系统的能耗分析
-        current_energy = result.get("current_total_energy", 0) / 10000  # 转换为万 kWh
-        optimized_energy = result.get("optimized_total_energy", 0) / 10000  # 转换为万 kWh
-        energy_saving = result.get("energy_saving", 0) / 10000  # 转换为万 kWh
-        
-        energy_data = {
-            "项目": ["当前系统年能耗", "优化后系统年能耗", "年节能量"],
-            "数值 (万 kWh)": [current_energy, optimized_energy, energy_saving]
         }
-        
-        df_energy = pd.DataFrame(energy_data)
-        st.dataframe(df_energy, use_container_width=True, hide_index=True)
-        
-        # 设备分析
-        if "equipment_analysis" in result:
-            st.subheader("🔧 设备分析")
-            analysis = result["equipment_analysis"]
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("空压机总台数", analysis.get("total_air_compressors", 0))
-            with col2:
-                st.metric("总装机功率 (kW)", f"{analysis.get('total_power', 0):.1f}")
-            with col3:
-                st.metric("平均效率", f"{analysis.get('average_efficiency', 0) * 100:.1f}%")
-            
-            # 设备类型分布
-            if analysis.get("equipment_types"):
-                st.subheader("设备类型分布")
-                types_df = pd.DataFrame(
-                    list(analysis["equipment_types"].items()),
-                    columns=["设备类型", "数量"]
-                )
-                st.dataframe(types_df, use_container_width=True, hide_index=True)
+
+        df_savings = pd.DataFrame(savings_data)
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图 - 展示范围
+        devices = ["冷机", "水泵", "冷却塔"]
+        min_values = [
+            result.get("chiller_saving_min", 0),
+            result.get("pump_saving_min", 0),
+            result.get("tower_saving_min", 0)
+        ]
+        max_values = [
+            result.get("chiller_saving_max", 0),
+            result.get("pump_saving_max", 0),
+            result.get("tower_saving_max", 0)
+        ]
+
+        fig = go.Figure()
+
+        # 添加下限柱
+        fig.add_trace(go.Bar(
+            name='下限（保守估计）',
+            x=devices,
+            y=min_values,
+            text=[f"{v:.1f}" for v in min_values],
+            textposition='outside'
+        ))
+
+        # 添加上限柱
+        fig.add_trace(go.Bar(
+            name='上限（理想情况）',
+            x=devices,
+            y=max_values,
+            text=[f"{v:.1f}" for v in max_values],
+            textposition='outside'
+        ))
+
+        fig.update_layout(
+            title="分项节能量范围分布",
+            xaxis_title="设备类型",
+            yaxis_title="节能量 (万 kWh)",
+            barmode='group'
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        # 旧版：单一值（向后兼容）
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量 (万 kWh)": [
+                result.get("chiller_saving", 0),
+                result.get("pump_saving", 0),
+                result.get("tower_saving", 0),
+                result.get("total_saving", 0)
+            ]
+        }
+
+        df_savings = pd.DataFrame(savings_data)
+
+        # 计算百分比
+        total = result.get("total_saving", 0)
+        if total > 0:
+            df_savings["占比"] = df_savings["节能量 (万 kWh)"].apply(
+                lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
+            )
+
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图
+        fig = px.bar(
+            df_savings[df_savings["设备类型"] != "合计"],
+            x="设备类型",
+            y="节能量 (万 kWh)",
+            title="分项节能量分布",
+            text="节能量 (万 kWh)"
+        )
+        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+        st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
 
@@ -2159,7 +873,7 @@ def render_result_stage():
     st.info(confidence_msg)
 
     # 添加范围计算说明
-    if result.get("calculation_method") == "dual_sheet" or result.get("calculation_method") == "air_compressor_standard":
+    if result.get("calculation_method") == "dual_sheet":
         st.info(
             "📊 **节能率范围说明**\n\n"
             "- **下限（保守估计）**: 基于常规优化参数，考虑实际约束\n"
@@ -2172,85 +886,62 @@ def render_result_stage():
     # 下载区域
     st.subheader("📥 下载计算结果")
     
-    if st.session_state.module_type == 'air_conditioner':
-        # 空调模块的下载内容
-        # 下载简化版 Excel 表格
-        st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
+    # 下载格式化结果（简化版）
+    st.info("**简化版表格**：只包含原始电量和节能量，单位为'万'")
+    
+    # 下载简化版 Excel 表格
+    st.subheader("📥 下载简化版 Excel 表格")
+    st.info("**简化版Excel表格**：已删除不必要的行和工作表，保留核心计算结果")
+    
+    # 从会话目录读取简化版 Excel
+    session_dir = st.session_state.session_dir
+    simplified_excel_path = session_dir / "simplified_result.xlsx"
+    
+    if simplified_excel_path.exists():
+        with open(simplified_excel_path, "rb") as f:
+            simplified_excel_data = f.read()
         
-        # 从会话目录读取简化版 Excel
-        session_dir = st.session_state.session_dir
-        simplified_excel_path = session_dir / "simplified_result.xlsx"
-        
-        if simplified_excel_path.exists():
-            with open(simplified_excel_path, "rb") as f:
-                simplified_excel_data = f.read()
-            
-            st.download_button(
-                label="📥 下载简化版 Excel 表格",
-                data=simplified_excel_data,
-                file_name=f"简化版空调节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        else:
-            st.warning("⚠️ 简化版 Excel 文件未找到")
-        
-        st.markdown("---")
-        
-        st.subheader("📥 下载完整计算表格")
-        st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
-
-        password = st.text_input("请输入管理员密码", type="password", key="download_password")
-
-        if password:
-            admin_password = st.secrets.get("admin_password", "admin123")
-            if password == admin_password:
-                st.success("✅ 密码验证通过")
-
-                # 修改：从会话目录读取计算结果 Excel
-                session_dir = st.session_state.session_dir
-                excel_path = session_dir / "calculation_result.xlsx"
-
-                if excel_path.exists():
-                    with open(excel_path, "rb") as f:
-                        excel_data = f.read()
-
-                    st.download_button(
-                        label="📥 下载 Excel 计算表",
-                        data=excel_data,
-                        file_name=f"空调节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                else:
-                    st.warning("⚠️ Excel 文件未找到")
-            else:
-                st.error("❌ 密码错误，请联系管理员")
+        st.download_button(
+            label="📥 下载简化版 Excel 表格",
+            data=simplified_excel_data,
+            file_name=f"简化版节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
     else:
-        # 空压机模块的下载内容
-        st.subheader("📥 下载空压机节能方案")
-        
-        # 下载空压系统数智化升级方案
-        st.info("**空压系统数智化升级方案**：包含节能分析、优化建议和投资回报分析")
-        
-        # 下载报价单
-        session_dir = st.session_state.session_dir
-        quotation_files = list(session_dir.glob("空压系统报价单_*.xlsx"))
-        
-        if quotation_files:
-            quotation_file = quotation_files[0]
-            with open(quotation_file, "rb") as f:
-                quotation_data = f.read()
-            
-            st.download_button(
-                label="📥 下载空压系统报价单",
-                data=quotation_data,
-                file_name=quotation_file.name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+        st.warning("⚠️ 简化版 Excel 文件未找到")
+    
+    st.markdown("---")
+    
+    st.subheader("📥 下载完整计算表格")
+    st.info("完整的 Excel 计算表格包含详细的计算过程和中间数据，需要管理员权限下载")
+
+    password = st.text_input("请输入管理员密码", type="password", key="download_password")
+
+    if password:
+        admin_password = st.secrets.get("admin_password", "admin123")
+        if password == admin_password:
+            st.success("✅ 密码验证通过")
+
+            # 修改：从会话目录读取计算结果 Excel
+            session_dir = st.session_state.session_dir
+            excel_path = session_dir / "calculation_result.xlsx"
+
+            if excel_path.exists():
+                with open(excel_path, "rb") as f:
+                    excel_data = f.read()
+
+                st.download_button(
+                    label="📥 下载 Excel 计算表",
+                    data=excel_data,
+                    file_name=f"节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.warning("⚠️ Excel 文件未找到")
         else:
-            st.warning("⚠️ 报价单文件未找到")
+            st.error("❌ 密码错误，请联系管理员")
 
     st.markdown("---")
 
@@ -2264,285 +955,6 @@ def render_result_stage():
     if st.button("🔄 开始新的测算", type="primary", use_container_width=True):
         reset_flow()
         st.rerun()
-
-
-# ==================== 空压机模块专用函数 ====================
-
-def render_air_compressor_extract_stage():
-    """空压机模块：数据提取阶段"""
-    st.markdown("### 🔍 数据提取与验证")
-    
-    if st.session_state.extracted_data is None:
-        # 创建流式日志容器
-        expander, container = create_streaming_container("🤖 AI 正在分析调研表...")
-        
-        # 执行数据提取
-        try:
-            skill_caller = SkillCaller()
-            
-            # 保存上传的文件
-            file_path = st.session_state.session_dir / st.session_state.original_filename
-            with open(file_path, 'wb') as f:
-                f.write(st.session_state.uploaded_file.getvalue())
-            
-            # 流式日志
-            streaming_texts = []
-            
-            def log_callback(message: str):
-                streaming_texts.append(f"🔄 {message}")
-                update_streaming_container(container, streaming_texts)
-                time.sleep(0.1)
-            
-            # 调用数据提取技能
-            streaming_texts.append("📋 开始提取空压机调研表数据...")
-            update_streaming_container(container, streaming_texts)
-            
-            result = skill_caller.call_skill(
-                'extract-air-compressor-data-llm',
-                str(file_path),
-                callback=log_callback
-            )
-            
-            streaming_texts.append("✅ 数据提取完成！")
-            update_streaming_container(container, streaming_texts)
-            
-            st.session_state.extracted_data = result
-            
-            # 检查是否需要打回
-            rejection_check = result.get('rejectionCheck', {})
-            if rejection_check.get('shouldReject', False):
-                st.error("❌ 数据质量检查未通过，请完善调研表后重新上传")
-                
-                # 显示致命错误
-                critical_issues = rejection_check.get('criticalIssues', [])
-                if critical_issues:
-                    st.markdown("**致命错误：**")
-                    for issue in critical_issues:
-                        st.error(f"• {issue}")
-                
-                # 显示高严重性错误
-                high_issues = rejection_check.get('highSeverityIssues', [])
-                if high_issues:
-                    st.markdown("**高严重性错误：**")
-                    for issue in high_issues:
-                        st.warning(f"• {issue}")
-                
-                # 返回上传阶段按钮
-                if st.button("🔄 重新上传", type="secondary", use_container_width=True):
-                    reset_flow()
-                    st.rerun()
-                return
-            
-            # 数据提取成功，进入计算阶段
-            time.sleep(1)
-            st.session_state.stage = 'calculate'
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ 数据提取失败: {str(e)}")
-            if st.button("🔄 重新尝试", type="secondary", use_container_width=True):
-                st.session_state.extracted_data = None
-                st.rerun()
-    else:
-        # 显示提取结果
-        st.success("✅ 数据提取完成")
-        
-        # 显示基本信息
-        raw_data = st.session_state.extracted_data.get('rawData', {})
-        project_level = raw_data.get('projectLevel', {})
-        equipment_level = raw_data.get('equipmentLevel', [])
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("企业名称", project_level.get('companyName', '未知'))
-        with col2:
-            st.metric("行业类型", project_level.get('industryType', '未知'))
-        with col3:
-            st.metric("设备数量", len(equipment_level))
-        
-        # 继续计算按钮
-        if st.button("📊 开始节能计算", type="primary", use_container_width=True):
-            st.session_state.stage = 'calculate'
-            st.rerun()
-
-
-def render_air_compressor_calculate_stage():
-    """空压机模块：节能计算阶段"""
-    st.markdown("### 📊 节能率计算")
-    
-    if st.session_state.result is None:
-        # 创建流式日志容器
-        expander, container = create_streaming_container("🧮 AI 正在计算节能率...")
-        
-        try:
-            skill_caller = SkillCaller()
-            
-            # 流式日志
-            streaming_texts = []
-            
-            def log_callback(message: str):
-                streaming_texts.append(f"🔄 {message}")
-                update_streaming_container(container, streaming_texts)
-                time.sleep(0.1)
-            
-            # 保存提取的数据
-            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
-            with open(extracted_data_path, 'w', encoding='utf-8') as f:
-                json.dump(st.session_state.extracted_data, f, ensure_ascii=False, indent=2)
-            
-            # 调用节能计算技能
-            streaming_texts.append("🧮 开始计算第二部分输入字段...")
-            update_streaming_container(container, streaming_texts)
-            
-            streaming_texts.append("📈 计算系统级参数...")
-            update_streaming_container(container, streaming_texts)
-            
-            streaming_texts.append("⚡ 计算节能率和节能量...")
-            update_streaming_container(container, streaming_texts)
-            
-            result_path = st.session_state.session_dir / "calculation_result.json"
-            
-            result = skill_caller.call_skill(
-                'calculate-air-compressor-energy-saving',
-                f"{extracted_data_path} {result_path}",
-                callback=log_callback
-            )
-            
-            # 读取计算结果
-            if result_path.exists():
-                with open(result_path, 'r', encoding='utf-8') as f:
-                    calculation_result = json.load(f)
-                st.session_state.result = calculation_result
-            else:
-                st.session_state.result = result
-            
-            streaming_texts.append("✅ 节能率计算完成！")
-            update_streaming_container(container, streaming_texts)
-            
-            time.sleep(1)
-            st.session_state.stage = 'result'
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ 节能计算失败: {str(e)}")
-            if st.button("🔄 重新计算", type="secondary", use_container_width=True):
-                st.session_state.result = None
-                st.rerun()
-    else:
-        # 显示计算进度
-        st.success("✅ 节能率计算完成")
-        
-        # 显示简要结果
-        result = st.session_state.result
-        energy_saving_rate = result.get('energy_saving_rate', 0) * 100
-        
-        st.metric("节能率", f"{energy_saving_rate:.1f}%")
-        
-        # 查看详细结果按钮
-        if st.button("📋 查看详细结果", type="primary", use_container_width=True):
-            st.session_state.stage = 'result'
-            st.rerun()
-
-
-def render_air_compressor_result_stage():
-    """空压机模块：结果展示阶段"""
-    st.markdown("### 📋 节能测算结果")
-    
-    result = st.session_state.result
-    
-    # 主要指标卡片
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        energy_saving_rate = result.get('energy_saving_rate', 0) * 100
-        st.metric(
-            "节能率",
-            f"{energy_saving_rate:.1f}%",
-            help="系统优化后的节能率"
-        )
-    
-    with col2:
-        energy_saving = result.get('energy_saving', 0) / 10000  # 转换为万kWh
-        st.metric(
-            "年节能量",
-            f"{energy_saving:.1f} 万kWh",
-            help="每年可节约的电量"
-        )
-    
-    with col3:
-        current_energy = result.get('current_total_energy', 0) / 10000
-        st.metric(
-            "当前年耗电量",
-            f"{current_energy:.1f} 万kWh",
-            help="系统当前年度总耗电量"
-        )
-    
-    with col4:
-        optimized_energy = result.get('optimized_total_energy', 0) / 10000
-        st.metric(
-            "优化后年耗电量",
-            f"{optimized_energy:.1f} 万kWh",
-            help="系统优化后年度总耗电量"
-        )
-    
-    # 节能率范围
-    st.markdown("#### 📊 节能率估算范围")
-    energy_saving_range = result.get('energy_saving_rate_range', '0% - 0%')
-    st.info(f"**节能率范围**: {energy_saving_range}")
-    
-    # 系统参数
-    st.markdown("#### ⚙️ 系统参数")
-    system_params = result.get('system_parameters', {})
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(
-            "系统压缩机功率因子",
-            f"{system_params.get('systemCompressorPowerFactor', 0):.3f}",
-            help="系统平均压缩机功率因子"
-        )
-    with col2:
-        st.metric(
-            "系统比功率",
-            f"{system_params.get('systemSpecificPower', 0):.2f} kW/(m³/min)",
-            help="系统平均比功率"
-        )
-    with col3:
-        st.metric(
-            "系统压缩空气流量",
-            f"{system_params.get('systemCompressedAirFlow', 0):.1f} m³/min",
-            help="系统总压缩空气流量"
-        )
-    
-    # 计算详情
-    calculation_details = result.get('calculation_details', {})
-    if calculation_details:
-        st.markdown("#### 🔍 计算详情")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(
-                "当前系统压力",
-                f"{calculation_details.get('current_pressure', 0):.2f} bar",
-                help="系统当前运行压力"
-            )
-        with col2:
-            st.metric(
-                "优化后压力",
-                f"{calculation_details.get('optimized_pressure', 0):.2f} bar",
-                help="智控优化后的系统压力"
-            )
-    
-    # 操作按钮
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 重新测算", type="secondary", use_container_width=True):
-            reset_flow()
-            st.rerun()
-    
-    with col2:
-        # 导出结果按钮（可以后续实现）
-        st.button("📥 导出报告", type="primary", use_container_width=True, disabled=True, help="功能开发中")
 
 
 if __name__ == "__main__":
