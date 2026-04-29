@@ -57,6 +57,11 @@ def reset_flow():
     st.session_state.compressor_stage = 'upload'  # 空压模块独立stage
     st.session_state.uploaded_file = None
     st.session_state.original_filename = None
+    # 清理通用状态变量（避免模块间数据污染）
+    st.session_state.extracted_data = None
+    st.session_state.quality_report = None
+    st.session_state.filling_suggestions = None
+    st.session_state.result = None
     # 为每个模块创建独立的数据状态
     st.session_state.ac_extracted_data = None
     st.session_state.ac_quality_report = None
@@ -1071,8 +1076,8 @@ def render_air_compressor_extract_stage():
             streaming_texts.append("✅ 数据提取完成！")
             update_streaming_container(container, streaming_texts)
             
-            # 处理提取结果 - 从compressor_extracted_data.json文件中读取最终结构化数据
-            extracted_data_path = st.session_state.session_dir / "compressor_extracted_data.json"
+            # 处理提取结果 - 从extracted_data.json文件中读取最终结构化数据（AI生成的文件名）
+            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
             
             if extracted_data_path.exists():
                 with open(extracted_data_path, 'r', encoding='utf-8') as f:
