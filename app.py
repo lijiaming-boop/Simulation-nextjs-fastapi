@@ -1302,6 +1302,10 @@ def render_air_compressor_calculate_stage():
                 with open(quality_report_path, 'w', encoding='utf-8') as f:
                     json.dump(quality_report, f, ensure_ascii=False, indent=2)
             
+            # 读取质量报告到session_state
+            with open(quality_report_path, 'r', encoding='utf-8') as f:
+                st.session_state.compressor_quality_report = json.load(f)
+            
             filling_result = skill_caller.call_skill(
                 'suggest-air-compressor-data-filling',
                 str(extracted_data_path),
@@ -1479,9 +1483,9 @@ def render_air_compressor_result_stage():
 def generate_air_compressor_report():
     """生成空压系统数智化升级方案报告"""
     try:
-        # 获取数据
-        extracted_data = st.session_state.get('extracted_data', {})
-        result = st.session_state.get('result', {})
+        # 获取数据（使用空压模块的session_state键名）
+        extracted_data = st.session_state.get('compressor_extracted_data', {})
+        result = st.session_state.get('compressor_result', {})
         
         if not extracted_data or not result:
             st.error("没有可用的数据生成报告")
