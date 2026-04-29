@@ -548,18 +548,13 @@ def render_air_conditioner_extract_check_stage():
 
     with st.expander("查看提取的原始数据"):
         st.json(extracted_data)
-        
-        if quality_report and quality_report.get('issues'):
-            st.warning("⚠️ 发现以下数据问题:")
-            for issue in quality_report['issues']:
-                st.write(f"- {issue}")
-        
-        # 提供确认按钮进入下一阶段 (仅当置信度不是 low 时)
-        st.markdown("---")
-        if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
-            st.session_state.stage = 'filling'
-            st.session_state.scroll_to_top = True
-            st.rerun()
+
+    # 提供确认按钮进入下一阶段 (仅当置信度不是 low 时)
+    st.markdown("---")
+    if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
+        st.session_state.stage = 'filling'
+        st.session_state.scroll_to_top = True
+        st.rerun()
 
 
 def render_air_conditioner_filling_stage():
@@ -614,43 +609,143 @@ def render_air_conditioner_filling_stage():
                 st.session_state.ac_filling_suggestions = None
                 st.rerun()
     else:
-        st.success("✅ 填充建议已生成")
-        
-        suggestions = st.session_state.ac_filling_suggestions.get('fillable_suggestions', [])
-        if suggestions:
-            st.info(f"发现 {len(suggestions)} 个可填充字段")
-            
-            # 显示填充建议
-            for i, suggestion in enumerate(suggestions):
-                with st.expander(f"字段 {i+1}: {suggestion.get('field_name', '未知字段')}"):
-                    st.write(f"**建议值**: {suggestion.get('suggested_value', 'N/A')}")
-                    st.write(f"**置信度**: {suggestion.get('confidence', 0):.1%}")
-                    st.write(f"**说明**: {suggestion.get('reasoning', '无说明')}")
-        
-        if st.button("📊 开始节能测算", type="primary", use_container_width=True):
-            st.session_state.stage = 'calculate'
-            st.rerun()
+        # 展示填充建议
+        suggestions = st.session_state.ac_filling_suggestions
+
+        # 检查是否可以继续
+        can_proceed = suggestions.get("can_proceed", False)
+
+        if not can_proceed:
+            # 有不可填充字段，中断流程
+            st.error("❌ 发现关键数据缺失，无法继续计算")
+
+            unfillable = suggestions.get("unfillable_fields", [])
+            st.subheader("以下关键字段必须补充:")
+
+            for field_info in unfillable:
+                st.warning(
+                    f"**字段**: {field_info.get('field')}\n\n"
+                    f"**原因**: {field_info.get('reason')}"
+                )
+
+            st.info("💡 请在调研表中补充完整数据后重新上传")
+
+            if st.button("🔄 重新上传", type="primary", use_container_width=True):
+                reset_flow()
+                st.rerun()
+        else:
+            # 可以继续，展示填充建议
+            fillable = suggestions.get("fillable_suggestions", [])
+
+            if fillable:
+                st.success(f"✅ 生成了 {len(fillable)} 个智能填充建议")
+
+                st.subheader("📝 填充建议详情")
+
+                # 转换为 DataFrame 展示
+                suggestions_data = []
+                for s in fillable:
+                    suggestions_data.append({
+                        "字段": s.get("field"),
+                        "原始值": s.get("original_value") or "缺失",
+                        "建议值": s.get("suggested_value"),
+                        "方法": s.get("method"),
+                        "置信度": s.get("confidence"),
+                        "推理说明": s.get("reasoning")
+                    })
+
+                df = pd.DataFrame(suggestions_data)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                st.info(
+                    "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
+                    "如果您同意这些建议，点击下方按钮继续计算。"
+                )
+            else:
+                st.success("✨ 数据完整，无需填充!")
+
+            # 用户确认按钮
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ 确认填充，开始计算", type="primary", use_container_width=True):
+                    st.session_state.stage = 'calculate'
+                    st.session_state.scroll_to_top = True
+                    st.rerun()
+
+            with col2:
+                if st.button("❌ 取消，重新上传", use_container_width=True):
+                    reset_flow()
+                    st.rerun()
 
 
 def render_air_conditioner_calculate_stage():
     """空调模块：节能测算阶段"""
     st.header("⚡ 步骤 4: 节能测算")
     
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     if st.session_state.ac_result is None:
-        expander, container = create_streaming_container("🧮 AI 正在计算节能率...")
-        
         try:
-            # 应用填充建议
-            data_filler = DataFiller()
-            filled_data = data_filler.apply_suggestions(
-                st.session_state.ac_extracted_data,
-                st.session_state.ac_filling_suggestions
+            # 步骤 0: 执行数据填充（每次都重新生成，避免使用旧数据）
+            status_text.text("正在填充数据...")
+            progress_bar.progress(10)
+
+            filler = DataFiller()
+            filled_path = filler.fill_data(
+                str(st.session_state.session_dir / "ac_extracted_data.json"),
+                str(st.session_state.session_dir / "ac_filling_suggestions.json"),
+                str(st.session_state.session_dir / "ac_filled_data.json")
             )
-            
-            # Excel计算
-            calculator = ExcelCalculator()
-            result = calculator.calculate_energy_saving(filled_data)
-            
+            progress_bar.progress(20)
+
+            # 读取数据检查站房类型
+            with open(filled_path, 'r', encoding='utf-8') as f:
+                filled_data = json.load(f)
+
+            station_type = filled_data.get("station_type", "standard")
+
+            # 再次检查是否为不支持类型（防御性编程）
+            if station_type == "unsupported":
+                st.error("❌ 该站房类型不支持自动计算")
+                if st.button("🔄 返回重新上传", use_container_width=True):
+                    reset_flow()
+                    st.rerun()
+                return
+
+            # 步骤 1: 数据填充完成确认
+            st.success("✅ 数据填充完成")
+            progress_bar.progress(40)
+
+            # 步骤 2: Excel 计算
+            status_text.text("正在调用 AI 计算引擎...")
+            progress_bar.progress(60)
+
+            # 使用气象数据服务
+            from core.weather_service import WeatherService
+            weather_service = WeatherService()
+            calculator = ExcelCalculator(weather_service=weather_service)  # 不传 template_path，自动根据 station_type 选择
+
+            result_path = calculator.calculate(
+                filled_path,
+                str(st.session_state.session_dir / "ac_result_data.json")
+            )
+
+            # 读取结果
+            with open(result_path, 'r', encoding='utf-8') as f:
+                result = json.load(f)
+
+            # 保存格式化结果
+            formatted_result = calculator.format_export_results(filled_data, result)
+            with open(st.session_state.session_dir / "ac_formatted_result.json", 'w', encoding='utf-8') as f:
+                json.dump(formatted_result, f, ensure_ascii=False, indent=2)
+
+            progress_bar.progress(80)
+
+            # 读取结果
+            with open(result_path, 'r', encoding='utf-8') as f:
+                result = json.load(f)
+
             st.session_state.ac_result = result
             
             time.sleep(1)
@@ -793,8 +888,8 @@ def render_air_compressor_extract_stage():
             streaming_texts.append("✅ 数据提取完成！")
             update_streaming_container(container, streaming_texts)
             
-            # 处理提取结果 - 从extracted_data.json文件中读取最终结构化数据
-            extracted_data_path = st.session_state.session_dir / "extracted_data.json"
+            # 处理提取结果 - 从compressor_extracted_data.json文件中读取最终结构化数据
+            extracted_data_path = st.session_state.session_dir / "compressor_extracted_data.json"
             
             if extracted_data_path.exists():
                 with open(extracted_data_path, 'r', encoding='utf-8') as f:
@@ -999,9 +1094,9 @@ def render_air_compressor_calculate_stage():
             streaming_texts.append("🧠 生成数据填充建议...")
             update_streaming_container(container, streaming_texts)
             
-            # 生成空压机数据填充建议
-            filling_suggestions_path = st.session_state.session_dir / "filling_suggestions.json"
-            quality_report_path = st.session_state.session_dir / "quality_report.json"
+            # 生成空压机数据填充建议（使用空压模块独立文件）
+            filling_suggestions_path = st.session_state.session_dir / "compressor_filling_suggestions.json"
+            quality_report_path = st.session_state.session_dir / "compressor_quality_report.json"
             
             # 创建质量报告（如果不存在）
             if not quality_report_path.exists():
@@ -1046,7 +1141,7 @@ def render_air_compressor_calculate_stage():
             streaming_texts.append("⚡ 计算节能率和节能量...")
             update_streaming_container(container, streaming_texts)
             
-            result_path = st.session_state.session_dir / "calculation_result.json"
+            result_path = st.session_state.session_dir / "compressor_calculation_result.json"
             
             result = skill_caller.call_skill(
                 'calculate-air-compressor-energy-saving',
