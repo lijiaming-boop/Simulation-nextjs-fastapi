@@ -457,7 +457,8 @@ def render_air_conditioner_extract_check_stage():
     # 核心指标卡
     col1, col2, col3 = st.columns(3)
     with col1:
-        completeness = quality_report.get("completeness", 0)
+        # 同时支持completeness和confidence字段名
+        completeness = quality_report.get("completeness", quality_report.get("confidence", 0))
         st.metric(
             "数据完整率",
             f"{completeness * 100:.1f}%",
@@ -917,25 +918,30 @@ def render_air_conditioner_result_stage():
         ]
 
         fig = go.Figure()
+
+        # 添加下限柱
         fig.add_trace(go.Bar(
-            name="下限",
+            name='下限（保守估计）',
             x=devices,
             y=min_values,
-            marker_color='rgba(55, 128, 191, 0.7)'
+            text=[f"{v:.1f}" for v in min_values],
+            textposition='outside'
         ))
+
+        # 添加上限柱
         fig.add_trace(go.Bar(
-            name="上限",
+            name='上限（理想情况）',
             x=devices,
             y=max_values,
-            marker_color='rgba(219, 64, 82, 0.7)'
+            text=[f"{v:.1f}" for v in max_values],
+            textposition='outside'
         ))
 
         fig.update_layout(
-            title="各设备节能量范围",
+            title="分项节能量范围分布",
             xaxis_title="设备类型",
             yaxis_title="节能量 (万 kWh)",
-            barmode='group',
-            height=400
+            barmode='group'
         )
 
         st.plotly_chart(fig, use_container_width=True)
@@ -1134,7 +1140,7 @@ def render_air_compressor_extract_stage():
         except Exception as e:
             st.error(f"❌ 数据提取失败: {str(e)}")
             if st.button("🔄 重新尝试", type="secondary"):
-                st.session_state.extracted_data = None
+                st.session_state.compressor_extracted_data = None
                 st.rerun()
     else:
         st.success("✅ 数据提取完成")
