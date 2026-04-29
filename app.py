@@ -772,31 +772,211 @@ def render_air_conditioner_calculate_stage():
 
 def render_air_conditioner_result_stage():
     """空调模块：结果展示阶段"""
-    st.header("📊 步骤 5: 结果展示")
-    
+
+    # 打印提示
+    st.info("📋 **呼叫 SR 前，请点击右上角打印本页**")
+
+    st.header("📈 测算结果")
+
     result = st.session_state.ac_result
-    
-    # 主要指标
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        rate = result.get("energy_saving_rate", 0)
-        st.metric("节能率", f"{rate * 100:.1f}%")
-    
-    with col2:
-        saving = result.get("total_energy_saving", 0)
-        st.metric("年节能量", f"{saving:.1f} 万kWh")
-    
-    with col3:
-        current = result.get("current_total_energy", 0)
-        st.metric("当前年耗电量", f"{current:.1f} 万kWh")
-    
-    with col4:
-        optimized = result.get("optimized_total_energy", 0)
-        st.metric("优化后年耗电量", f"{optimized:.1f} 万kWh")
-    
+
+    if not result:
+        st.error("❌ 未找到计算结果")
+        if st.button("🔄 重新开始", use_container_width=True):
+            reset_flow()
+            st.rerun()
+        return
+
+    # 核心指标卡
+    st.subheader("🎯 核心指标")
+
+    # 检查是否为范围计算结果
+    if "energy_saving_rate_range" in result:
+        # 新版：展示范围
+        st.metric(
+            "节能率范围",
+            result["energy_saving_rate_range"],
+            help="基于上限和下限两种估算方法"
+        )
+
+        # 详细展示：5 个核心指标
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
+            st.metric(
+                "下限（保守估计）",
+                f"{result['energy_saving_rate_min'] * 100:.1f}%"
+            )
+
+        with col2:
+            st.metric(
+                "上限（理想情况）",
+                f"{result['energy_saving_rate_max'] * 100:.1f}%"
+            )
+
+        with col3:
+            # P0 修复：添加总节能量范围
+            total_min = result.get('total_saving_min', 0)
+            total_max = result.get('total_saving_max', 0)
+            st.metric(
+                "总节能量范围",
+                f"{total_min:.1f} - {total_max:.1f} 万 kWh",
+                help="预估的年度总节能量范围"
+            )
+
+        with col4:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+        with col5:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
+    else:
+        # 旧版：单一值（向后兼容）
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            rate = result.get("energy_saving_rate", 0)
+            rate_min = result.get("energy_saving_rate_min", 0)
+            rate_max = result.get("energy_saving_rate_max", 0)
+
+            # P1 修复：恢复 delta 显示（如果 min/max 存在）
+            if rate_min > 0 and rate_max > 0:
+                st.metric(
+                    "预估节能率",
+                    f"{rate * 100:.2f}%",
+                    delta=f"{rate_min * 100:.1f}% ~ {rate_max * 100:.1f}%"
+                )
+            else:
+                st.metric(
+                    "预估节能率",
+                    f"{rate * 100:.2f}%"
+                )
+
+        with col2:
+            total_saving = result.get("total_saving", 0)
+            st.metric("总节能量", f"{total_saving:.2f} 万 kWh")
+
+        with col3:
+            completeness = result.get("completeness", 0)
+            st.metric("数据完整度", f"{completeness * 100:.1f}%")
+
+        with col4:
+            filled_count = result.get("filled_count", 0)
+            st.metric("填充字段数", filled_count)
+
+    st.markdown("---")
+
+    # 分项节能明细
+    st.subheader("📊 分项节能明细")
+
+    # 检查是否为范围计算结果
+    if "chiller_saving_min" in result:
+        # 新版：展示范围
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量范围 (万 kWh)": [
+                f"{result.get('chiller_saving_min', 0):.1f} - {result.get('chiller_saving_max', 0):.1f}",
+                f"{result.get('pump_saving_min', 0):.1f} - {result.get('pump_saving_max', 0):.1f}",
+                f"{result.get('tower_saving_min', 0):.1f} - {result.get('tower_saving_max', 0):.1f}",
+                f"{result.get('total_saving_min', 0):.1f} - {result.get('total_saving_max', 0):.1f}"
+            ],
+            "下限 (万 kWh)": [
+                result.get("chiller_saving_min", 0),
+                result.get("pump_saving_min", 0),
+                result.get("tower_saving_min", 0),
+                result.get("total_saving_min", 0)
+            ],
+            "上限 (万 kWh)": [
+                result.get("chiller_saving_max", 0),
+                result.get("pump_saving_max", 0),
+                result.get("tower_saving_max", 0),
+                result.get("total_saving_max", 0)
+            ]
+        }
+
+        df_savings = pd.DataFrame(savings_data)
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图 - 展示范围
+        devices = ["冷机", "水泵", "冷却塔"]
+        min_values = [
+            result.get("chiller_saving_min", 0),
+            result.get("pump_saving_min", 0),
+            result.get("tower_saving_min", 0)
+        ]
+        max_values = [
+            result.get("chiller_saving_max", 0),
+            result.get("pump_saving_max", 0),
+            result.get("tower_saving_max", 0)
+        ]
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name="下限",
+            x=devices,
+            y=min_values,
+            marker_color='rgba(55, 128, 191, 0.7)'
+        ))
+        fig.add_trace(go.Bar(
+            name="上限",
+            x=devices,
+            y=max_values,
+            marker_color='rgba(219, 64, 82, 0.7)'
+        ))
+
+        fig.update_layout(
+            title="各设备节能量范围",
+            xaxis_title="设备类型",
+            yaxis_title="节能量 (万 kWh)",
+            barmode='group',
+            height=400
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        # 旧版：单一值（向后兼容）
+        savings_data = {
+            "设备类型": ["冷机", "水泵", "冷却塔", "合计"],
+            "节能量 (万 kWh)": [
+                result.get("chiller_saving", 0),
+                result.get("pump_saving", 0),
+                result.get("tower_saving", 0),
+                result.get("total_saving", 0)
+            ]
+        }
+
+        df_savings = pd.DataFrame(savings_data)
+        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+
+        # 柱状图
+        devices = ["冷机", "水泵", "冷却塔"]
+        values = [
+            result.get("chiller_saving", 0),
+            result.get("pump_saving", 0),
+            result.get("tower_saving", 0)
+        ]
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=devices,
+            y=values,
+            marker_color='rgba(55, 128, 191, 0.7)'
+        ))
+
+        fig.update_layout(
+            title="各设备节能量",
+            xaxis_title="设备类型",
+            yaxis_title="节能量 (万 kWh)",
+            height=400
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
     # 操作按钮
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 重新测算", type="secondary", use_container_width=True):
             reset_flow()
@@ -804,9 +984,6 @@ def render_air_conditioner_result_stage():
     with col2:
         if st.button("📥 导出方案报告", type="primary", use_container_width=True):
             generate_air_compressor_report()
-    with col3:
-        if st.button("💰 导出报价单", type="primary", use_container_width=True):
-            generate_air_compressor_quote()
 
 
 # ==================== 空压机模块阶段 ====================
