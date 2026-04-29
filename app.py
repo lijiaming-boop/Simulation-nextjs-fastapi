@@ -595,10 +595,14 @@ def render_air_conditioner_filling_stage():
                 callback=log_callback
             )
 
+            # 从文件读取结果（这是关键！）
+            with open(filling_suggestions_path, 'r', encoding='utf-8') as f:
+                filling_suggestions = json.load(f)
+
             streaming_texts.append("✅ 填充建议生成完成！")
             update_streaming_container(container, streaming_texts)
 
-            st.session_state.ac_filling_suggestions = result
+            st.session_state.ac_filling_suggestions = filling_suggestions
 
             time.sleep(1)
             st.rerun()
@@ -615,7 +619,9 @@ def render_air_conditioner_filling_stage():
         # 检查是否可以继续
         can_proceed = suggestions.get("can_proceed", suggestions.get("canProceed", False))
 
-
+        # 处理字符串类型的true/false
+        if isinstance(can_proceed, str):
+            can_proceed = can_proceed.lower() == 'true'
         if not can_proceed:
             # 有不可填充字段，中断流程
             st.error("❌ 发现关键数据缺失，无法继续计算")
