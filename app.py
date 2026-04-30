@@ -1542,30 +1542,21 @@ def render_air_compressor_result_stage():
         
         if report_generated and report_path and report_path.exists():
             # 报告已生成，提供下载按钮
-            with open(report_path, 'rb') as f:
-                st.download_button(
-                    label="📥 下载报告",
-                    data=f.read(),
-                    file_name=report_path.name,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    type="primary"
-                )
+            try:
+                with open(report_path, 'rb') as f:
+                    st.download_button(
+                        label="📥 下载报告",
+                        data=f.read(),
+                        file_name=report_path.name,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
+                        type="primary"
+                    )
+            except Exception as e:
+                st.error(f"❌ 读取报告文件失败: {str(e)}")
         else:
-            # 报告未生成或生成失败，显示生成按钮
-            if st.button("🔄 重新生成报告", type="secondary", use_container_width=True):
-                try:
-                    report_path = generate_air_compressor_report()
-                    if report_path:
-                        st.session_state.compressor_report_generated = True
-                        st.session_state.compressor_report_path = report_path
-                        st.success("✅ 报告生成成功！")
-                        st.rerun()
-                    else:
-                        st.error("❌ 报告生成失败")
-                except Exception as e:
-                    st.error(f"❌ 报告生成异常: {str(e)}")
-                    st.error(f"❌ 报告生成失败: {str(e)}")
+            # 报告未生成，显示提示信息
+            st.warning("⚠️ 报告未生成")
 
 
 # ==================== 报告生成函数 ====================
