@@ -89,6 +89,28 @@ class DataFillingSuggester:
                 'reason': f'仅有{valid_energy_count}个月的能耗数据,不足以推断全年,建议至少提供6个月数据'
             })
 
+        # 检查 cooling_water_temp_diff 数据量
+        valid_cooling_diff_count = sum(
+            1 for month_data in self.monthly_data
+            if month_data.get('cooling_water_temp_diff') is not None
+        )
+        if valid_cooling_diff_count < 6:
+            self.unfillable_fields.append({
+                'field': 'cooling_water_temp_diff',
+                'reason': f'仅有{valid_cooling_diff_count}个月的冷却水温差数据,不足以推断全年,建议至少提供6个月数据'
+            })
+
+        # 检查 freezing_water_temp_diff 数据量
+        valid_freezing_diff_count = sum(
+            1 for month_data in self.monthly_data
+            if month_data.get('freezing_water_temp_diff') is not None
+        )
+        if valid_freezing_diff_count < 6:
+            self.unfillable_fields.append({
+                'field': 'freezing_water_temp_diff',
+                'reason': f'仅有{valid_freezing_diff_count}个月的冷冻水温差数据,不足以推断全年,建议至少提供6个月数据'
+            })
+
         return len(self.unfillable_fields) > 0
 
     def get_missing_fields(self) -> List[Tuple[int, str]]:

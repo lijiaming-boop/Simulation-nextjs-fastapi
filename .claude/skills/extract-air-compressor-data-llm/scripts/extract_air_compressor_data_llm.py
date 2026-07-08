@@ -42,6 +42,15 @@ except ImportError:
     print("警告: python-pptx 未安装，PowerPoint文档读取功能将不可用")
     Presentation = None
 
+try:
+    import textract
+    HAS_TEXTRACT = True
+except ImportError:
+    print("警告: textract 未安装，老式Word(.doc)文档读取功能将不可用")
+    print("请运行: pip install textract")
+    print("同时需要安装 antiword: https://www.softpedia.com/get/Office-tools/Other-Office-Tools/Antiword.shtml")
+    HAS_TEXTRACT = False
+
 
 class TextExtractor:
     """文本提取器 - 从各种文件格式中提取文本内容"""
@@ -131,33 +140,61 @@ class TextExtractor:
         return "\n".join(text_parts)
     
     def _extract_from_word(self, file_path: Path) -> str:
-        """从Word文档中提取文本"""
-        
-        if Document is None:
-            raise ImportError("python-docx 未安装，无法读取Word文档")
-        
+        """从Word文档中提取文本（支持.doc和.docx格式）"""
+
         text_parts = []
-        
+        file_ext = file_path.suffix.lower()
+
         try:
-            doc = Document(file_path)
-            
-            # 提取段落文本
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    text_parts.append(para.text.strip())
-            
-            # 提取表格文本
-            for table in doc.tables:
-                text_parts.append("=== 表格 ===")
-                for row in table.rows:
-                    row_text = " | ".join([cell.text.strip() for cell in row.cells])
-                    text_parts.append(row_text)
-                text_parts.append("")
-        
+            # 处理老式 .doc 格式
+            if file_ext == '.doc':
+                if not HAS_TEXTRACT:
+                    raise ImportError(
+                        "textract 未安装，无法读取老式Word(.doc)文档。\n"
+                        "请运行: pip install textract\n"
+                        "Windows还需安装antiword并加入PATH"
+                    )
+
+                print(f"📄 [文本提取] 检测到老式Word格式，使用textract提取")
+
+                try:
+                    text_bytes = textract.process(str(file_path.absolute()))
+                    text = text_bytes.decode('utf-8', errors='ignore')
+                except UnicodeDecodeError:
+                    text = text_bytes.decode('gbk', errors='ignore')
+                except Exception as e:
+                    print(f"⚠️  [文本提取] textract提取失败: {str(e)}")
+                    raise
+
+                text = text.strip()
+                return text
+
+            # 处理新式 .docx 格式
+            elif file_ext == '.docx':
+                if Document is None:
+                    raise ImportError("python-docx 未安装，无法读取Word文档")
+
+                doc = Document(file_path)
+
+                # 提取段落文本
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        text_parts.append(para.text.strip())
+
+                # 提取表格文本
+                for table in doc.tables:
+                    text_parts.append("=== 表格 ===")
+                    for row in table.rows:
+                        row_text = " | ".join([cell.text.strip() for cell in row.cells])
+                        text_parts.append(row_text)
+                    text_parts.append("")
+
+                return "\n".join(text_parts)
+
         except Exception as e:
             print(f"❌ [文本提取] Word文档读取失败: {str(e)}")
             raise
-        
+
         return "\n".join(text_parts)
     
     def _extract_from_ppt(self, file_path: Path) -> str:

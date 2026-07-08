@@ -346,9 +346,12 @@ def test_extract_with_seasonal_range_values():
     # 模拟调研表的结构
     mock_df_rows = []
 
-    # 前30行为项目信息（跳过）
-    for i in range(30):
+    # 前28行为项目信息（跳过）
+    for i in range(28):
         mock_df_rows.append([''] * 20)
+
+    # 第29行：设备运行规律标题行
+    mock_df_rows.append(['', '', '设备运行规律'] + [''] * 17)
 
     # 第31行：设备运行规律的月份行（带"备注"列）
     mock_df_rows.append(['', '', '月份', '备注', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'])

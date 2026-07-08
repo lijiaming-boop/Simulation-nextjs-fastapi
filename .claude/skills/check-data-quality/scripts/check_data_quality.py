@@ -108,9 +108,10 @@ class DataQualityChecker:
         value = data.get(field)
 
         if value is None:
+            severity = 'high' if 'temp_diff' in field else 'medium'
             self.issues.append({
                 'field': f'monthly_data[{month-1}].{field}',
-                'severity': 'medium',
+                'severity': severity,
                 'type': 'missing',
                 'message': f'{month}月{self._get_field_name(field)}缺失'
             })

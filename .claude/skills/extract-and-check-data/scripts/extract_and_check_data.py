@@ -161,6 +161,20 @@ def parse_value(value, month=None, field_name=None):
     except ValueError:
         pass
 
+    # 处理工频/定频标记：包含 fixed/工频/定频 关键词时，返回明确频率或默认50Hz
+    # 如 "Fixed"、"Fixed speed"、"Fixed: 50Hz"、"工频"、"定频"
+    if re.search(r'(?i)\bfixed\b|工频|定频', value_str):
+        # 优先提取明确的频率数字（如 "Fixed: 50Hz"）
+        freq_in_text = re.search(r'(\d+\.?\d*)\s*(?:Hz|HZ|hz)', value_str)
+        if freq_in_text:
+            return float(freq_in_text.group(1))
+        return 50.0  # 工频默认50Hz
+
+    # 处理变频标签无数值：仅填了 "VFD"、"变频" 但没数字，视为数据缺失
+    vfd_only = re.search(r'(?i)\bVFD\b|变频', value_str)
+    if vfd_only and not re.search(r'\d', value_str):
+        return None
+
     # 处理范围格式 - 如果提供了月份和字段名，使用季节性解析
     # 支持多种分隔符：- / , | ~
     range_match = re.search(r'(\d+\.?\d*)\s*[-~/,|]\s*(\d+\.?\d*)', value_str)
@@ -206,6 +220,7 @@ def extract_region(df):
             if pd.isna(val):
                 continue
             val_str = str(val)
+            val_lower = val_str.lower()
             regions = {
                 '华南': ['广东', '广西', '海南', '福建', '深圳', '广州', '厦门'],
                 '华东': ['上海', '江苏', '浙江', '安徽', '江西', '南京', '杭州'],
@@ -214,18 +229,61 @@ def extract_region(df):
                 '西北': ['陕西', '甘肃', '青海', '宁夏', '新疆', '西安', '兰州'],
                 '华北': ['北京', '天津', '河北', '山西', '内蒙古'],
                 '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨'],
-                '东南亚': ['马来西亚', '泰国', '越南', '新加坡', '菲律宾', '吉隆坡', '曼谷', '胡志明市', '马尼拉']
+                '东南亚': ['马来西亚', '泰国', '越南', '新加坡', '菲律宾']
+            }
+
+            # 英文关键词映射（全小写匹配）
+            regions_en = {
+                '华南': ['guangdong', 'guangzhou', 'shenzhen', 'dongguan', 'foshan', 'xiamen', 'fujian'],
+                '华东': ['shanghai', 'jiangsu', 'zhejiang', 'nanjing', 'hangzhou', 'suzhou'],
+                '华中': ['hubei', 'wuhan', 'hunan', 'changsha', 'henan', 'zhengzhou'],
+                '西南': ['sichuan', 'chengdu', 'chongqing', 'yunnan', 'kunming', 'guizhou'],
+                '西北': ['shaanxi', 'xian', 'gansu', 'lanzhou', 'xinjiang'],
+                '华北': ['beijing', 'tianjin', 'hebei', 'shijiazhuang'],
+                '东北': ['liaoning', 'shenyang', 'dalian', 'jilin', 'changchun', 'harbin', 'heilongjiang']
             }
             
-            # 优先检查完整的关键词（如"吉隆坡"）
-            if "吉隆坡" in val_str:
-                return "东南亚"
-            if "曼谷" in val_str:
-                return "东南亚"
-            if "胡志明市" in val_str:
-                return "东南亚"
-            if "马尼拉" in val_str:
-                return "东南亚"
+            # 优先检查东南亚具体城市（中文，直接返回城市名，与 infer_region_from_text 保持一致）
+            sea_cn_cities = ["吉隆坡", "曼谷", "罗勇", "大城府", "槟城",
+                             "胡志明市", "河内", "北宁省", "马尼拉",
+                             "新加坡", "雅加达", "金边", "仰光"]
+            for city in sea_cn_cities:
+                if city in val_str:
+                    return city
+
+            # 英文东南亚城市/国家名优先检查（返回对应中文城市名）
+            sea_en_mappings = [
+                ('ho chi minh', '胡志明市'),
+                ('hanoi', '河内'),
+                ('vietnam', '胡志明市'),
+                ('bangkok', '曼谷'),
+                ('rayong', '罗勇'),
+                ('ayutthaya', '大城府'),
+                ('thailand', '曼谷'),
+                ('kuala lumpur', '吉隆坡'),
+                ('penang', '槟城'),
+                ('malaysia', '吉隆坡'),
+                ('manila', '马尼拉'),
+                ('philippines', '马尼拉'),
+                ('singapore', '新加坡'),
+                ('indonesia', '雅加达'),
+                ('jakarta', '雅加达'),
+                ('cambodia', '金边'),
+                ('phnom penh', '金边'),
+                ('myanmar', '仰光'),
+                ('yangon', '仰光'),
+            ]
+            for en_kw, cn_city in sea_en_mappings:
+                if en_kw in val_lower:
+                    return cn_city
+
+            # 其他国家的英文地区关键词（返回区域名）
+            for region_en, keywords_en in regions_en.items():
+                if region_en == '东南亚':
+                    continue  # 东南亚已在上面处理
+                for kw in keywords_en:
+                    if kw in val_lower:
+                        all_region_candidates.append((len(kw), region_en, kw))
 
             # 按关键词长度排序，优先匹配更长的关键词
             region_candidates = []
@@ -254,17 +312,22 @@ def extract_station_name(df):
     Returns:
         站房名称字符串，如果未找到则返回 None
     """
-    # 在前10行查找"站房名称"字段
+    # 在前10行查找"站房名称"或"Name of Plant"字段（中英文兼容）
     for idx in range(min(10, len(df))):
         row = df.iloc[idx]
         for col_idx, val in enumerate(row):
             if pd.isna(val):
                 continue
             val_str = str(val).strip()
-            if '站房名称' in val_str:
+            if '站房名称' in val_str or 'Name of Plant' in val_str:
                 # 站房名称的值通常在右侧第2列（跳过1列）
                 if col_idx + 2 < len(row):
                     station_name = df.iloc[idx, col_idx + 2]
+                    if pd.notna(station_name):
+                        return str(station_name).strip()
+                # 英文版可能在右侧第1列
+                if col_idx + 1 < len(row):
+                    station_name = df.iloc[idx, col_idx + 1]
                     if pd.notna(station_name):
                         return str(station_name).strip()
                 return None
@@ -284,19 +347,20 @@ def infer_region_from_text(text):
         return None
 
     text_str = str(text)
+    text_lower = text_str.lower()
 
     # 地区关键词映射（扩展了城市列表以提高识别率）
     regions = {
         '华南': ['广东', '广西', '海南', '福建', '深圳', '广州', '厦门', '珠海', '东莞', '佛山', '惠州', '中山', '江门', '湛江', '汕头'],
         '华东': ['上海', '江苏', '浙江', '安徽', '江西', '南京', '杭州', '苏州', '无锡', '宁波', '合肥', '南昌', '温州', '常州', '徐州'],
-        '华中': ['湖北', '湖南', '河南', '武汉', '长沙', '郑州', '洛阳', '株洲', '岳阳'],
+        '华中': ['湖北', '湖南', '河南', '武汉', '长沙', '郑州', '洛阳', '株洲', '岳阳', '宜昌'],
         '西南': ['四川', '重庆', '贵州', '云南', '西藏', '成都', '贵阳', '昆明', '拉萨'],
         '西北': ['陕西', '甘肃', '青海', '宁夏', '新疆', '西安', '兰州', '银川', '乌鲁木齐', '西宁'],
         '华北': ['北京', '天津', '河北', '山西', '内蒙古', '石家庄', '太原', '呼和浩特', '唐山', '保定', '廊坊'],
         '东北': ['辽宁', '吉林', '黑龙江', '沈阳', '大连', '长春', '哈尔滨', '鞍山', '抚顺']
     }
 
-    # 优先检查东南亚城市（直接返回城市名称）
+    # 优先检查东南亚城市（中文，直接返回城市名称）
     if "吉隆坡" in text_str:
         return "吉隆坡"
     if "曼谷" in text_str:
@@ -313,6 +377,32 @@ def infer_region_from_text(text):
         return "北宁省"
     if "马尼拉" in text_str:
         return "马尼拉"
+
+    # 英文东南亚城市/国家名（大小写不敏感，返回对应中文城市名）
+    sea_en_mappings = [
+        ('ho chi minh', '胡志明市'),
+        ('hanoi', '河内'),
+        ('vietnam', '胡志明市'),
+        ('bangkok', '曼谷'),
+        ('rayong', '罗勇'),
+        ('ayutthaya', '大城府'),
+        ('thailand', '曼谷'),
+        ('kuala lumpur', '吉隆坡'),
+        ('penang', '槟城'),
+        ('malaysia', '吉隆坡'),
+        ('manila', '马尼拉'),
+        ('philippines', '马尼拉'),
+        ('singapore', '新加坡'),
+        ('indonesia', '雅加达'),
+        ('jakarta', '雅加达'),
+        ('cambodia', '金边'),
+        ('phnom penh', '金边'),
+        ('myanmar', '仰光'),
+        ('yangon', '仰光'),
+    ]
+    for en_kw, cn_city in sea_en_mappings:
+        if en_kw in text_lower:
+            return cn_city
     
     # 按关键词长度排序，优先匹配更长的关键词
     region_candidates = []
@@ -364,7 +454,7 @@ def find_row_by_keyword(df, keywords, start_row=0, end_row=None):
 def detect_month_column_start(df, row_idx):
     """检测指定行的月份列起始位置
 
-    通过在该行查找 '1月' 关键字来确定月份数据的起始列。
+    通过在该行查找 '1月' / 'Jan' 关键字来确定月份数据的起始列。
     这样可以处理不同部分的列结构差异：
     - 设备运行规律：月份从D列开始（有备注列C）
     - 用电情况统计：月份从C列开始（无备注列）
@@ -379,12 +469,14 @@ def detect_month_column_start(df, row_idx):
     if row_idx is None or row_idx >= len(df):
         return None
 
-    # 在该行查找 '1月' 关键字
+    # 在该行查找 '1月' 或 'Jan' 关键字（中英文兼容）
     row = df.iloc[row_idx]
     for col_idx in range(len(row)):
         cell_value = row.iloc[col_idx]
-        if pd.notna(cell_value) and '1月' in str(cell_value):
-            return col_idx
+        if pd.notna(cell_value):
+            cell_str = str(cell_value).strip()
+            if '1月' in cell_str or cell_str.lower() == 'jan':
+                return col_idx
 
     return None
 
@@ -393,16 +485,17 @@ def detect_month_column_start(df, row_idx):
 def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
     """查找包含冷站数据的工作表
 
-    支持多种命名模式：
-    - '冷站'
-    - '1#冷站', '2#冷站' 等带编号的冷站
-    - 任何包含'冷站'关键字的工作表
+    支持多种命名模式（中英文）：
+    - 中文: '冷站', '1#冷站', '2#冷站' 等
+    - 英文: 'Chiller Plant' 等
+    - 任何包含'冷站'或'Chiller'关键字的工作表
 
     优先级：
-    1. 如果只有一个冷站工作表，直接使用
-    2. 如果有多个冷站，优先使用包含"设备运行规律"或"用电情况统计"的sheet
+    1. 如果只有一个匹配工作表，直接使用
+    2. 如果有多个，优先使用包含"设备运行规律"/"Equipment Operation Patterns"
+       或"用电情况统计"/"Electricity Consumption Statistics"的sheet
     3. 如果没有包含运行数据的sheet，优先使用'冷站详情'
-    4. 如果没有1#冷站，使用第一个冷站
+    4. 如果没有1#冷站，使用第一个匹配sheet
 
     Args:
         xls: Excel文件对象
@@ -410,26 +503,33 @@ def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
     Returns:
         工作表名称，如果未找到则返回 None
     """
-    # 查找所有包含"冷站"关键字的工作表
-    cold_station_sheets = [sheet for sheet in xls.sheet_names if '冷站' in sheet]
+    # 查找所有包含"冷站"或"Chiller"关键字的工作表（中英文兼容）
+    cold_station_sheets = [
+        sheet for sheet in xls.sheet_names
+        if '冷站' in sheet or 'chiller' in sheet.lower()
+    ]
 
     if not cold_station_sheets:
         return None
 
-    # 如果只有一个冷站，直接返回
+    # 如果只有一个匹配，直接返回
     if len(cold_station_sheets) == 1:
         return cold_station_sheets[0]
 
-    # 如果有多个冷站，智能查找包含月度运行数据的sheet
+    # 如果有多个，智能查找包含月度运行数据的sheet
     for sheet_name in cold_station_sheets:
         try:
             df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
-            # 查找是否包含"设备运行规律"或"用电情况统计"
+            # 查找是否包含运行数据关键词（中英文）
             for idx in range(min(50, len(df))):
                 row = df.iloc[idx]
                 for val in row:
                     if pd.notna(val) and isinstance(val, str):
-                        if '设备运行规律' in val or '用电情况统计' in val:
+                        val_lower = val.lower()
+                        if any(k in val for k in ['设备运行规律', '用电情况统计']):
+                            return sheet_name
+                        if any(k in val_lower for k in ['equipment operation patterns',
+                                                        'electricity consumption statistics']):
                             return sheet_name
         except Exception:
             continue
@@ -442,7 +542,7 @@ def find_cold_station_sheet(xls: pd.ExcelFile) -> Optional[str]:
     if '1#冷站' in cold_station_sheets:
         return '1#冷站'
 
-    # 否则使用第一个冷站
+    # 否则使用第一个匹配sheet
     return cold_station_sheets[0]
 
 
@@ -493,14 +593,39 @@ def detect_station_type(workbook) -> dict:
             "冷冻一次泵", "冷冻二次泵"
         ]
 
-        has_secondary_pump = any(kw in full_text for kw in secondary_pump_keywords)
+        has_secondary_pump_keyword = any(kw in full_text for kw in secondary_pump_keywords)
 
-        if has_secondary_pump:
-            return {
-                "station_type": "secondary_pump",
-                "confidence": "high",
-                "reason": "检测到一次泵/二次泵分离特征"
-            }
+        if has_secondary_pump_keyword:
+            # 有关键词，还需要检查二次泵数据行是否有实际数据
+            # 遍历每个sheet的数据，检查二次泵数据行
+            has_secondary_pump_data = False
+
+            for sheet in workbook.worksheets:
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = " ".join([str(cell).lower() for cell in row if cell])
+                    # 检查是否包含二次泵数据关键词且有实际数据（如品牌、功率等）
+                    if any(kw in row_text for kw in ["二次泵", "冷冻二次泵"]):
+                        # 检查该行是否有实际数据（不仅仅是表头）
+                        # 排除仅包含表头关键词的行
+                        non_null_cells = [cell for cell in row if cell is not None and str(cell).strip()]
+                        if len(non_null_cells) >= 3:  # 至少有3个非空单元格才认为有实际数据
+                            has_secondary_pump_data = True
+                            break
+                if has_secondary_pump_data:
+                    break
+
+            if has_secondary_pump_data:
+                return {
+                    "station_type": "secondary_pump",
+                    "confidence": "high",
+                    "reason": "检测到一次泵/二次泵分离特征且有实际数据"
+                }
+            else:
+                return {
+                    "station_type": "standard",
+                    "confidence": "high",
+                    "reason": "二次泵字段为空，识别为一次泵系统"
+                }
 
         # 默认为标准站房
         return {
@@ -551,32 +676,46 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         if station_name:
             project_region = infer_region_from_text(station_name)
 
-    # 优先级3: 从项目总体情况表提取
-    if not project_region and '项目总体情况' in xls.sheet_names:
-        df_overview = pd.read_excel(xls, sheet_name='项目总体情况', header=None)
-        project_region = extract_region(df_overview)
+    # 优先级3: 从项目总体情况表提取（中英文兼容）
+    if not project_region:
+        overview_sheet = None
+        for sheet in xls.sheet_names:
+            if '项目总体情况' in sheet or 'overall project information' in sheet.lower():
+                overview_sheet = sheet
+                break
+        if overview_sheet:
+            df_overview = pd.read_excel(xls, sheet_name=overview_sheet, header=None)
+            project_region = extract_region(df_overview)
 
-    # 查找关键行
+    # 查找关键行（中英文关键词兼容）
     row_mappings = {
-        'chiller_supply_temp': ['冷机供水温度'],
-        'cooling_pump_freq': ['冷却泵运行频率'],
-        'cooling_water_temp_diff': ['冷却侧供回水温差'],
-        'freezing_pump_freq': ['冷冻泵运行频率'],
-        'freezing_water_temp_diff': ['冷冻侧供回水温差'],
-        'cooling_tower_outlet_temp': ['冷却塔出水温度'],
-        'total_energy': ['整个冷站', '万kWh']
+        'chiller_supply_temp': ['冷机供水温度', 'Chiller Supply Temp'],
+        'cooling_pump_freq': ['冷却泵运行频率', 'Cooling Pump Freq'],
+        'cooling_water_temp_diff': ['冷却侧供回水温差', 'Cooling Side ΔT'],
+        'freezing_pump_freq': ['冷冻泵运行频率', 'Chilled Pump Freq'],
+        'freezing_water_temp_diff': ['冷冻侧供回水温差', 'Chilled Side ΔT'],
+        'cooling_tower_outlet_temp': ['冷却塔出水温度', 'Cooling Tower Outlet Temp'],
+        'total_energy': ['整个冷站', '万kWh', 'Entire Chiller Plant']
     }
 
-    # 动态查找"设备运行规律"标题行（不硬编码起始行号，从头开始查找）
-    equipment_section_row = find_row_by_keyword(df, ['设备运行规律', '冷机运行规律'], start_row=0, end_row=50)
+    # 动态查找"设备运行规律"/"Equipment Operation Patterns"标题行
+    equipment_section_row = find_row_by_keyword(
+        df,
+        ['设备运行规律', '冷机运行规律', 'Equipment Operation Patterns'],
+        start_row=0, end_row=100
+    )
     if equipment_section_row is None:
         return {
             "error": True,
             "message": "未能识别调研表中的'设备运行规律'部分,请确认上传了正确的文件"
         }
 
-    # 从"设备运行规律"标题行向下查找月份行
-    equipment_month_row_idx = find_row_by_keyword(df, ['月份', '备注'], start_row=equipment_section_row, end_row=equipment_section_row + 10)
+    # 从设备运行规律标题行向下查找月份行（中英文兼容）
+    equipment_month_row_idx = find_row_by_keyword(
+        df,
+        ['月份', '备注', 'Month', 'Remarks'],
+        start_row=equipment_section_row, end_row=equipment_section_row + 10
+    )
     if equipment_month_row_idx is None:
         return {
             "error": True,
@@ -588,13 +727,21 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     if equipment_col_start is None:
         equipment_col_start = 3  # 默认 D 列
 
-    # 动态查找"用电情况统计"标题行
-    energy_section_row = find_row_by_keyword(df, ['用电情况统计'], start_row=equipment_month_row_idx, end_row=len(df))
+    # 动态查找"用电情况统计"/"Electricity Consumption Statistics"标题行
+    energy_section_row = find_row_by_keyword(
+        df,
+        ['用电情况统计', 'Electricity Consumption Statistics'],
+        start_row=equipment_month_row_idx, end_row=len(df)
+    )
 
-    # 从"用电情况统计"标题行向下查找月份行
+    # 从用电情况统计标题行向下查找月份行
     energy_month_row_idx = None
     if energy_section_row is not None:
-        energy_month_row_idx = find_row_by_keyword(df, ['月份'], start_row=energy_section_row, end_row=energy_section_row + 10)
+        energy_month_row_idx = find_row_by_keyword(
+            df,
+            ['月份', 'Month'],
+            start_row=energy_section_row, end_row=energy_section_row + 10
+        )
 
     # 检测用电情况部分的月份列起始位置
     energy_col_start = None

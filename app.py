@@ -1592,14 +1592,23 @@ def generate_air_compressor_report():
             str(output_dir)
         )
         
-        # 检查生成的文件
+        # 检查生成的文件（支持多种格式）
         word_files = list(output_dir.glob("空压系统数智化升级方案_*.docx"))
+        md_files = list(output_dir.glob("空压系统数智化升级方案_*.md"))
+        html_files = list(output_dir.glob("空压系统数智化升级方案_*.html"))
         
+        # 优先返回DOCX文件，其次MD文件，最后HTML文件
         if word_files:
-            print(f"✅ [报告生成] 成功生成报告: {word_files[0]}")
-            return word_files[0]  # 返回报告文件路径
+            print(f"✅ [报告生成] 成功生成Word报告: {word_files[0]}")
+            return word_files[0]
+        elif md_files:
+            print(f"✅ [报告生成] 成功生成MD报告: {md_files[0]}")
+            return md_files[0]
+        elif html_files:
+            print(f"✅ [报告生成] 成功生成HTML报告: {html_files[0]}")
+            return html_files[0]
         else:
-            print(f"⚠️ [报告生成] 未找到生成的Word文档")
+            print(f"⚠️ [报告生成] 未找到生成的报告文件")
             print(f"⚠️ [报告生成] 目录中的文件: {list(output_dir.glob('*'))}")
             return None
             

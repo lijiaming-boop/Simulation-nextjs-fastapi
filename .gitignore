@@ -33,3 +33,9 @@ build/
 
 # Frontend (deleted, use Streamlit instead)
 frontend/
+
+# Auto-generated docs
+.qoder/
+
+# Temporary test outputs
+test_output*.json
