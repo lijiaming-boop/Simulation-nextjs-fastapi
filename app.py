@@ -255,27 +255,35 @@ def render_module_selection():
     """模块选择页面"""
     st.title("⚡ 节能率智能测算工具")
     st.markdown("---")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("### 📁 项目结构")
         st.info("""
-        该工具包含两个主要模块：
+        该工具包含三个主要模块：
         - **空调节能率计算**：针对中央空调系统的节能评估
         - **空压机节能率计算**：针对压缩空气系统的节能评估
+        - **冷站性能仿真**：基于设备拓扑的全年8760h仿真分析
         """)
-    
+
     with col2:
         st.markdown("### 🛠️ 选择模块")
-        
+
         if st.button("❄️ 空调节能率计算", use_container_width=True, type="primary"):
             st.session_state.module_type = 'air_conditioner'
             st.rerun()
-        
+
         if st.button("🔧 空压机节能率计算", use_container_width=True, type="primary"):
             st.session_state.module_type = 'air_compressor'
             st.rerun()
+
+        st.markdown("---")
+        if st.button("🔬 冷站性能仿真", use_container_width=True):
+            st.session_state.module_type = 'plant_simulation'
+            st.session_state.stage = 'simulation_input'
+            st.rerun()
+        st.caption("无需调研表，输入设备拓扑即可进行全年仿真分析")
 
 
 # ==================== 上传阶段 ====================
@@ -1074,6 +1082,15 @@ def render_air_conditioner_result_stage():
 
     st.markdown("---")
 
+    # 仿真分析入口
+    st.subheader("🔬 进阶：冷站性能仿真分析")
+    st.caption("基于主机COP性能曲线，仿真全年8760小时运行，输出优化控制策略报告")
+    if st.button("进入仿真分析 →", use_container_width=True):
+        st.session_state.stage = 'simulation_input'
+        st.rerun()
+
+    st.markdown("---")
+
     # 重新开始
     if st.button("🔄 开始新的测算", type="primary", use_container_width=True):
         reset_flow()
@@ -1680,6 +1697,15 @@ def main():
                 <p style="color: #64748B; font-size: 14px; margin-top: 8px;">基于AI的智能节能评估系统</p>
             </div>
             """, unsafe_allow_html=True)
+        elif st.session_state.module_type == 'plant_simulation':
+            st.markdown("""
+            <div style="text-align: center; margin: 40px 0 30px 0;">
+                <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0;">
+                    🔬 冷站性能仿真分析
+                </h1>
+                <p style="color: #64748B; font-size: 14px; margin-top: 8px;">基于设备拓扑的全年8760h仿真</p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div style="text-align: center; margin: 40px 0 30px 0;">
@@ -1704,7 +1730,7 @@ def main():
     stage = st.session_state.stage
     
     if st.session_state.module_type == 'air_conditioner':
-        # 空调模块：5步流程
+        # 空调模块：5步流程 + 可选仿真
         if stage == 'upload':
             render_upload_stage()
         elif stage == 'extract_check':
@@ -1715,6 +1741,22 @@ def main():
             render_air_conditioner_calculate_stage()
         elif stage == 'result':
             render_air_conditioner_result_stage()
+        elif stage == 'simulation_input':
+            from simulation_ui import render_simulation_input_stage
+            render_simulation_input_stage()
+        elif stage == 'simulation_result':
+            from simulation_ui import render_simulation_result_stage
+            render_simulation_result_stage()
+    elif st.session_state.module_type == 'plant_simulation':
+        # 独立仿真模块：无需调研表
+        from simulation_ui import render_simulation_input_stage, render_simulation_result_stage
+        if stage == 'simulation_input':
+            render_simulation_input_stage()
+        elif stage == 'simulation_result':
+            render_simulation_result_stage()
+        else:
+            st.session_state.stage = 'simulation_input'
+            st.rerun()
     else:
         # 空压机模块：4步简化流程
         # 使用空压模块独立stage，避免与空调模块冲突
