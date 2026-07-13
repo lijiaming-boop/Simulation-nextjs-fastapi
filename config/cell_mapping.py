@@ -36,6 +36,7 @@ class CellMapping:
     # 基础信息字段 -> 单元格映射
     BASIC_INFO_CELLS = {
         "project_region": "H4",  # 项目地区
+        "electricity_price": "I29",  # 电费单价（元/kWh）
     }
 
     # 结果提取位置

@@ -13,6 +13,17 @@ from typing import Dict, List, Any, Optional, Tuple
 class DataFillingSuggester:
     """数据填充建议生成器"""
 
+    # 各大区工业用电参考电价（元/kWh）
+    REGION_ELECTRICITY_PRICE = {
+        "华南": 0.66,
+        "华东": 0.70,
+        "华中": 0.62,
+        "西南": 0.58,
+        "西北": 0.45,
+        "华北": 0.62,
+        "东北": 0.60,
+    }
+
     # 季节划分 (月份 -> 季节代表月)
     SEASONS = {
         1: 1, 2: 1, 3: 1,      # 冬季 -> 1月
@@ -89,27 +100,26 @@ class DataFillingSuggester:
                 'reason': f'仅有{valid_energy_count}个月的能耗数据,不足以推断全年,建议至少提供6个月数据'
             })
 
-        # 检查 cooling_water_temp_diff 数据量
-        valid_cooling_diff_count = sum(
-            1 for month_data in self.monthly_data
-            if month_data.get('cooling_water_temp_diff') is not None
-        )
-        if valid_cooling_diff_count < 6:
-            self.unfillable_fields.append({
-                'field': 'cooling_water_temp_diff',
-                'reason': f'仅有{valid_cooling_diff_count}个月的冷却水温差数据,不足以推断全年,建议至少提供6个月数据'
-            })
+        # 检查所有月度字段的数据量（每个字段独立判断）
+        fields_to_check = {
+            'chiller_supply_temp': '���机供水温度',
+            'cooling_pump_freq': '冷却泵频率',
+            'freezing_pump_freq': '冷冻泵频率',
+            'cooling_water_temp_diff': '冷却水温差',
+            'freezing_water_temp_diff': '冷冻水温差',
+            'cooling_tower_outlet_temp': '冷却塔出水温度',
+        }
 
-        # 检查 freezing_water_temp_diff 数据量
-        valid_freezing_diff_count = sum(
-            1 for month_data in self.monthly_data
-            if month_data.get('freezing_water_temp_diff') is not None
-        )
-        if valid_freezing_diff_count < 6:
-            self.unfillable_fields.append({
-                'field': 'freezing_water_temp_diff',
-                'reason': f'仅有{valid_freezing_diff_count}个月的冷冻水温差数据,不足以推断全年,建议至少提供6个月数据'
-            })
+        for field, field_name in fields_to_check.items():
+            valid_count = sum(
+                1 for month_data in self.monthly_data
+                if month_data.get(field) is not None
+            )
+            if valid_count < 6:
+                self.unfillable_fields.append({
+                    'field': field,
+                    'reason': f'仅有{valid_count}个月的{field_name}数据,不足以推断全年,建议至少提供6个月数据'
+                })
 
         return len(self.unfillable_fields) > 0
 
@@ -332,6 +342,19 @@ class DataFillingSuggester:
             suggestion = self.suggest_filling(month_idx, field)
             if suggestion:
                 self.suggestions.append(suggestion)
+
+        # 为缺失的电单价生成建议
+        if not self.data.get('electricity_price'):
+            region = self.data.get('project_region')
+            if region and region in self.REGION_ELECTRICITY_PRICE:
+                self.suggestions.append({
+                    'field': 'electricity_price',
+                    'original_value': None,
+                    'suggested_value': self.REGION_ELECTRICITY_PRICE[region],
+                    'method': 'region_lookup',
+                    'confidence': 'medium',
+                    'reasoning': f'根据项目所在地区({region})查表获取工业用电参考电价'
+                })
 
         return {
             'can_proceed': True,

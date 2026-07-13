@@ -74,6 +74,11 @@ class DataFiller:
                     month_data[field_name] = suggested_value
                     month_data["_filled_fields"].append(field_name)
                     filled_count += 1
+            else:
+                # 顶层字段（如 electricity_price）
+                if data.get(field_path) is None:
+                    data[field_path] = suggested_value
+                    filled_count += 1
 
         # 计算最终完整率
         null_count = sum(

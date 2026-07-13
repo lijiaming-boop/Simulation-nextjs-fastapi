@@ -524,6 +524,12 @@ class ExcelCalculator:
         # 1. 回填项目地区
         region_cell = self.mapper.get_basic_info_cell("project_region")
         sheet[region_cell] = data["project_region"]
+
+        # 回填电费单价
+        electricity_price = data.get("electricity_price")
+        if electricity_price is not None:
+            price_cell = self.mapper.get_basic_info_cell("electricity_price")
+            sheet[price_cell] = electricity_price
         
         # 准备气象数据 - 为每个月份填入对应的湿球温度
         for month_idx in range(12):

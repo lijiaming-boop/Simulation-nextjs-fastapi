@@ -643,6 +643,40 @@ def detect_station_type(workbook) -> dict:
         }
 
 
+def extract_electricity_price(df) -> Optional[float]:
+    """从冷站sheet中提取电单价
+
+    扫描所有单元格，用正则匹配电单价相关文本。
+
+    Args:
+        df: 冷站sheet的DataFrame
+
+    Returns:
+        电单价(元/kWh)，未找到则返回None
+    """
+    patterns = [
+        r'电单价[：:]\s*(\d+\.?\d*)',
+        r'电价[：:]\s*(\d+\.?\d*)',
+        r'(\d+\.?\d*)\s*元[/每](?:度|kWh|kwh)',
+        r'综合.*?[：:]\s*(\d+\.?\d*)\s*元',
+    ]
+
+    for row_idx in range(len(df)):
+        for col_idx in range(len(df.columns)):
+            val = df.iloc[row_idx, col_idx]
+            if not isinstance(val, str):
+                continue
+            if '电' not in val:
+                continue
+            for pattern in patterns:
+                match = re.search(pattern, val)
+                if match:
+                    price = float(match.group(1))
+                    if 0.1 <= price <= 3.0:
+                        return price
+    return None
+
+
 def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[str] = None) -> Dict[str, Any]:
     """从 Excel 文件提取数据
 
@@ -830,6 +864,9 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
     # 注意：不再强制要求至少3个月数据，让质量检查报告来反馈数据完整性问题
     # 这样即使是空白模板也能返回提取结果和详细的质量报告
 
+    # 提取电单价
+    electricity_price = extract_electricity_price(df)
+
     # 新增：提取站房类型（使用 openpyxl.Workbook）
     try:
         wb_openpyxl = openpyxl.load_workbook(survey_excel_path, read_only=True, data_only=True)
@@ -845,6 +882,7 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
 
     return {
         "project_region": project_region,
+        "electricity_price": electricity_price,
         "station_type": station_type_info["station_type"],
         "station_type_confidence": station_type_info["confidence"],
         "station_type_reason": station_type_info["reason"],
