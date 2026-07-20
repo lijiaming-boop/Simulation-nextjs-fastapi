@@ -28,8 +28,10 @@ from .services import (
     get_ai_queue,
     is_extract_running,
     is_calculate_running,
+    is_suggest_running,
     start_extract,
     start_calculate,
+    start_suggest,
 )
 
 
@@ -314,16 +316,22 @@ async def extract_stream(session_id: str):
 
     queue = ensure_ai_queue(session_id)
 
+    # 判断是否有任务在运行（extract / suggest / calculate 任一）
+    any_running = (
+        is_extract_running(session_id)
+        or is_calculate_running(session_id)
+        or is_suggest_running(session_id)
+    )
+
     async def event_generator():
-        # 先回放历史日志（供晚连接的客户端看到进度）
+        # 先回放历史日志
         for log in list(s.get("ai_logs", [])):
             yield {
                 "event": "message",
                 "data": json.dumps({"type": "log", **log}, ensure_ascii=False),
             }
 
-        # 如果任务已经结束且队列空了，直接发 done
-        if not is_extract_running(session_id):
+        if not any_running:
             yield {
                 "event": "message",
                 "data": json.dumps(
@@ -333,12 +341,10 @@ async def extract_stream(session_id: str):
             }
             return
 
-        # 实时推送新事件直到 done/error
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=30.0)
             except asyncio.TimeoutError:
-                # 心跳保活
                 yield {"event": "ping", "data": ""}
                 continue
 
@@ -442,3 +448,73 @@ def get_result(session_id: str):
         "formatted_result": s.get("formatted_result"),
         "filling_suggestions": s.get("filling_suggestions"),
     }
+
+
+# ==================== /suggest（规则 + LLM 增强填充建议） ====================
+
+
+class SuggestRequest(BaseModel):
+    use_llm: bool = Field(
+        default=True,
+        description="是否用 LLM 对规则建议做智能增强",
+    )
+
+
+@router.post("/suggest/{session_id}", tags=["suggest"])
+async def suggest(session_id: str, body: SuggestRequest = SuggestRequest()):
+    """生成数据填充建议
+
+    流程：
+      1. subprocess 调规则脚本（suggest_data_filling.py）
+      2. use_llm=True 时，用 DirectLLMClient 对规则建议做智能增强
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    if is_suggest_running(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"session {session_id!r} 的建议任务已在运行",
+        )
+
+    if s.get("extracted_data") is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="extracted_data 缺失：请先调用 /extract",
+        )
+
+    main_loop = asyncio.get_running_loop()
+    try:
+        start_suggest(
+            session_id=session_id,
+            module_type=s["module_type"],
+            use_llm=body.use_llm,
+            main_loop=main_loop,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"启动建议任务失败: {type(e).__name__}: {e}",
+        )
+
+    return {
+        "session_id": session_id,
+        "status": "suggesting",
+        "use_llm": body.use_llm,
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.get("/suggest/{session_id}", tags=["suggest"])
+def get_suggest(session_id: str):
+    """返回已生成的填充建议"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_suggest_running(session_id):
+        raise HTTPException(status_code=409, detail="建议任务仍在运行")
+    fs = s.get("filling_suggestions")
+    if fs is None:
+        raise HTTPException(status_code=404, detail="filling_suggestions 尚未生成，请先调用 POST /suggest")
+    return fs

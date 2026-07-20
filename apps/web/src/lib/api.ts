@@ -159,3 +159,46 @@ export async function fetchSession(sessionId: string): Promise<SessionInfo> {
   if (!res.ok) throw new Error(`查询 session 失败: ${res.status}`);
   return res.json();
 }
+
+// ==================== /suggest（规则 + LLM 增强） ====================
+
+export interface SuggestStartResponse {
+  session_id: string;
+  status: "suggesting";
+  use_llm: boolean;
+  stream_url: string;
+}
+
+export interface SuggestResult {
+  can_proceed: boolean;
+  unfillable_fields?: unknown[];
+  fillable_suggestions?: unknown[];
+  llm_enhanced_tips?: string;
+  [key: string]: unknown;
+}
+
+/** 触发填充建议（规则 + 可选 LLM 增强） */
+export async function startSuggest(
+  sessionId: string,
+  useLlm: boolean = true
+): Promise<SuggestStartResponse> {
+  const res = await fetch(`${API_BASE}/suggest/${sessionId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ use_llm: useLlm }),
+  });
+  if (!res.ok) {
+    throw new Error(`启动建议失败: ${res.status} ${await res.text()}`);
+  }
+  return res.json();
+}
+
+/** 获取填充建议 */
+export async function fetchSuggest(
+  sessionId: string
+): Promise<SuggestResult | null> {
+  const res = await fetch(`${API_BASE}/suggest/${sessionId}`);
+  if (res.status === 404 || res.status === 409) return null;
+  if (!res.ok) throw new Error(`获取建议失败: ${res.status}`);
+  return res.json();
+}

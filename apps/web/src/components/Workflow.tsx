@@ -6,10 +6,13 @@ import {
   uploadSurvey,
   startExtract,
   subscribeExtractStream,
+  startSuggest,
+  fetchSuggest,
   startCalculate,
   fetchResult,
   type StreamEvent,
   type ResultResponse,
+  type SuggestResult,
 } from "@/lib/api";
 
 type Stage =
@@ -18,6 +21,8 @@ type Stage =
   | "uploaded"
   | "extracting"
   | "extracted"
+  | "suggesting"
+  | "suggested"
   | "calculating"
   | "done"
   | "error";
@@ -29,6 +34,8 @@ export default function Workflow() {
   const [filename, setFilename] = useState<string>("");
   const [logs, setLogs] = useState<Array<{ ts: string; msg: string }>>([]);
   const [result, setResult] = useState<ResultResponse | null>(null);
+  const [useLlm, setUseLlm] = useState<boolean>(true);
+  const [suggestions, setSuggestions] = useState<SuggestResult | null>(null);
   const [moduleType, setModuleType] = useState<
     "air_conditioner" | "air_compressor"
   >("air_conditioner");
@@ -102,6 +109,37 @@ export default function Workflow() {
     })();
   }, [stage, sessionId]);
 
+  // ================== Step 3.5: 生成填充建议（可选 LLM 增强） ==================
+  const doSuggest = useCallback(async () => {
+    setError("");
+    setStage("suggesting");
+    setLogs([]);
+    try {
+      await startSuggest(sessionId, useLlm);
+      // SSE
+      subscribeExtractStream(sessionId, (ev: StreamEvent) => {
+        if (ev.type === "log" && ev.message) {
+          setLogs((prev) => [
+            ...prev,
+            { ts: ev.timestamp ?? "", msg: ev.message! },
+          ]);
+        } else if (ev.type === "done") {
+          // 拉取结果
+          fetchSuggest(sessionId).then((s) => {
+            setSuggestions(s);
+            setStage("suggested");
+          });
+        } else if (ev.type === "error") {
+          setError(ev.message ?? "生成建议失败");
+          setStage("error");
+        }
+      });
+    } catch (e) {
+      setError((e as Error).message);
+      setStage("error");
+    }
+  }, [sessionId, useLlm]);
+
   // ================== Step 4: 计算 + 轮询结果 ==================
   const doCalculate = useCallback(async () => {
     setError("");
@@ -141,6 +179,7 @@ export default function Workflow() {
     setFilename("");
     setLogs([]);
     setResult(null);
+    setSuggestions(null);
     setError("");
     extractedDataRef.current = null;
   };
@@ -235,14 +274,14 @@ export default function Workflow() {
         </button>
 
         {/* 日志面板 */}
-        {(logs.length > 0 || stage === "extracting") && (
+        {(logs.length > 0 || stage === "extracting" || stage === "suggesting") && (
           <div className="mt-4 rounded bg-gray-900 text-green-300 font-mono text-xs p-3 max-h-72 overflow-auto">
             {logs.map((l, i) => (
               <div key={i} className="whitespace-pre-wrap">
                 <span className="text-gray-500">[{l.ts}]</span> {l.msg}
               </div>
             ))}
-            {stage === "extracting" && (
+            {(stage === "extracting" || stage === "suggesting") && (
               <div className="text-yellow-300 animate-pulse">▍等待...</div>
             )}
             <div ref={logsEndRef} />
@@ -250,12 +289,49 @@ export default function Workflow() {
         )}
       </section>
 
+      {/* 填充建议（可选，建议 LLM 增强） */}
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-medium">③ 填充建议（规则 + LLM 增强）</h2>
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={useLlm}
+              onChange={(e) => setUseLlm(e.target.checked)}
+              disabled={stage === "suggesting"}
+              className="accent-blue-600"
+            />
+            🤖 LLM 智能增强
+          </label>
+        </div>
+        <button
+          onClick={doSuggest}
+          disabled={
+            stage !== "extracted" &&
+            stage !== "suggested" &&
+            stage !== "done"
+          }
+          className="px-4 py-2 rounded text-white text-sm bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+        >
+          {stage === "suggesting" ? "生成中..." : "生成填充建议"}
+        </button>
+        <span className="ml-3 text-xs text-gray-500">
+          {useLlm
+            ? "将用 LLM 对规则建议做智能增强（耗时约 5-15s）"
+            : "仅使用规则脚本（区域电价 + 季节默认值）"}
+        </span>
+
+        {suggestions && (
+          <SuggestPanel suggestions={suggestions} />
+        )}
+      </section>
+
       {/* 计算 + 结果 */}
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="font-medium mb-3">③ 公式计算 + 结果</h2>
+        <h2 className="font-medium mb-3">④ 公式计算 + 结果</h2>
         <button
           onClick={doCalculate}
-          disabled={stage !== "extracted"}
+          disabled={stage !== "extracted" && stage !== "suggested"}
           className="px-4 py-2 rounded text-white text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
           {stage === "calculating" ? "计算中..." : "开始计算"}
@@ -283,10 +359,11 @@ function Stepper({ stage }: { stage: Stage }) {
   const steps: { key: Stage[]; label: string }[] = [
     { key: ["idle", "uploading"], label: "上传" },
     { key: ["uploaded", "extracting"], label: "提取" },
-    { key: ["extracted", "calculating"], label: "计算" },
+    { key: ["extracted", "suggesting"], label: "建议" },
+    { key: ["suggested", "calculating"], label: "计算" },
     { key: ["done"], label: "完成" },
   ];
-  const order = ["idle", "uploading", "uploaded", "extracting", "extracted", "calculating", "done"];
+  const order: Stage[] = ["idle", "uploading", "uploaded", "extracting", "extracted", "suggesting", "suggested", "calculating", "done"];
   const idx = order.indexOf(stage);
   return (
     <ol className="flex items-center gap-2 text-xs">
@@ -308,6 +385,64 @@ function Stepper({ stage }: { stage: Stage }) {
         );
       })}
     </ol>
+  );
+}
+
+function SuggestPanel({ suggestions: s }: { suggestions: SuggestResult }) {
+  const unfillable = s.unfillable_fields as unknown[] | undefined;
+  const fillable = s.fillable_suggestions as unknown[] | undefined;
+  const llmTips = s.llm_enhanced_tips;
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* 不可填充字段 */}
+      {unfillable && unfillable.length > 0 && (
+        <div className="rounded border border-red-200 bg-red-50 p-3">
+          <h4 className="text-sm font-medium text-red-800 mb-1">
+            ⚠️ 无法自动填充的字段（{unfillable.length}）
+          </h4>
+          <ul className="text-xs text-red-700 list-disc pl-4 space-y-0.5">
+            {unfillable.map((f, i) => (
+              <li key={i}>{String(f)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 可填充建议 */}
+      {fillable && fillable.length > 0 && (
+        <div className="rounded border border-blue-200 bg-blue-50 p-3">
+          <h4 className="text-sm font-medium text-blue-800 mb-1">
+            💡 填充建议（{fillable.length} 条）
+          </h4>
+          <ul className="text-xs text-blue-700 list-disc pl-4 space-y-0.5">
+            {fillable.map((item, i) => {
+              const rec = item as Record<string, unknown>;
+              const field = rec?.field ? String(rec.field) : "";
+              const suggestion = rec?.suggestion ? String(rec.suggestion) : String(item);
+              return (
+                <li key={i}>
+                  {field ? <strong>{field}：</strong> : null}
+                  {suggestion}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* LLM 增强建议 */}
+      {llmTips && (
+        <div className="rounded border border-purple-200 bg-purple-50 p-3">
+          <h4 className="text-sm font-medium text-purple-800 mb-1">
+            🤖 LLM 智能建议
+          </h4>
+          <pre className="text-xs text-purple-700 whitespace-pre-wrap font-sans">
+            {llmTips}
+          </pre>
+        </div>
+      )}
+    </div>
   );
 }
 

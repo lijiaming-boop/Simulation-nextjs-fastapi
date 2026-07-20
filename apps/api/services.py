@@ -22,6 +22,8 @@ from .deps import PROJECT_ROOT, session_store
 _extract_tasks: dict = {}
 # session_id → calculate 后台 thread
 _calculate_tasks: dict = {}
+# session_id → suggest 后台 thread
+_suggest_tasks: dict = {}
 
 
 def is_extract_running(session_id: str) -> bool:
@@ -32,6 +34,11 @@ def is_extract_running(session_id: str) -> bool:
 
 def is_calculate_running(session_id: str) -> bool:
     t = _calculate_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+def is_suggest_running(session_id: str) -> bool:
+    t = _suggest_tasks.get(session_id)
     return t is not None and t.is_alive()
 
 
@@ -326,3 +333,170 @@ def start_calculate(
     )
     t.start()
     _calculate_tasks[session_id] = t
+
+
+# ==================== 填充建议任务 ====================
+
+
+def _run_suggest_in_thread(
+    session_id: str,
+    module_type: str,
+    use_llm: bool,
+) -> None:
+    """后台生成数据填充建议
+
+    1. 把内存里的 extracted_data / quality_report 写盘
+    2. subprocess 调脚本生成规则建议（区域电价 + 季节默认值）
+    3. use_llm=True 时，再用 DirectLLMClient 对规则建议做智能增强
+    """
+    loop = session_store._main_loop
+    s = session_store.get(session_id)
+    if s is None:
+        return
+    session_dir = s["session_dir"]
+
+    def emit(event_type: str, message: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        session_store.append_ai_log(session_id, ts, message)
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": event_type, "timestamp": ts, "message": message},
+            )
+
+    try:
+        extracted_data = s.get("extracted_data")
+        quality_report = s.get("quality_report") or {"completeness": 1.0, "issues": []}
+        if extracted_data is None:
+            raise RuntimeError("extracted_data 缺失，请先调用 /extract")
+
+        # 1. 写盘
+        emit("log", "📄 写入提取数据 + 质量报告...")
+        extracted_path = session_dir / "ac_extracted_data.json"
+        with open(extracted_path, "w", encoding="utf-8") as f:
+            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+        quality_path = session_dir / "ac_quality_report.json"
+        with open(quality_path, "w", encoding="utf-8") as f:
+            json.dump(quality_report, f, ensure_ascii=False, indent=2)
+        suggestions_path = session_dir / "ac_filling_suggestions.json"
+
+        # 2. 规则脚本
+        emit("log", "🔧 调用规则脚本 suggest_data_filling.py ...")
+        script = (
+            PROJECT_ROOT
+            / ".claude"
+            / "skills"
+            / "suggest-data-filling"
+            / "scripts"
+            / "suggest_data_filling.py"
+        )
+        cmd = [
+            sys.executable,
+            str(script),
+            str(extracted_path),
+            str(quality_path),
+            str(suggestions_path),
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            if line:
+                emit("log", line)
+        proc.wait()
+        if proc.returncode != 0:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            raise SkillError(
+                f"规则脚本退出码 {proc.returncode}: {stderr[:500]}"
+            )
+        if not suggestions_path.exists():
+            raise SkillError("规则脚本执行完成但未生成输出")
+
+        with open(suggestions_path, "r", encoding="utf-8") as f:
+            suggestions = json.load(f)
+        emit("log", "✅ 规则建议生成完成")
+
+        # 3. LLM 增强（可选）
+        if use_llm:
+            emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
+            try:
+                from core.llm_client import DirectLLMClient
+
+                client = DirectLLMClient()
+                prompt = (
+                    "你是一位暖通节能测算顾问。下面是某中央空调项目的提取数据、质量报告以及基于规则生成的填充建议。\n"
+                    f"【提取数据】\n{json.dumps(extracted_data, ensure_ascii=False)[:1800]}\n\n"
+                    f"【质量报告】\n{json.dumps(quality_report, ensure_ascii=False)[:600]}\n\n"
+                    f"【规则建议】\n{json.dumps(suggestions, ensure_ascii=False)[:1800]}\n\n"
+                    "请给出 2-4 条更智能的填充建议（例如季节插值策略、行业默认值、电价区间），"
+                    "每条建议一行，限 200 字以内。"
+                )
+                llm_text = client.create_message(
+                    prompt,
+                    system="你是节能测算顾问，回复简洁专业。",
+                    max_tokens=400,
+                )
+                suggestions["llm_enhanced_tips"] = llm_text
+                emit("log", f"✅ LLM 增强完成：{llm_text[:80]}...")
+            except Exception as llm_err:
+                emit(
+                    "log",
+                    f"⚠️ LLM 增强失败（保留规则建议）：{type(llm_err).__name__}: {llm_err}",
+                )
+
+        # 4. 写回 session_store
+        s["filling_suggestions"] = suggestions
+        with open(suggestions_path, "w", encoding="utf-8") as f:
+            json.dump(suggestions, f, ensure_ascii=False, indent=2)
+        session_store.update_stage(session_id, "suggest")
+
+        # 5. done 事件
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "done", "timestamp": datetime.now().strftime("%H:%M:%S")},
+            )
+
+    except Exception as e:
+        err_ts = datetime.now().strftime("%H:%M:%S")
+        err_msg = f"❌ {type(e).__name__}: {e}"
+        session_store.append_ai_log(session_id, err_ts, err_msg)
+        if (q := get_ai_queue(session_id)) is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "timestamp": err_ts, "message": err_msg},
+            )
+        session_store.update_stage(session_id, "error")
+
+
+def start_suggest(
+    session_id: str,
+    module_type: str,
+    use_llm: bool,
+    main_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """启动后台填充建议任务"""
+    if is_suggest_running(session_id):
+        raise RuntimeError(f"session {session_id!r} 已有建议任务在运行")
+
+    session_store._main_loop = main_loop
+    ensure_ai_queue(session_id)
+    session_store.update_stage(session_id, "suggesting")
+
+    t = threading.Thread(
+        target=_run_suggest_in_thread,
+        args=(session_id, module_type, use_llm),
+        daemon=True,
+        name=f"suggest-{session_id}",
+    )
+    t.start()
+    _suggest_tasks[session_id] = t
