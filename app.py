@@ -256,27 +256,36 @@ def render_module_selection():
     st.title("⚡ 节能率智能测算工具")
     st.markdown("---")
 
+    # 迁移公告
+    st.warning("""
+    🚀 **空调 / 空压机节能测算已迁移到新版前端**
+
+    空调和空压机节能率计算功能已升级到 **Next.js + FastAPI** 架构，
+    请前往新版工具使用：[http://localhost:3000](http://localhost:3000)
+
+    新版优势：更快的响应速度、实时 AI 日志流、LLM 智能填充建议。
+    """)
+
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("### 📁 项目结构")
         st.info("""
         该工具包含三个主要模块：
-        - **空调节能率计算**：针对中央空调系统的节能评估
-        - **空压机节能率计算**：针对压缩空气系统的节能评估
-        - **冷站性能仿真**：基于设备拓扑的全年8760h仿真分析
+        - **空调节能率计算**：已迁移 → [新版](http://localhost:3000)
+        - **空压机节能率计算**：已迁移 → [新版](http://localhost:3000)
+        - **冷站性能仿真**：保留在此（基于设备拓扑的全年8760h仿真）
         """)
 
     with col2:
         st.markdown("### 🛠️ 选择模块")
 
-        if st.button("❄️ 空调节能率计算", use_container_width=True, type="primary"):
-            st.session_state.module_type = 'air_conditioner'
-            st.rerun()
+        # 空调/空压已下线，显示为禁用状态
+        st.button("❄️ 空调节能率计算（已迁移）", use_container_width=True, disabled=True)
+        st.caption("→ 请使用 [新版前端 http://localhost:3000](http://localhost:3000)")
 
-        if st.button("🔧 空压机节能率计算", use_container_width=True, type="primary"):
-            st.session_state.module_type = 'air_compressor'
-            st.rerun()
+        st.button("🔧 空压机节能率计算（已迁移）", use_container_width=True, disabled=True)
+        st.caption("→ 请使用 [新版前端 http://localhost:3000](http://localhost:3000)")
 
         st.markdown("---")
         if st.button("🔬 冷站性能仿真", use_container_width=True):
@@ -1677,6 +1686,19 @@ def main():
     # 模块选择
     if 'module_type' not in st.session_state:
         render_module_selection()
+        return
+    
+    # 空调/空压已迁移，拦截并跳转
+    if st.session_state.module_type in ('air_conditioner', 'air_compressor'):
+        st.warning("""
+        🚀 **该模块已迁移到新版前端**
+
+        空调和空压机节能率计算已升级到 Next.js + FastAPI 架构，
+        请前往新版工具：[http://localhost:3000](http://localhost:3000)
+        """)
+        if st.button("← 返回模块选择", type="primary"):
+            del st.session_state.module_type
+            st.rerun()
         return
     
     # 页面标题
