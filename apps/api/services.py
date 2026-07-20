@@ -1,6 +1,8 @@
 """业务服务层：封装 core 模块，供 FastAPI 路由调用"""
 import asyncio
 import json
+import subprocess
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -76,47 +78,73 @@ def _run_extract_in_thread(
             loop.call_soon_threadsafe(q.put_nowait, event)
 
     try:
-        # 1. 构造 SkillCaller（线程内构造避免共享循环问题）
-        caller = SkillCaller(project_root=PROJECT_ROOT)
-
-        # 2. 决定 skill 名称与参数
+        # === 空调场景：直接 subprocess 调脚本 ===
+        # 绕过 Claude Agent SDK（SDK 的认证与自定义代理端点不兼容）
+        # 脚本 extract_and_check_data.py 是纯 Python + openpyxl，无需 LLM
         if module_type == "air_conditioner":
-            skill_name = "extract-and-check-data"
-            args = (str(input_path), str(output_json_path), original_filename)
-        else:  # air_compressor
+            script = PROJECT_ROOT / ".claude" / "skills" / "extract-and-check-data" / "scripts" / "extract_and_check_data.py"
+            cmd = [sys.executable, str(script), str(input_path), str(output_json_path), original_filename]
+
+            ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 开始提取数据（subprocess 直调脚本）...")
+
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(PROJECT_ROOT),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            # 流式读取 stdout，推送到 SSE
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if line:
+                    ai_callback(datetime.now().strftime("%H:%M:%S"), line)
+
+            proc.wait()
+
+            if proc.returncode != 0:
+                stderr = proc.stderr.read() if proc.stderr else ""
+                raise SkillError(f"脚本退出码 {proc.returncode}: {stderr[:500]}")
+
+            if not output_json_path.exists():
+                raise SkillError(f"脚本执行完成但未生成输出: {output_json_path}")
+        else:
+            # === 空压场景：仍走 SkillCaller（暂保持现状） ===
+            caller = SkillCaller(project_root=PROJECT_ROOT)
             skill_name = "extract-air-compressor-data-llm"
             args = (str(input_path), str(output_json_path), original_filename)
 
-        # 3. 执行前发一条开始事件
-        start_ts = datetime.now().strftime("%H:%M:%S")
-        ai_callback(start_ts, f"🚀 开始调用 {skill_name} ...")
+            start_ts = datetime.now().strftime("%H:%M:%S")
+            ai_callback(start_ts, f"🚀 开始调用 {skill_name} ...")
+            caller.call_skill(skill_name, *args, callback=ai_callback)
 
-        result = caller.call_skill(skill_name, *args, callback=ai_callback)
+            if not output_json_path.exists():
+                raise SkillError(f"Skill 执行完成，但未生成输出: {output_json_path}")
 
-        # 4. 读取输出 JSON（同步版 extract-and-check-data 的输出格式）
-        if output_json_path.exists():
-            with open(output_json_path, "r", encoding="utf-8") as f:
-                content = json.load(f)
-            s = session_store.get(session_id)
-            if s is not None:
-                # 兼容两种 schema：带 extracted_data/quality_report 的拆分 或 整体
-                if "extracted_data" in content and "quality_report" in content:
-                    s["extracted_data"] = content["extracted_data"]
-                    s["quality_report"] = content["quality_report"]
-                elif "rawData" in content:  # 空压 LLM 版
-                    s["extracted_data"] = content.get("rawData")
-                    s["quality_report"] = content.get("quality_report") or content.get("rejectionCheck")
-                else:
-                    # 兜底：整体作为 extracted_data
-                    s["extracted_data"] = content
+        # 读取输出 JSON
+        with open(output_json_path, "r", encoding="utf-8") as f:
+            content = json.load(f)
+        s = session_store.get(session_id)
+        if s is not None:
+            # 兼容两种 schema：带 extracted_data/quality_report 的拆分 或 整体
+            if "extracted_data" in content and "quality_report" in content:
+                s["extracted_data"] = content["extracted_data"]
+                s["quality_report"] = content["quality_report"]
+            elif "rawData" in content:  # 空压 LLM 版
+                s["extracted_data"] = content.get("rawData")
+                s["quality_report"] = content.get("quality_report") or content.get("rejectionCheck")
+            else:
+                # 兜底：整体作为 extracted_data
+                s["extracted_data"] = content
 
-            end_ts = datetime.now().strftime("%H:%M:%S")
-            ai_callback(end_ts, f"✅ 提取完成，输出: {output_json_path.name}")
-            session_store.update_stage(session_id, "extract_check")
-        else:
-            raise SkillError(f"Skill 执行完成，但未生成输出: {output_json_path}")
+        end_ts = datetime.now().strftime("%H:%M:%S")
+        ai_callback(end_ts, f"✅ 提取完成，输出: {output_json_path.name}")
+        session_store.update_stage(session_id, "extract_check")
 
-        # 5. 发 done 事件
+        # 发 done 事件
         if (q := get_ai_queue(session_id)) is not None:
             loop.call_soon_threadsafe(
                 q.put_nowait,
