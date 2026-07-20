@@ -62,6 +62,7 @@ class SessionInfo(BaseModel):
     user_id: Optional[str]
     stage: str
     ai_logs_count: int
+    ai_logs: list = Field(default_factory=list, description="AI 日志明细（调试用）")
     created_at: Optional[str] = None
 
 
@@ -189,6 +190,7 @@ def get_session(session_id: str):
         user_id=s["user_id"],
         stage=s["stage"],
         ai_logs_count=len(s["ai_logs"]),
+        ai_logs=s["ai_logs"],
     )
 
 
@@ -196,7 +198,7 @@ def get_session(session_id: str):
 
 
 @router.post("/extract/{session_id}", tags=["extract"])
-def extract_data(session_id: str):
+async def extract_data(session_id: str):
     """触发数据提取 + AI 质量检查
 
     启动后台线程调用 SkillCaller（extract-and-check-data 或
@@ -222,11 +224,8 @@ def extract_data(session_id: str):
             detail=f"输入文件缺失: {input_path.name}",
         )
 
-    # 主线程事件循环（线程内 put_nowait 需要用）
-    try:
-        main_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        main_loop = asyncio.get_event_loop()
+    # async 端点能直接拿到主事件循环
+    main_loop = asyncio.get_running_loop()
 
     try:
         output_json_path = start_extract(
@@ -306,7 +305,7 @@ async def extract_stream(session_id: str):
 
 
 @router.post("/calculate/{session_id}", tags=["calculate"])
-def calculate(session_id: str, body: dict = None):
+async def calculate(session_id: str, body: dict = None):
     """触发回填 + Excel 公式计算
 
     body（可选）：
@@ -334,11 +333,7 @@ def calculate(session_id: str, body: dict = None):
         )
 
     filling_suggestions = (body or {}).get("filling_suggestions")
-
-    try:
-        main_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        main_loop = asyncio.get_event_loop()
+    main_loop = asyncio.get_running_loop()
 
     try:
         start_calculate(
