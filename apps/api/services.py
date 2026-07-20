@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Optional
 
 from core.skill_caller import SkillCaller, SkillError
+from core.data_filler import DataFiller
+from core.excel_calculator import ExcelCalculator
+from config import WeatherService
 
 from .deps import PROJECT_ROOT, session_store
 
@@ -15,11 +18,18 @@ from .deps import PROJECT_ROOT, session_store
 
 # session_id → 后台 thread 对象
 _extract_tasks: dict = {}
+# session_id → calculate 后台 thread
+_calculate_tasks: dict = {}
 
 
 def is_extract_running(session_id: str) -> bool:
     """查询提取任务是否仍在运行"""
     t = _extract_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+def is_calculate_running(session_id: str) -> bool:
+    t = _calculate_tasks.get(session_id)
     return t is not None and t.is_alive()
 
 
@@ -162,3 +172,129 @@ def start_extract(
     _extract_tasks[session_id] = t
 
     return output_json_path
+
+
+# ==================== 计算任务 ====================
+
+def _run_calculate_in_thread(
+    session_id: str,
+    module_type: str,
+    extracted_data: dict,
+    filling_suggestions: Optional[dict],
+) -> None:
+    """后台执行 DataFiller + ExcelCalculator"""
+    loop = session_store._main_loop
+
+    def emit(event_type: str, message: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        session_store.append_ai_log(session_id, ts, message)
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": event_type, "timestamp": ts, "message": message},
+            )
+
+    try:
+        s = session_store.get(session_id)
+        if s is None:
+            raise RuntimeError(f"session {session_id!r} 不存在")
+        session_dir: Path = s["session_dir"]
+
+        # 1. 写入提取数据文件
+        emit("log", "📄 写入提取数据...")
+        extracted_path = session_dir / "ac_extracted_data.json"
+        with open(extracted_path, "w", encoding="utf-8") as f:
+            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+
+        # 2. 写入填充建议（默认空建议）
+        suggestions_path = session_dir / "ac_filling_suggestions.json"
+        if filling_suggestions is None:
+            filling_suggestions = {
+                "can_proceed": True,
+                "fillable_suggestions": [],
+                "unfillable_fields": [],
+            }
+        with open(suggestions_path, "w", encoding="utf-8") as f:
+            json.dump(filling_suggestions, f, ensure_ascii=False, indent=2)
+
+        # 3. DataFiller 执行填充
+        emit("log", "🔄 执行数据填充...")
+        filler = DataFiller()
+        filled_path = filler.fill_data(
+            str(extracted_path),
+            str(suggestions_path),
+            str(session_dir / "ac_filled_data.json"),
+        )
+        emit("log", "✅ 填充完成")
+
+        # 4. ExcelCalculator 执行公式计算
+        emit("log", "⚙️ 运行 Excel 公式计算引擎...")
+        weather = WeatherService()
+        calculator = ExcelCalculator(weather_service=weather)
+        result_path = calculator.calculate(
+            filled_path,
+            str(session_dir / "ac_result_data.json"),
+        )
+        emit("log", "✅ 计算完成")
+
+        # 5. 格式化输出
+        with open(filled_path, "r", encoding="utf-8") as f:
+            filled_data = json.load(f)
+        with open(result_path, "r", encoding="utf-8") as f:
+            result = json.load(f)
+
+        formatted = calculator.format_export_results(filled_data, result)
+        formatted_path = session_dir / "ac_formatted_result.json"
+        with open(formatted_path, "w", encoding="utf-8") as f:
+            json.dump(formatted, f, ensure_ascii=False, indent=2)
+
+        # 6. 写回 session_store
+        s["filling_suggestions"] = filling_suggestions
+        s["result"] = result
+        s["formatted_result"] = formatted
+        session_store.update_stage(session_id, "result")
+
+        # 7. 完成事件
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "done", "timestamp": datetime.now().strftime("%H:%M:%S")},
+            )
+
+    except Exception as e:
+        err_ts = datetime.now().strftime("%H:%M:%S")
+        err_msg = f"❌ {type(e).__name__}: {e}"
+        session_store.append_ai_log(session_id, err_ts, err_msg)
+        if (q := get_ai_queue(session_id)) is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "timestamp": err_ts, "message": err_msg},
+            )
+        session_store.update_stage(session_id, "error")
+
+
+def start_calculate(
+    session_id: str,
+    module_type: str,
+    extracted_data: dict,
+    filling_suggestions: Optional[dict],
+    main_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """启动后台计算任务"""
+    if is_calculate_running(session_id):
+        raise RuntimeError(f"session {session_id!r} 已有计算任务在运行")
+
+    session_store._main_loop = main_loop
+    ensure_ai_queue(session_id)
+    session_store.update_stage(session_id, "calculating")
+
+    t = threading.Thread(
+        target=_run_calculate_in_thread,
+        args=(session_id, module_type, extracted_data, filling_suggestions),
+        daemon=True,
+        name=f"calculate-{session_id}",
+    )
+    t.start()
+    _calculate_tasks[session_id] = t

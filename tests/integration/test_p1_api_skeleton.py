@@ -157,6 +157,40 @@ def test_invalid_file_extension():
     print("✅ 无效文件扩展名正确返回 400")
 
 
+def test_calculate_and_result_failure():
+    """测试 calculate / result 失败分支"""
+    client = TestClient(app)
+
+    # 1. 不存在 session 的 calculate 返回 404
+    resp = client.post("/api/calculate/nonexistent-session-id")
+    assert resp.status_code == 404, f"应返回 404，实际: {resp.status_code}"
+    print("✅ calculate 不存在 session 返回 404")
+
+    # 2. 不存在 session 的 result 返回 404
+    resp = client.get("/api/result/nonexistent-session-id")
+    assert resp.status_code == 404, f"应返回 404，实际: {resp.status_code}"
+    print("✅ result 不存在 session 返回 404")
+
+    # 3. 新建一个 session，不调用 extract，直接 calculate → 400（缺少 extracted_data）
+    fake_xlsx = io.BytesIO(b"PK\x03\x04" + b"\x00" * 100)  # 伪造 xlsx header
+    resp = client.post(
+        "/api/upload",
+        files={"file": ("empty.xlsx", fake_xlsx, "application/octet-stream")},
+        params={"module_type": "air_conditioner"},
+    )
+    assert resp.status_code == 200, f"upload 失败: {resp.status_code}"
+    new_sid = resp.json()["session_id"]
+
+    resp = client.post(f"/api/calculate/{new_sid}")
+    assert resp.status_code == 400, f"缺少 extracted_data 应返回 400，实际: {resp.status_code}"
+    print("✅ calculate 缺少 extracted_data 返回 400")
+
+    # 4. 对应 session 调用 result 应返回 404（未计算）
+    resp = client.get(f"/api/result/{new_sid}")
+    assert resp.status_code == 404, f"result 未计算应返回 404，实际: {resp.status_code}"
+    print("✅ result 未计算返回 404")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  P1 集成测试")
@@ -180,6 +214,9 @@ if __name__ == "__main__":
     # 5. 异常测试
     test_invalid_module_type()
     test_invalid_file_extension()
+
+    # 6. calculate / result 失败分支
+    test_calculate_and_result_failure()
 
     print("=" * 60)
     print("  ✅ 全部测试通过")

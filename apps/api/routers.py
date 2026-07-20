@@ -27,7 +27,9 @@ from .services import (
     ensure_ai_queue,
     get_ai_queue,
     is_extract_running,
+    is_calculate_running,
     start_extract,
+    start_calculate,
 )
 
 
@@ -304,12 +306,96 @@ async def extract_stream(session_id: str):
 
 
 @router.post("/calculate/{session_id}", tags=["calculate"])
-def calculate(session_id: str):
-    """[骨架] 触发回填 + 公式计算"""
-    raise HTTPException(status_code=501, detail="calculate 端点尚未实现（P1 第三轮）")
+def calculate(session_id: str, body: dict = None):
+    """触发回填 + Excel 公式计算
+
+    body（可选）：
+      {"extracted_data": {...}, "filling_suggestions": {...}}
+
+    如果未传 extracted_data，将读取 session 中 extract 阶段缓存的数据。
+    filling_suggestions 未传则使用空建议（等价于“数据完整，无需填充”）。
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    if is_calculate_running(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"session {session_id!r} 的计算任务已在运行",
+        )
+
+    # 解析 extracted_data：优先用请求体，其次从 session_store 拿
+    extracted_data = (body or {}).get("extracted_data") or s.get("extracted_data")
+    if not extracted_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少 extracted_data：请先调用 /extract 或在请求体中提供",
+        )
+
+    filling_suggestions = (body or {}).get("filling_suggestions")
+
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = asyncio.get_event_loop()
+
+    try:
+        start_calculate(
+            session_id=session_id,
+            module_type=s["module_type"],
+            extracted_data=extracted_data,
+            filling_suggestions=filling_suggestions,
+            main_loop=main_loop,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"启动计算任务失败: {type(e).__name__}: {e}",
+        )
+
+    return {
+        "session_id": session_id,
+        "status": "calculating",
+        "module_type": s["module_type"],
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
 
 
 @router.get("/result/{session_id}", tags=["calculate"])
 def get_result(session_id: str):
-    """[骨架] 返回最终结果 JSON"""
-    raise HTTPException(status_code=501, detail="result 端点尚未实现（P1 第三轮）")
+    """返回最终结果 JSON
+
+    返回结构：
+    {
+      "session_id": "...",
+      "stage": "result",
+      "result": {...},             # ExcelCalculator 的原始结果
+      "formatted_result": {...},   # 格式化后的报告
+      "filling_suggestions": {...}
+    }
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    if is_calculate_running(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="计算任务仍在运行，请稍后再查询",
+        )
+
+    if s.get("result") is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="计算结果不存在：请先调用 /calculate",
+        )
+
+    return {
+        "session_id": session_id,
+        "stage": s.get("stage"),
+        "module_type": s.get("module_type"),
+        "result": s.get("result"),
+        "formatted_result": s.get("formatted_result"),
+        "filling_suggestions": s.get("filling_suggestions"),
+    }

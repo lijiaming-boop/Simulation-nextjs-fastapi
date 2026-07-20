@@ -72,11 +72,11 @@ conditioner_saving/
 
 ## 下一步（P1 待办摘要）
 
-- [ ] 在 `apps/api/` 建 FastAPI skeleton，Pydantic v2 + Uvicorn
-- [ ] 复用 packages/core（用相对 import 或 pyproject.toml workspace）
-- [ ] 端点 1：`POST /api/upload` — 保存文件、创建 session、返回 session_id
-- [ ] 端点 2：`POST /api/extract/{session_id}` — 触发 extract-and-check-data
-- [ ] 端点 3：`GET  /api/extract/{session_id}/stream` — SSE 推 AI 日志
+- [x] 在 `apps/api/` 建 FastAPI skeleton，Pydantic v2 + Uvicorn
+- [x] 复用 packages/core（用相对 import 或 pyproject.toml workspace）
+- [x] 端点 1：`POST /api/upload` — 保存文件、创建 session、返回 session_id
+- [x] 端点 2：`POST /api/extract/{session_id}` — 触发 extract-and-check-data
+- [x] 端点 3：`GET  /api/extract/{session_id}/stream` — SSE 推 AI 日志
 - [ ] 端点 4：`POST /api/calculate/{session_id}` — 触发 Excel 公式计算
 - [ ] 端点 5：`GET  /api/result/{session_id}` — 返回最终结果 JSON
-- [ ] 从 proxy Cookie 中读用户信息的鉴权 dependency
+- [x] 从 proxy Cookie 中读用户信息的鉴权 dependency
