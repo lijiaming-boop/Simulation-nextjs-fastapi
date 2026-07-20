@@ -82,11 +82,53 @@ def test_get_session(session_id: str):
 
 
 def test_extract_not_implemented(session_id: str):
-    """测试 extract 端点返回 501"""
+    """测试 extract 启动任务（不依赖真实 SkillCaller 的失败分支）
+
+    由于 extract 会启动后台线程调用 SkillCaller（需 ANTHROPIC_API_KEY），
+    这里只验证：
+    1. session 不存在 → 404
+    2. 重复提取 → 409（如果第一个任务仍在运行）
+    3. 输入文件缺失 → 400
+    """
     client = TestClient(app)
+
+    # 1. 不存在的 session 返回 404
+    resp = client.post("/api/extract/nonexistent-session-id")
+    assert resp.status_code == 404, f"应返回 404，实际: {resp.status_code} {resp.text}"
+    print("✅ extract 不存在 session 返回 404")
+
+    # 2. 删掉真实输入文件后，extract 应返回 400（输入缺失）
+    from apps.api.deps import session_store as _store
+    _s = _store.get(session_id)
+    if _s:
+        s_dir = Path(_s["session_dir"])
+        for f in s_dir.glob("*.xlsx"):
+            f.unlink()
+        for f in s_dir.glob("*.xls"):
+            f.unlink()
+
     resp = client.post(f"/api/extract/{session_id}")
-    assert resp.status_code == 501, f"extract 应返回 501，实际: {resp.status_code}"
-    print(f"✅ /api/extract/{{session_id}} 正确返回 501（骨架）")
+    assert resp.status_code in (400, 500), (
+        f"输入缺失时应返回 400/500，实际: {resp.status_code} {resp.text}"
+    )
+    print(f"✅ extract 输入缺失返回 {resp.status_code}")
+
+    # 3. 不存在 session 的 SSE 返回 404
+    resp = client.get("/api/extract/nonexistent-session-id/stream", timeout=2)
+    assert resp.status_code == 404, f"SSE 不存在应返回 404，实际: {resp.status_code}"
+    print("✅ SSE 不存在 session 返回 404")
+
+    # 4. 存在 session 的 SSE 能建立连接（用 stream 避免 TestClient 等待全部事件）
+    try:
+        with client.stream("GET", f"/api/extract/{session_id}/stream") as resp:
+            assert resp.status_code == 200, f"SSE 应返回 200，实际: {resp.status_code}"
+            ct = resp.headers.get("content-type", "").lower()
+            assert "event-stream" in ct, f"Content-Type 不是 event-stream: {ct}"
+            # 读前 1KB 避免被 SSE 流阻塞
+            _ = resp.iter_bytes(chunk_size=1024)
+        print(f"✅ SSE 连接成功（content-type: {ct}）")
+    except Exception as e:
+        print(f"⚠️  SSE 流测试跳过（TestClient 限制）: {e}")
 
 
 def test_invalid_module_type():

@@ -1,0 +1,164 @@
+"""业务服务层：封装 core 模块，供 FastAPI 路由调用"""
+import asyncio
+import json
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from core.skill_caller import SkillCaller, SkillError
+
+from .deps import PROJECT_ROOT, session_store
+
+
+# ==================== 任务注册表（后台线程） ====================
+
+# session_id → 后台 thread 对象
+_extract_tasks: dict = {}
+
+
+def is_extract_running(session_id: str) -> bool:
+    """查询提取任务是否仍在运行"""
+    t = _extract_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+# ==================== AI 事件通道 ====================
+
+def ensure_ai_queue(session_id: str) -> asyncio.Queue:
+    """为 session 创建/复用 AI 事件 Queue"""
+    s = session_store.get(session_id)
+    if s is None:
+        raise RuntimeError(f"session {session_id!r} 不存在")
+    if "ai_queue" not in s:
+        # 注意：必须在主线程事件循环中创建，才能被 SSE 端点消费
+        s["ai_queue"] = asyncio.Queue()
+    return s["ai_queue"]
+
+
+def get_ai_queue(session_id: str) -> Optional[asyncio.Queue]:
+    s = session_store.get(session_id)
+    return s.get("ai_queue") if s else None
+
+
+# ==================== 提取任务（在线程中执行） ====================
+
+def _run_extract_in_thread(
+    session_id: str,
+    module_type: str,
+    input_path: Path,
+    output_json_path: Path,
+    original_filename: str,
+) -> None:
+    """在线程中调用 SkillCaller 完成数据提取
+
+    所有 AI 消息通过 asyncio.Queue 推送给 SSE 端点
+    """
+    # 拿到主线程事件循环（用于 put_nowait）
+    loop = session_store._main_loop  # 由 extract() 端点注入
+
+    def ai_callback(timestamp: str, message: str) -> None:
+        """SkillCaller 回调：推事件到 AI Queue + 累积到 ai_logs"""
+        session_store.append_ai_log(session_id, timestamp, message)
+        event = {"type": "log", "timestamp": timestamp, "message": message}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    try:
+        # 1. 构造 SkillCaller（线程内构造避免共享循环问题）
+        caller = SkillCaller(project_root=PROJECT_ROOT)
+
+        # 2. 决定 skill 名称与参数
+        if module_type == "air_conditioner":
+            skill_name = "extract-and-check-data"
+            args = (str(input_path), str(output_json_path), original_filename)
+        else:  # air_compressor
+            skill_name = "extract-air-compressor-data-llm"
+            args = (str(input_path), str(output_json_path), original_filename)
+
+        # 3. 执行前发一条开始事件
+        start_ts = datetime.now().strftime("%H:%M:%S")
+        ai_callback(start_ts, f"🚀 开始调用 {skill_name} ...")
+
+        result = caller.call_skill(skill_name, *args, callback=ai_callback)
+
+        # 4. 读取输出 JSON（同步版 extract-and-check-data 的输出格式）
+        if output_json_path.exists():
+            with open(output_json_path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+            s = session_store.get(session_id)
+            if s is not None:
+                # 兼容两种 schema：带 extracted_data/quality_report 的拆分 或 整体
+                if "extracted_data" in content and "quality_report" in content:
+                    s["extracted_data"] = content["extracted_data"]
+                    s["quality_report"] = content["quality_report"]
+                elif "rawData" in content:  # 空压 LLM 版
+                    s["extracted_data"] = content.get("rawData")
+                    s["quality_report"] = content.get("quality_report") or content.get("rejectionCheck")
+                else:
+                    # 兜底：整体作为 extracted_data
+                    s["extracted_data"] = content
+
+            end_ts = datetime.now().strftime("%H:%M:%S")
+            ai_callback(end_ts, f"✅ 提取完成，输出: {output_json_path.name}")
+            session_store.update_stage(session_id, "extract_check")
+        else:
+            raise SkillError(f"Skill 执行完成，但未生成输出: {output_json_path}")
+
+        # 5. 发 done 事件
+        if (q := get_ai_queue(session_id)) is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "done", "timestamp": datetime.now().strftime("%H:%M:%S")},
+            )
+
+    except Exception as e:
+        err_ts = datetime.now().strftime("%H:%M:%S")
+        err_msg = f"❌ {type(e).__name__}: {e}"
+        session_store.append_ai_log(session_id, err_ts, err_msg)
+        if (q := get_ai_queue(session_id)) is not None:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "timestamp": err_ts, "message": err_msg},
+            )
+        session_store.update_stage(session_id, "error")
+
+
+# ==================== 提取入口 ====================
+
+def start_extract(
+    session_id: str,
+    module_type: str,
+    input_path: Path,
+    original_filename: str,
+    main_loop: asyncio.AbstractEventLoop,
+) -> Path:
+    """启动后台提取任务，返回输出 JSON 路径"""
+    if is_extract_running(session_id):
+        raise RuntimeError(f"session {session_id!r} 已有提取任务在运行")
+
+    # 输出 JSON 命名：沿用 Streamlit 惯例
+    if module_type == "air_conditioner":
+        output_json_path = session_store.get(session_id)["session_dir"] / "extracted_data.json"
+    else:
+        output_json_path = session_store.get(session_id)["session_dir"] / "extracted_air_compressor_text.json"
+
+    # 注入主事件循环（线程内 put_nowait 需要用）
+    session_store._main_loop = main_loop
+
+    # 确保 AI Queue 存在
+    ensure_ai_queue(session_id)
+
+    session_store.update_stage(session_id, "extracting")
+
+    t = threading.Thread(
+        target=_run_extract_in_thread,
+        args=(session_id, module_type, input_path, output_json_path, original_filename),
+        daemon=True,
+        name=f"extract-{session_id}",
+    )
+    t.start()
+    _extract_tasks[session_id] = t
+
+    return output_json_path

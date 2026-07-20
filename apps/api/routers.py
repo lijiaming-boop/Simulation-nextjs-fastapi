@@ -1,25 +1,34 @@
-"""API 路由：P1 骨架 + /upload 完整跑通
+"""API 路由：P1 骨架 + /upload + /extract 完整跑通
 
 完整端点（已实现）：
   GET  /api/health                   健康检查
   POST /api/upload                   上传调研表，创建 session
   GET  /api/session/{session_id}     查询 session 元数据
   GET  /api/sessions                 列出全部 session
-
-骨架端点（返回 501，下一轮实现）：
   POST /api/extract/{session_id}     触发数据提取 + AI 质量检查
   GET  /api/extract/{session_id}/stream   AI 日志 SSE 流
+
+骨架端点（返回 501，下一轮实现）：
   POST /api/calculate/{session_id}   触发公式计算
   GET  /api/result/{session_id}      返回最终结果 JSON
 """
+import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 
 from .deps import PROJECT_ROOT, get_current_user, session_store
+from .services import (
+    ensure_ai_queue,
+    get_ai_queue,
+    is_extract_running,
+    start_extract,
+)
 
 
 router = APIRouter()
@@ -186,18 +195,112 @@ def get_session(session_id: str):
 
 @router.post("/extract/{session_id}", tags=["extract"])
 def extract_data(session_id: str):
-    """[骨架] 触发数据提取 + AI 质量检查
+    """触发数据提取 + AI 质量检查
 
-    下一轮实现：调用 SkillCaller('extract-and-check-data') 或
-    ('extract-air-compressor-data-llm')，结果写回 session_store。
+    启动后台线程调用 SkillCaller（extract-and-check-data 或
+    extract-air-compressor-data-llm），通过 /extract/{id}/stream 接收 SSE 日志。
+    本端点立即返回任务启动状态，不阻塞等待提取完成。
     """
-    raise HTTPException(status_code=501, detail="extract 端点尚未实现（P1 第二轮）")
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    if is_extract_running(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"session {session_id!r} 的提取任务已在运行",
+        )
+
+    session_dir: Path = s["session_dir"]
+    original_filename = s["original_filename"]
+    input_path = session_dir / original_filename
+    if not input_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"输入文件缺失: {input_path.name}",
+        )
+
+    # 主线程事件循环（线程内 put_nowait 需要用）
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = asyncio.get_event_loop()
+
+    try:
+        output_json_path = start_extract(
+            session_id=session_id,
+            module_type=s["module_type"],
+            input_path=input_path,
+            original_filename=original_filename,
+            main_loop=main_loop,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"启动提取任务失败: {type(e).__name__}: {e}",
+        )
+
+    return {
+        "session_id": session_id,
+        "status": "extracting",
+        "module_type": s["module_type"],
+        "input_file": input_path.name,
+        "output_json": str(output_json_path),
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
 
 
 @router.get("/extract/{session_id}/stream", tags=["extract"])
-def extract_stream(session_id: str):
-    """[骨架] SSE 推送 AI 流式日志"""
-    raise HTTPException(status_code=501, detail="SSE 流端点尚未实现（P1 第二轮）")
+async def extract_stream(session_id: str):
+    """SSE 推送 AI 流式日志
+
+    事件格式：
+      data: {"type": "log",   "timestamp": "HH:MM:SS", "message": "..."}
+      data: {"type": "done",  "timestamp": "HH:MM:SS"}
+      data: {"type": "error", "timestamp": "HH:MM:SS", "message": "..."}
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    queue = ensure_ai_queue(session_id)
+
+    async def event_generator():
+        # 先回放历史日志（供晚连接的客户端看到进度）
+        for log in list(s.get("ai_logs", [])):
+            yield {
+                "event": "message",
+                "data": json.dumps({"type": "log", **log}, ensure_ascii=False),
+            }
+
+        # 如果任务已经结束且队列空了，直接发 done
+        if not is_extract_running(session_id):
+            yield {
+                "event": "message",
+                "data": json.dumps(
+                    {"type": "done", "timestamp": datetime.now().strftime("%H:%M:%S")},
+                    ensure_ascii=False,
+                ),
+            }
+            return
+
+        # 实时推送新事件直到 done/error
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # 心跳保活
+                yield {"event": "ping", "data": ""}
+                continue
+
+            yield {
+                "event": "message",
+                "data": json.dumps(event, ensure_ascii=False),
+            }
+            if event.get("type") in ("done", "error"):
+                return
+
+    return EventSourceResponse(event_generator())
 
 
 @router.post("/calculate/{session_id}", tags=["calculate"])
