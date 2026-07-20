@@ -96,6 +96,50 @@ class SkillCaller:
             self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback)
         )
 
+    def direct_call(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        max_tokens: int = 4096,
+        stream: bool = False,
+        callback: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """绕过 claude-agent-sdk，直连 Messages API
+
+        适用场景：
+        - Agent SDK 认证失败（401 / Invalid API key）时的降级路径
+        - 需要纯对话能力（不需要读 SKILL.md 或执行脚本）
+
+        Args:
+            prompt: 用户提示词
+            system: 系统提示词（可选）
+            max_tokens: 最大生成 token 数
+            stream: True 则走流式接口（自动降级为同步）
+            callback: 流式调用时每个 chunk 回调 callback(chunk)
+
+        Returns:
+            LLM 响应文本
+        """
+        # 延迟 import，避免缺 httpx 时整个模块无法加载
+        from core.llm_client import DirectLLMClient
+
+        client = DirectLLMClient(api_key=self.api_key)
+        if stream and callback:
+            return client.call_with_callback(
+                prompt, callback=callback, system=system, max_tokens=max_tokens
+            )
+        if stream:
+            chunks: list[str] = []
+            for chunk in client.stream_message(
+                prompt, system=system, max_tokens=max_tokens
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+        return client.create_message(
+            prompt, system=system, max_tokens=max_tokens
+        )
+
     async def _call_skill_async(
         self,
         skill_name: str,

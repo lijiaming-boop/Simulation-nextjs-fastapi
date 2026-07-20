@@ -206,6 +206,42 @@ def get_extracted(session_id: str):
     return ed
 
 
+# ==================== /llm（直连 Messages API） ====================
+
+
+class ChatRequest(BaseModel):
+    prompt: str
+    system: Optional[str] = None
+    max_tokens: int = Field(default=1024, ge=1, le=8192)
+
+
+@router.post("/llm/chat", tags=["llm"])
+def llm_chat(body: ChatRequest):
+    """直连 Anthropic Messages API（绕过 claude-agent-sdk）
+
+    用于验证 LLM 代理可用，或在需要纯对话能力时使用。
+    """
+    from core.skill_caller import SkillCaller, SkillError
+
+    try:
+        caller = SkillCaller(project_root=PROJECT_ROOT)
+    except SkillError as e:
+        raise HTTPException(status_code=500, detail=f"SkillCaller 初始化失败: {e}")
+
+    try:
+        text = caller.direct_call(
+            body.prompt, system=body.system, max_tokens=body.max_tokens
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM 调用失败: {type(e).__name__}: {e}")
+
+    return {
+        "model": caller.api_key and "(configured)",
+        "prompt_len": len(body.prompt),
+        "response": text,
+    }
+
+
 # ==================== 骨架端点（501） ====================
 
 
