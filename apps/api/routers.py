@@ -194,6 +194,18 @@ def get_session(session_id: str):
     )
 
 
+@router.get("/session/{session_id}/extracted", tags=["session"])
+def get_extracted(session_id: str):
+    """返回提取后的结构化数据（extract 阶段产出）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    ed = s.get("extracted_data")
+    if ed is None:
+        raise HTTPException(status_code=404, detail="extracted_data 尚未生成，请先调用 /extract")
+    return ed
+
+
 # ==================== 骨架端点（501） ====================
 
 
