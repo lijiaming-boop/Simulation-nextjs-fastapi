@@ -1,4 +1,6 @@
 """冷站全年8760h仿真引擎"""
+# # 自定义端口启动
+# streamlit run app.py --server.port 8501 --server.address 0.0.0.0
 import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -51,6 +53,29 @@ class PlantConfig:
     monthly_chw_supply_temp: List[float] = field(default_factory=lambda: [7.0]*12)
     base_load_ratio: float = 0.70
 
+    # todo 优化点 新增: 月度负载率修正系数（典型办公建筑）
+    monthly_load_factor: List[float] = field(
+        default_factory=lambda:
+    [
+        0.40,  # 1月  冬季低负荷
+        0.40,  # 2月  冬季低负荷
+        0.50,  # 3月  过渡季
+        0.60,  # 4月  过渡季
+        0.75,  # 5月  春末夏初
+        0.90,  # 6月  夏季高峰前
+        1.00,  # 7月  夏季峰值
+        1.00,  # 8月  夏季峰值
+        0.85,  # 9月  夏末秋初
+        0.65,  # 10月 秋季过渡
+        0.50,  # 11月 秋季转冬
+        0.40   # 12月 冬季低负荷
+    ])
+
+    # 工作日/休息日逐时负载曲线（24h），替代硬编码 HOURLY_LOAD_FACTOR
+    workday_hourly_curve: List[float] = field(default_factory=lambda: list(HOURLY_LOAD_FACTOR))
+    offday_hourly_curve: List[float] = field(default_factory=lambda: list(HOURLY_LOAD_FACTOR))
+    # 365 天日历：0=工作日, 1=休息日
+    day_type: List[int] = field(default_factory=lambda: [0] * 365)
 
 HOURLY_LOAD_FACTOR = np.array([
     0.60, 0.58, 0.55, 0.55, 0.58, 0.65,
@@ -80,9 +105,14 @@ def estimate_screw_cop(rated_cop: float, plr: float) -> float:
 
 
 class PlantSimulator:
-    def __init__(self, config: PlantConfig, monthly_ambient: List[float]):
+    def __init__(self, config: PlantConfig, monthly_ambient: List[float],
+                 monthly_tower_outlet: Optional[List[float]] = None):
         self.config = config
         self.monthly_ambient = monthly_ambient
+        # 以工作日曲线均值为归一化基准（休息日曲线共用此基准，保证休息日负载整体低于工作日）
+        ref = float(np.mean(config.workday_hourly_curve))
+        self._hourly_ref_mean = ref if ref > 0.001 else 1.0  # 防除零：全零曲线回退到 1.0
+
 
     def _get_dispatch(self, month: int) -> List[Tuple[ChillerGroup, int]]:
         n_total = self.config.monthly_chiller_count[month - 1]
@@ -142,19 +172,23 @@ class PlantSimulator:
                 ratio = freq_hz / 50.0
             else:
                 ratio = 1.0
-            power += group.fan_power_kw * group.fans_per_tower * n * ratio ** 3
+            power += group.fan_power_kw * group.fans_per_tower * n * ratio ** 3# 20/50=0.2
             remaining -= n
         return power
 
     def simulate_baseline(self) -> pd.DataFrame:
         hours, day_of_year, hour_of_day, months, ambient = self._generate_profile()
+
         records = []
+
         for h in range(8760):
             m = int(months[h])
             hod = int(hour_of_day[h])
             amb = float(ambient[h])
 
-            plr = self._calc_plr(hod)
+            # 传入 day_of_year 以根据工作日历选择曲线
+            plr = self._calc_plr(hod, m, int(day_of_year[h]))
+
             dispatch = self._get_dispatch(m)
             n_chiller = sum(n for _, n in dispatch)
 
@@ -193,7 +227,9 @@ class PlantSimulator:
             hod = int(hour_of_day[h])
             amb = float(ambient[h])
 
-            plr = self._calc_plr(hod)
+            # 传入 day_of_year 以根据工作日历选择曲线
+            plr = self._calc_plr(hod, m, int(day_of_year[h]))
+
             dispatch = self._get_dispatch(m)
             n_chiller = sum(n for _, n in dispatch)
 
@@ -209,9 +245,11 @@ class PlantSimulator:
             if cw_has_vf:
                 cw_pump_power = self._calc_pump_power_optimized(
                     self.config.cw_pumps, n_chiller, heat_rejection, chw_target_dt)
+
             else:
                 cw_pump_power = self._calc_pump_power(
                     self.config.cw_pumps, n_chiller, 50.0)
+
 
             # 冷却塔: 变频塔优化
             tower_freq = self._calc_tower_optimal_freq(amb, m)
@@ -272,10 +310,38 @@ class PlantSimulator:
         else:
             return 50.0
 
-    def _calc_plr(self, hour_of_day: int) -> float:
-        hourly_factor = HOURLY_LOAD_FACTOR[hour_of_day]
-        plr = self.config.base_load_ratio * hourly_factor / HOURLY_LOAD_FACTOR.mean()
+    # todo 优化点 新增的参数被考虑进核心算法
+    # def _calc_plr(self, hour_of_day: int) -> float:
+    #     hourly_factor = HOURLY_LOAD_FACTOR[hour_of_day]
+    #     plr = self.config.base_load_ratio * hourly_factor / HOURLY_LOAD_FACTOR.mean()
+    #     return float(np.clip(plr, 0.20, 0.95))
+    def _calc_plr(self, hour_of_day: int, month: int, day_of_year: int = 0) -> float:
+        """计算负载率（考虑季节差异 + 工作日/休息日双曲线）
+
+        Args:
+            hour_of_day: 小时索引 (0-23)
+            month: 月份 (1-12)
+            day_of_year: 年积日 (0-364)，用于查 day_type
+
+        Returns:
+            负载率 (0.2-0.95)
+        """
+        # 根据日历选择曲线：0=工作日, 1=休息日
+        is_rest = bool(self.config.day_type[min(day_of_year, 364)])
+        curve = self.config.offday_hourly_curve if is_rest else self.config.workday_hourly_curve
+        hourly_factor = curve[hour_of_day]
+        monthly_factor = self.config.monthly_load_factor[month - 1]
+
+        # 综合计算：基础负载率 × 月度系数 × 小时系数 / 工作日均值（统一基准）
+        plr = (
+                self.config.base_load_ratio
+                * monthly_factor
+                * hourly_factor
+                / self._hourly_ref_mean
+        )
+
         return float(np.clip(plr, 0.20, 0.95))
+
 
     def _generate_profile(self):
         hours = np.arange(8760)
@@ -332,3 +398,68 @@ class PlantSimulator:
                 df_opt.loc[winter_mask, "total_power_kw"].sum()
             ) if df_opt.loc[winter_mask, "total_power_kw"].sum() > 0 else 0,
         }
+
+
+def infer_monthly_load_factors(ac_data: dict) -> List[float]:
+    """从调研表月度能耗数据反推负载率系数
+
+    Args:
+        ac_data: 空调模块提取的数据，包含 monthly_data
+
+    Returns:
+        12个月的负载率系数列表（归一化到0-1）
+
+    Example:
+        >>> ac_data = {
+        ...     "monthly_data": {
+        ...         "0": {"total_energy": 50},  # 1月
+        ...         "1": {"total_energy": 55},  # 2月
+        ...         ...
+        ...         "6": {"total_energy": 120}, # 7月（峰值）
+        ...     }
+        ... }
+        >>> factors = infer_monthly_load_factors(ac_data)
+        >>> print(factors)  # [0.42, 0.46, ..., 1.0, ...]
+    """
+    if not ac_data or "monthly_data" not in ac_data:
+        # 返回默认值
+        return [
+            0.40, 0.40, 0.50, 0.60, 0.75, 0.90,
+            1.00, 1.00, 0.85, 0.65, 0.50, 0.40
+        ]
+
+    monthly_data = ac_data["monthly_data"]
+    energies = []
+
+    for m in range(12):
+        m_key = str(m)
+        if m_key in monthly_data:
+            energy = monthly_data[m_key].get("total_energy")
+            if energy is not None and energy > 0:
+                energies.append(float(energy))
+            else:
+                energies.append(None)
+        else:
+            energies.append(None)
+
+    # 找出最大能耗（作为基准）
+    valid_energies = [e for e in energies if e is not None]
+    if not valid_energies:
+        # 无有效数据，返回默认值
+        return [
+            0.40, 0.40, 0.50, 0.60, 0.75, 0.90,
+            1.00, 1.00, 0.85, 0.65, 0.50, 0.40
+        ]
+
+    max_energy = max(valid_energies)
+
+    # 计算归一化系数
+    factors = []
+    for energy in energies:
+        if energy is not None:
+            factors.append(energy / max_energy)
+        else:
+            # 缺失数据用相邻月份插值或默认值
+            factors.append(0.5)
+
+    return factors

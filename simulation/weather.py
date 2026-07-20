@@ -21,10 +21,8 @@ REGION_CITIES = {
     "华北": "北京", "西南": "成都", "西北": "西安", "东北": "沈阳",
 }
 
-
 def get_regions() -> List[str]:
     return list(REGION_DRY_BULB.keys())
-
 
 def get_monthly_dry_bulb(region: str) -> List[float]:
     if region in REGION_DRY_BULB:
@@ -33,7 +31,6 @@ def get_monthly_dry_bulb(region: str) -> List[float]:
         if key in region or region in key:
             return REGION_DRY_BULB[key]
     return REGION_DRY_BULB["华东"]
-
 
 def get_monthly_wet_bulb(region: str) -> List[float]:
     try:

@@ -120,7 +120,16 @@ def build_plant_config_from_extracted_data(ac_data: dict, user_inputs: dict) -> 
     # 用户覆盖
     if "monthly_chiller_count" in user_inputs:
         config.monthly_chiller_count = user_inputs["monthly_chiller_count"]
+    if "monthly_load_factors" in user_inputs and len(user_inputs["monthly_load_factors"]) == 12:
+        config.monthly_load_factor = user_inputs["monthly_load_factors"]
     if "base_load_ratio" in user_inputs:
         config.base_load_ratio = user_inputs["base_load_ratio"]
+    # 工作日/休息日双曲线 + 日历（来自 AI 推荐模块）
+    if "workday_hourly_curve" in user_inputs and len(user_inputs["workday_hourly_curve"]) == 24:
+        config.workday_hourly_curve = user_inputs["workday_hourly_curve"]
+    if "offday_hourly_curve" in user_inputs and len(user_inputs["offday_hourly_curve"]) == 24:
+        config.offday_hourly_curve = user_inputs["offday_hourly_curve"]
+    if "day_type" in user_inputs and len(user_inputs["day_type"]) == 365:
+        config.day_type = user_inputs["day_type"]
 
     return config

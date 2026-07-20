@@ -3,6 +3,9 @@ tmp/
 *.pyc
 __pycache__/
 
+# Environment secrets
+.env
+
 # Streamlit secrets
 .streamlit/secrets.toml
 
