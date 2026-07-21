@@ -1072,7 +1072,8 @@ def _display_operating_table(operating: dict):
     max_chiller_capacity = max([ch.get('capacity_kw', 0) for ch in chillers]) if chillers else 0
 
     # 优先从 monthly_table 获取数据，其次从顶层数组
-    monthly_table = operating.get('monthly_table', [])
+    monthly_table = operating.get('monthly_table',
+                       operating.get('operating_conditions', {}).get('monthly_table', []))
 
     if monthly_table:
         # AI 输出了详细的 monthly_table 结构
@@ -1119,21 +1120,39 @@ def _display_operating_table(operating: dict):
 
     else:
         # 简单数组结构
-        months = operating.get('months', list(range(1, 13)))
-        combinations = operating.get('chiller_combination', [''] * 12)
-        load_ratios = operating.get('load_ratio', [0] * 12)
-        cooling_demands = operating.get('cooling_demand_kwh', operating.get('cooling_demand_kw', [0] * 12))
-        notes = operating.get('notes', [''] * 12)
+        # 处理可能的嵌套结构：operating_conditions wrapper
+        inner = operating.get('operating_conditions', operating)
+        months = inner.get('months', operating.get('months', list(range(1, 13))))
+        combinations = inner.get('chiller_combination', operating.get('chiller_combination', [''] * 12))
+        load_ratios_raw = inner.get('load_ratio', operating.get('load_ratio', [0] * 12))
+        cooling_demands = inner.get('cooling_demand_kwh',
+                          inner.get('cooling_demand_kw',
+                          operating.get('cooling_demand_kwh', operating.get('cooling_demand_kw', [0] * 12))))
+        notes = inner.get('notes', operating.get('notes', [''] * 12))
+
+        # 安全提取 load_ratios（可能包含 dict 而非 float）
+        load_ratios = []
+        for r in load_ratios_raw:
+            if isinstance(r, dict):
+                load_ratios.append(float(r.get('load_ratio', r.get('value', 0)) or 0))
+            elif isinstance(r, (int, float)):
+                load_ratios.append(float(r))
+            else:
+                try:
+                    load_ratios.append(float(r))
+                except (ValueError, TypeError):
+                    load_ratios.append(0.0)
 
         # 自动填充冷却需求
         for i in range(len(months)):
             d = cooling_demands[i] if i < len(cooling_demands) else 0
-            if not d and i < len(load_ratios) and load_ratios[i]:
+            lr = load_ratios[i] if i < len(load_ratios) else 0
+            if not d and lr > 0:
                 on_units = 1  # 默认1台
-                cooling_demands[i] = on_units * max_chiller_capacity * load_ratios[i]
+                cooling_demands[i] = on_units * max_chiller_capacity * lr
 
         df = pd.DataFrame({
-            '月份': [f"{m}月" for m in months],
+            '月份': [f"{m}月" for m in months[:12]],
             '冷机运行组合': combinations[:len(months)],
             '负载率': [f"{r*100:.0f}%" if r else "-" for r in load_ratios[:len(months)]],
             '需求冷量(kW)': [f"{d:.0f}" if d else "-" for d in cooling_demands[:len(months)]],
