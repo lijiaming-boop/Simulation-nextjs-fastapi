@@ -1015,26 +1015,105 @@ def _render_operating_new_station():
 
 
 def _display_operating_table(operating: dict):
-    """展示月度运行组合表格"""
+    """展示月度运行组合表格（支持工作日/休息日区分）"""
     import pandas as pd
 
     st.success("✅ 月度运行组合已生成")
 
-    months = operating.get('months', list(range(1, 13)))
-    combinations = operating.get('chiller_combination', [''] * 12)
-    load_ratios = operating.get('load_ratio', [0] * 12)
-    cooling_demands = operating.get('cooling_demand_kwh', [0] * 12)
-    notes = operating.get('notes', [''] * 12)
+    # 数据后处理：填充 cooling_demand_kw
+    topology = st.session_state.sim_topology or {}
+    chillers = topology.get('chillers', [])
+    # 取最大单机制冷量用于估算需求冷量
+    max_chiller_capacity = max([ch.get('capacity_kw', 0) for ch in chillers]) if chillers else 0
 
-    df = pd.DataFrame({
-        '月份': [f"{m}月" for m in months],
-        '冷机运行组合': combinations,
-        '负载率': [f"{r*100:.0f}%" if r else "-" for r in load_ratios],
-        '需求冷量(万kWh)': [f"{d/10000:.1f}" if d else "-" for d in cooling_demands],
-        '备注': notes
-    })
+    # 优先从 monthly_table 获取数据，其次从顶层数组
+    monthly_table = operating.get('monthly_table', [])
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    if monthly_table:
+        # AI 输出了详细的 monthly_table 结构
+        rows = []
+        for row in monthly_table:
+            month = row.get('month', 0)
+            weekday_op = row.get('weekday_operation', {})
+            weekend_op = row.get('weekend_operation', {})
+
+            wd_units = weekday_op.get('on_units', 0)
+            wd_lr = weekday_op.get('load_ratio', 0)
+            we_units = weekend_op.get('on_units', 0)
+            we_lr = weekend_op.get('load_ratio', 0)
+
+            # 计算需求冷量（如果为空则自动估算）
+            demand = row.get('cooling_demand_kw')
+            if demand is None or demand == 0:
+                # 加权平均：工作日×22天 + 休息日×8天
+                wd_demand = wd_units * max_chiller_capacity * wd_lr if wd_units else 0
+                we_demand = we_units * max_chiller_capacity * we_lr if we_units else 0
+                demand = (wd_demand * 22 + we_demand * 8) / 30 if (wd_units or we_units) else 0
+
+            rows.append({
+                '月份': f"{month}月",
+                '季节': row.get('season', ''),
+                '工作日': weekday_op.get('description', f"{wd_units}台@{wd_lr*100:.0f}%"),
+                '休息日': weekend_op.get('description', f"{we_units}台@{we_lr*100:.0f}%"),
+                '负载率': f"{row.get('representative_load_ratio', 0)*100:.0f}%" if row.get('representative_load_ratio', 0) else "-",
+                '估算冷量(kW)': f"{demand:.0f}" if demand else "-",
+                '备注': row.get('note', '')
+            })
+
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # 保存计算后的需求冷量到 operating 数据中
+        for i, row in enumerate(monthly_table):
+            if row.get('cooling_demand_kw') is None or row.get('cooling_demand_kw') == 0:
+                wd_op = row.get('weekday_operation', {})
+                we_op = row.get('weekend_operation', {})
+                wd_d = wd_op.get('on_units', 0) * max_chiller_capacity * wd_op.get('load_ratio', 0)
+                we_d = we_op.get('on_units', 0) * max_chiller_capacity * we_op.get('load_ratio', 0)
+                monthly_table[i]['cooling_demand_kw'] = (wd_d * 22 + we_d * 8) / 30 if (wd_d or we_d) else 0
+
+    else:
+        # 简单数组结构
+        months = operating.get('months', list(range(1, 13)))
+        combinations = operating.get('chiller_combination', [''] * 12)
+        load_ratios = operating.get('load_ratio', [0] * 12)
+        cooling_demands = operating.get('cooling_demand_kwh', operating.get('cooling_demand_kw', [0] * 12))
+        notes = operating.get('notes', [''] * 12)
+
+        # 自动填充冷却需求
+        for i in range(len(months)):
+            d = cooling_demands[i] if i < len(cooling_demands) else 0
+            if not d and i < len(load_ratios) and load_ratios[i]:
+                on_units = 1  # 默认1台
+                cooling_demands[i] = on_units * max_chiller_capacity * load_ratios[i]
+
+        df = pd.DataFrame({
+            '月份': [f"{m}月" for m in months],
+            '冷机运行组合': combinations[:len(months)],
+            '负载率': [f"{r*100:.0f}%" if r else "-" for r in load_ratios[:len(months)]],
+            '需求冷量(kW)': [f"{d:.0f}" if d else "-" for d in cooling_demands[:len(months)]],
+            '备注': notes[:len(months)]
+        })
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # 编辑功能
+    with st.expander("✏️ 编辑月度数据"):
+        st.caption("修改后点击保存生效")
+        edit_df = pd.DataFrame(monthly_table) if monthly_table else pd.DataFrame()
+        if not edit_df.empty:
+            edited = st.data_editor(
+                edit_df[['month', 'season', 'chiller_combination', 'representative_load_ratio', 'cooling_demand_kw', 'note']],
+                num_rows="fixed",
+                key="operating_editor"
+            )
+            if st.button("💾 保存修改"):
+                for i, row_data in edited.iterrows():
+                    monthly_table[i]['representative_load_ratio'] = row_data.get('representative_load_ratio', 0)
+                    monthly_table[i]['cooling_demand_kw'] = row_data.get('cooling_demand_kw', 0)
+                    monthly_table[i]['note'] = row_data.get('note', '')
+                operating['monthly_table'] = monthly_table
+                st.session_state.sim_operating_conditions = operating
+                st.rerun()
 
 
 # ==================== Step 4: 仿真执行 ====================
