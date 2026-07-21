@@ -34,6 +34,8 @@ from .recommend import (
     ai_stage1_from_text,
     ai_stage2_recommend,
     ai_parse_calendar,
+    ai_parse_operation_rules,
+    derive_monthly_chiller_count_from_combination,
 )
 from .ui import (
     render_ai_monthly_recommendation,
@@ -49,6 +51,7 @@ __all__ = [
     "parse_holiday_intent", "apply_holiday_overrides", "parse_calendar_smart",
     # recommend
     "ai_stage1_from_text", "ai_stage2_recommend", "ai_parse_calendar",
+    "ai_parse_operation_rules", "derive_monthly_chiller_count_from_combination",
     # ui
     "render_ai_monthly_recommendation", "get_recommended_params",
 ]

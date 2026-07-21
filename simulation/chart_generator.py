@@ -84,3 +84,75 @@ def generate_cop_heatmap(df_opt: pd.DataFrame) -> go.Figure:
         height=500,
     )
     return fig
+
+
+def generate_cop_curve_chart(
+    cop_curve: dict,
+    rated_cop: float = None,
+    group_label: str = "主机组",
+) -> go.Figure:
+    """渲染单组主机的 COP 性能曲线图。
+
+    Args:
+        cop_curve: {负载率(0-1): COP} 字典，例如 {0.3: 4.8, 0.5: 5.6, 0.7: 6.3, 1.0: 6.0}
+        rated_cop: 额定 COP，用于绘制参考线（可选）
+        group_label: 主机组标签，用于图标题
+    """
+    if not cop_curve:
+        fig = go.Figure()
+        fig.update_layout(
+            title=f"{group_label} COP 性能曲线（无数据）",
+            xaxis_title="负载率", yaxis_title="COP",
+            height=350,
+            annotations=[dict(
+                text="请在下方表格中填写 COP 性能数据",
+                showarrow=False, xref="paper", yref="paper",
+                x=0.5, y=0.5, font=dict(size=14, color="gray"),
+            )],
+        )
+        return fig
+
+    # 按负载率排序
+    sorted_items = sorted(cop_curve.items(), key=lambda x: x[0])
+    loads = [item[0] for item in sorted_items]
+    cops = [item[1] for item in sorted_items]
+    load_pct = [round(l * 100, 1) for l in loads]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=load_pct, y=cops, mode="lines+markers",
+        line=dict(width=2.5, color="#4A90D9"),
+        marker=dict(size=10, color="#4A90D9", line=dict(width=2, color="white")),
+        hovertemplate="负载率: %{x:.1f}%<br>COP: %{y:.2f}<extra></extra>",
+        name="COP 曲线",
+    ))
+
+    # 额定 COP 参考线
+    if rated_cop and rated_cop > 0:
+        fig.add_hline(
+            y=rated_cop, line_dash="dash", line_color="red", line_width=1.5,
+            annotation_text=f"额定 COP = {rated_cop:.2f}",
+            annotation_position="top left",
+        )
+
+    # 最高 COP 标注
+    max_cop = max(cops)
+    max_idx = cops.index(max_cop)
+    fig.add_annotation(
+        x=load_pct[max_idx], y=max_cop,
+        text=f"峰值 {max_cop:.2f}",
+        showarrow=True, arrowhead=2, arrowsize=1,
+        arrowcolor="#666", ax=20, ay=-30,
+        font=dict(size=11, color="#333"),
+    )
+
+    fig.update_layout(
+        title=f"{group_label} COP 性能曲线",
+        xaxis=dict(title="负载率 (%)", dtick=10, range=[0, 110], ticksuffix="%"),
+        yaxis=dict(title="COP", range=[0, max(cops) * 1.15]),
+        height=350,
+        margin=dict(l=50, r=30, t=50, b=40),
+        hovermode="x unified",
+        showlegend=False,
+    )
+    return fig

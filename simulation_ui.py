@@ -7,53 +7,337 @@ import numpy as np
 from pathlib import Path
 
 from simulation.simulator import PlantSimulator, PlantConfig, ChillerGroup, PumpGroup, TowerGroup, HOURLY_LOAD_FACTOR
-from simulation.chart_generator import generate_monthly_cop_chart, generate_energy_structure_chart, generate_cop_heatmap
+from simulation.chart_generator import (
+    generate_monthly_cop_chart,
+    generate_energy_structure_chart,
+    generate_cop_heatmap,
+    generate_cop_curve_chart,
+)
 from simulation.report_generator import generate_report_markdown
-from simulation.weather import get_regions, get_monthly_dry_bulb
+from simulation.weather import get_monthly_dry_bulb
 from simulation.input_parser import parse_cop_curve_from_text, parse_cop_curve_from_table, build_plant_config_from_extracted_data
+from simulation.survey_excel_parser import parse_survey_excel_from_bytes
 from simulation.ai_service import ai_generate_simulation_report
-from simulation.ai智能识别设备铭牌 import extract_plant_topology, extract_cop_curve, extract_multi_chiller_topology
-from simulation.ai智能推荐月度参数模块.recommend import ai_stage1_from_text, ai_stage2_recommend
+from simulation.ai智能推荐月度参数模块.recommend import (
+    ai_stage1_from_text,
+    ai_stage2_recommend,
+    ai_parse_operation_rules,
+    derive_monthly_chiller_count_from_combination,
+)
 from simulation.ai智能推荐月度参数模块.presets import PRESET_SCHEDULES, SCHEDULE_LABELS
 from simulation.ai智能推荐月度参数模块.calendar_parser import parse_calendar_smart, DEFAULT_DAY_TYPE
 from simulation.ai智能推荐月度参数模块 import preset_manager
 
 
-def _apply_single_chiller_result(group_index: int, chiller_data: dict):
-    """将单组主机 AI 识别结果填入对应表单字段。
+def _f(value, default: float) -> float:
+    """安全转 float：当 value 为 None 时返回 default，避免 float(None) 报错。
 
-    不修改整个 ai_extracted_topology，只通过直接操作 st.session_state
-    来覆盖当前组的 widget 值。之所以不走 ai_extracted_topology 是因为
-    顶层 AI 的结果可能包含多组主机，而组内 AI 只负责当前这一组。
+    适用于 st.number_input 中读取可能为 None 的预填值场景。
     """
-    # 递增版本号以强制所有 widget 重新渲染
-    st.session_state.sim_widget_version += 1
-    wv = st.session_state.sim_widget_version
-    _write_chiller_to_session_state(group_index, chiller_data, wv)
+    if value is None:
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
-def _write_chiller_to_session_state(group_index: int, chiller_data: dict, wv: int):
-    """将单组主机参数写入 session_state（不递增版本号）。
+# ── 调研表 Excel 上传辅助 ────────────────────────────────────
 
-    用于批量填入场景，调用方负责统一管理版本号。
+def _merge_pump_groups(pump_groups: list, default_name: str) -> dict:
+    """把调研表解析出的多组泵合并为单组用于 UI 预填。
+
+    合并规则：
+    - 台数累加
+    - 流量/功率/扬程取首组有效值
+    - 变频：任一组变频则为变频
+    - 品牌：取首个非空
     """
-    i = group_index
-    st.session_state[f"chi_name_{i}_v{wv}"] = chiller_data.get(
-        "name", f"主机组{i+1}"
+    if not pump_groups:
+        return {}
+    total_qty = sum(int(p.get("qty") or 0) for p in pump_groups) or 1
+    first = pump_groups[0]
+    any_vf = any(p.get("variable_freq") for p in pump_groups)
+    brand = next((p.get("brand") for p in pump_groups if p.get("brand")), "")
+    return {
+        "name": first.get("name") or default_name,
+        "qty": total_qty,
+        "power_kw": float(first.get("power_kw") or 0.0),
+        "flow_m3h": float(first.get("flow_m3h") or 0.0),
+        "variable_freq": bool(any_vf),
+        "rated_head_m": first.get("rated_head_m"),
+        "brand": brand,
+    }
+
+
+def _merge_tower_groups(tower_groups: list) -> dict:
+    """把调研表解析出的多组冷却塔合并为单组用于 UI 预填。"""
+    if not tower_groups:
+        return {}
+    total_qty = sum(int(t.get("qty") or 0) for t in tower_groups) or 1
+    first = tower_groups[0]
+    any_vf = any(t.get("variable_freq") for t in tower_groups)
+    brand = next((t.get("brand") for t in tower_groups if t.get("brand")), "")
+    return {
+        "name": first.get("name") or "冷却塔",
+        "qty": total_qty,
+        "fan_power_kw": float(first.get("fan_power_kw") or 0.0),
+        "fans_per_tower": first.get("fans_per_tower") or 2,
+        "variable_freq": bool(any_vf),
+        "water_flow_m3h": first.get("water_flow_m3h"),
+        "approach_temp": first.get("approach_temp"),
+        "brand": brand,
+    }
+
+
+def _apply_survey_to_prefill(survey_data: dict):
+    """将调研表解析结果写入 session_state 作为预填数据源。
+
+    同时把 monthly_data 写入 ac_extracted_data 供 input_parser 使用，
+    把 region 写入 aim_user_region 供 AI 推荐模块使用。
+    """
+    chillers = []
+    for c in survey_data.get("chillers", []):
+        chillers.append({
+            "name": c.get("name") or "主机",
+            "qty": c.get("qty") or 1,
+            "capacity_kw": c.get("capacity_kw") or 5000,
+            "rated_power_kw": c.get("rated_power_kw") or 800,
+            "rated_cop": c.get("rated_cop") or 6.0,
+            "variable_freq": c.get("variable_freq", False),
+            "chiller_type": c.get("chiller_type") or "",
+            "brand": c.get("brand") or "",
+        })
+
+    chw_pumps_merged = _merge_pump_groups(survey_data.get("chw_pumps", []), "冷冻泵")
+    cw_pumps_merged = _merge_pump_groups(survey_data.get("cw_pumps", []), "冷却泵")
+    towers_merged = _merge_tower_groups(survey_data.get("towers", []))
+
+    # 地区：从调研表 region_hint 推断，未识别则默认华东
+    region = survey_data.get("region_hint") or "华东"
+
+    prefill = {
+        "chillers": chillers,
+        "chw_pumps": [chw_pumps_merged] if chw_pumps_merged else [],
+        "cw_pumps": [cw_pumps_merged] if cw_pumps_merged else [],
+        "towers": [towers_merged] if towers_merged else [],
+        "monthly_chiller_count": survey_data.get("monthly_chiller_count") or [1] * 12,
+        "region": region,
+    }
+    st.session_state.survey_extracted_data = prefill
+    # 同步给 AI 推荐模块（不再暴露地区选择给用户）
+    st.session_state.aim_user_region = region
+
+    # 月度运行数据写入 ac_extracted_data（input_parser 会从这里读）
+    monthly_data = survey_data.get("monthly_data") or {}
+    if any(monthly_data.values()):
+        st.session_state.ac_extracted_data = {
+            "monthly_data": monthly_data,
+            "station_name": survey_data.get("station_name", ""),
+        }
+
+
+# ── 设备运行规律解析（月度组合/负载率/需求冷量）──────────────
+
+_OPERATION_RULES_EXAMPLE = """过渡季节工作日开2台约克3000RT中温变频，75%负载 （或多少需求冷量）
+过渡季节休息日开1台约克1800RT低温变频，75%负载 （或多少需求冷量）
+冬季不开机 （或多少需求冷量）
+夏季工作日开3台3000RT中温变频，80%负载 （或多少需求冷量）
+夏季休息日开1台3000RT中温变频和1台1800RT低温变频，70%负载 （或多少需求冷量）"""
+
+
+def _init_opr_state():
+    """初始化设备运行规律模块的 session_state。"""
+    defaults = {
+        "opr_text": "",            # 用户填写的文字描述
+        "opr_table": None,         # AI 解析结果 {combination, load_factor, cooling_demand_kw, remark, summary}
+        "opr_done": False,         # 是否已成功解析
+        "opr_applied": False,      # 是否已应用到月度参数
+        "opr_last_text": "",       # 上次解析的文字（用于判断是否变化）
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+def _render_cop_curve_realtime(cop_curve, rated_cop: float, group_index: int, wv: int):
+    """实时渲染 COP 性能曲线图表。
+
+    在用户输入 COP 数据后立即绘制图表，给出直观的可视化反馈，
+    便于核对数据正确性。每次调用都基于当前数据生成新图。
+    """
+    label = f"主机组 {group_index + 1}"
+    fig = generate_cop_curve_chart(cop_curve, rated_cop=rated_cop, group_label=label)
+    # 用 cop_curve 数据指纹 + 时间戳作为 key，确保数据变化后图表强制重绘
+    if cop_curve:
+        fingerprint = sum(int(k * 100) + int(v * 100) for k, v in cop_curve.items())
+    else:
+        fingerprint = 0
+    chart_key = f"_cop_curve_chart_{group_index}_v{wv}_{fingerprint}"
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+
+
+def _render_operation_rules_section(chiller_groups: list, wv: int):
+    """渲染"设备运行规律"区块。
+
+    流程：
+    1. 显示已识别主机清单（供用户参考）
+    2. 文本输入框（带示例 placeholder）
+    3. AI 解析按钮 → 调用 ai_parse_operation_rules
+    4. 显示可编辑的 3×12 表格（冷机运行组合/负载率/需求冷量）
+    5. "应用到月度参数"按钮 → 写入 mc_*/mlf_* widget 键
+    """
+    _init_opr_state()
+
+    with st.expander("📋 设备运行规律（可选）", expanded=False):
+        st.caption(
+            "用自然语言描述每月/每季的冷机开机组合与负载率，AI 自动整理为 12 个月表格。"
+            "调研表里通常不含\"组合/负载率\"字段，可在此补充。"
+        )
+
+        # 显示主机清单
+        if chiller_groups:
+            ch_lines = []
+            for i, cg in enumerate(chiller_groups, 1):
+                qty = cg.get("qty", 1)
+                cap = cg.get("capacity_kw", 0)
+                vf = "变频" if cg.get("variable_freq") else "工频"
+                brand = cg.get("brand", "") or ""
+                name = cg.get("name", "") or f"主机组{i}"
+                ch_lines.append(f"  • 主机组{i}: {name} | {qty}台 | 单台{cap}kW | {vf} | {brand}")
+            st.markdown("**已识别主机清单（供描述参考）：**")
+            st.markdown("\n".join(ch_lines))
+
+        st.markdown("**填写运行规律描述**")
+        st.caption("示例（可参考，无需照抄）：")
+        st.code(_OPERATION_RULES_EXAMPLE, language="text")
+
+        user_text = st.text_area(
+            "运行规律描述",
+            value=st.session_state.opr_text,
+            height=160,
+            placeholder="在此填写运行规律，可分多行写不同季节/工作日/休息日的组合与负载率...",
+            key=f"opr_text_input_v{wv}",
+            label_visibility="collapsed",
+        )
+        # 同步到 session_state（text_area 用 key，但其它地方需要 opr_text）
+        st.session_state.opr_text = user_text
+
+        c1, c2, c3 = st.columns([1, 1, 2], gap="small")
+        with c1:
+            parse_clicked = st.button(
+                "🤖 AI 解析运行规律",
+                key=f"opr_parse_btn_v{wv}",
+                use_container_width=True,
+                type="primary",
+                disabled=not user_text.strip(),
+            )
+        with c2:
+            apply_clicked = st.button(
+                "✅ 应用到月度参数",
+                key=f"opr_apply_btn_v{wv}",
+                use_container_width=True,
+                disabled=not st.session_state.get("opr_table"),
+            )
+        with c3:
+            if st.session_state.get("opr_done"):
+                st.success("✅ 已解析，可继续修改文字后重新解析，或直接应用到月度参数")
+
+        # AI 解析
+        if parse_clicked and user_text.strip():
+            with st.spinner("AI 正在解析运行规律..."):
+                try:
+                    result = ai_parse_operation_rules(user_text.strip(), chiller_groups)
+                except Exception as e:
+                    st.error(f"AI 调用失败: {e}")
+                    result = None
+                if result:
+                    st.session_state.opr_table = result
+                    st.session_state.opr_done = True
+                    st.session_state.opr_last_text = user_text
+                    st.session_state.opr_applied = False
+                    st.rerun()
+                else:
+                    st.error("AI 解析失败，请检查描述或重试")
+
+        # 应用到月度参数
+        if apply_clicked and st.session_state.get("opr_table"):
+            _apply_opr_to_monthly(chiller_groups, wv)
+            st.session_state.opr_applied = True
+            st.rerun()
+
+        # 显示表格（可编辑）
+        opr_table = st.session_state.get("opr_table")
+        if opr_table:
+            st.markdown("**解析结果（可编辑后重新应用）：**")
+            if opr_table.get("summary"):
+                st.caption(f"💡 {opr_table['summary']}")
+
+            months = [f"{i}月" for i in range(1, 13)]
+            df = pd.DataFrame({
+                "冷机运行组合": opr_table.get("chiller_combination", [""] * 12),
+                "负载率": opr_table.get("load_factor", [0.0] * 12),
+                "需求冷量(kW)": opr_table.get("cooling_demand_kw", [0.0] * 12),
+                "备注": opr_table.get("remark", [""] * 12),
+            }, index=months)
+            df.index.name = "月份"
+
+            edited = st.data_editor(
+                df,
+                use_container_width=True,
+                num_rows="fixed",
+                key=f"opr_table_editor_v{wv}",
+                column_config={
+                    "冷机运行组合": st.column_config.TextColumn(width="medium"),
+                    "负载率": st.column_config.NumberColumn(
+                        min_value=0.0, max_value=1.0, step=0.01, format="%.2f", width="small"
+                    ),
+                    "需求冷量(kW)": st.column_config.NumberColumn(
+                        min_value=0.0, step=1.0, format="%.0f", width="small"
+                    ),
+                    "备注": st.column_config.TextColumn(width="small"),
+                },
+            )
+
+            # 同步编辑结果到 session_state（用于"应用到月度参数"）
+            st.session_state.opr_table["chiller_combination"] = edited["冷机运行组合"].tolist()
+            st.session_state.opr_table["load_factor"] = [round(float(v), 2) for v in edited["负载率"].tolist()]
+            st.session_state.opr_table["cooling_demand_kw"] = [round(float(v), 1) for v in edited["需求冷量(kW)"].tolist()]
+            st.session_state.opr_table["remark"] = edited["备注"].tolist()
+
+
+def _apply_opr_to_monthly(chiller_groups: list, wv: int):
+    """把设备运行规律表格结果应用到月度参数 widget 键。"""
+    opr = st.session_state.get("opr_table") or {}
+    if not opr:
+        return
+
+    total_available = sum(int(g.get("qty", 1)) for g in chiller_groups) or 1
+
+    # 1. 从组合描述反推每月开机台数
+    combinations = opr.get("chiller_combination", [""] * 12)
+    monthly_counts = derive_monthly_chiller_count_from_combination(
+        combinations, total_available=total_available
     )
-    st.session_state[f"chi_qty_{i}_v{wv}"] = int(chiller_data.get("qty") or 1)
-    st.session_state[f"chi_cap_{i}_v{wv}"] = float(
-        chiller_data.get("capacity_kw") or 5000
-    )
-    st.session_state[f"chi_pow_{i}_v{wv}"] = float(
-        chiller_data.get("rated_power_kw") or 800
-    )
-    st.session_state[f"chi_cop_{i}_v{wv}"] = float(
-        chiller_data.get("rated_cop") or 6.0
-    )
-    st.session_state[f"chi_vf_{i}_v{wv}"] = bool(
-        chiller_data.get("variable_freq", False)
-    )
+    # 不开机月份至少给 1 台（仿真引擎要求 >=1）
+    monthly_counts = [max(1, c) for c in monthly_counts]
+
+    # 2. 负载率直接取表格
+    load_factors = opr.get("load_factor", [0.5] * 12)
+    load_factors = [round(max(0.0, min(1.0, float(v or 0))), 2) for v in load_factors]
+
+    # 3. 写入 widget 键（注意：如果某月份负载率为0但仿真要求≥0.3，下限放宽到0.0）
+    mc_keys = [f"mc_{i}_v{wv}" for i in range(12)]
+    mlf_keys = [f"mlf_{i}_v{wv}" for i in range(12)]
+    for i in range(12):
+        st.session_state[mc_keys[i]] = int(monthly_counts[i])
+        st.session_state[mlf_keys[i]] = float(load_factors[i])
+
+    # 同时同步到 aim 模块的状态（让 AI 推荐模块感知用户已手动填写）
+    st.session_state.aim_monthly_chiller_count = monthly_counts
+    st.session_state.aim_monthly_load_factors = load_factors
+    st.session_state.aim_stage2_done = True
+    st.session_state.aim_summary = opr.get("summary", "已根据设备运行规律解析填入月度参数")
 
 
 # ── AI 推荐模块辅助 ─────────────────────────────────────────
@@ -250,135 +534,49 @@ def render_simulation_input_stage():
     if "_pending_error" not in st.session_state:
         st.session_state._pending_error = None
 
-    # === 0. AI智能识别设备 ===
-    with st.expander("🤖 AI智能识别多设备拓扑", expanded=False):
-        st.caption("上传设备清单图片、铭牌照片或粘贴文本，AI自动提取所有参数")
-        ai_input_tab1, ai_input_tab2 = st.tabs(["上传图片", "粘贴文本"])
-
-        with ai_input_tab1:
-            ai_images = st.file_uploader(
-                "上传设备清单/铭牌照片（支持多张）",
-                type=["jpg", "jpeg", "png"],
-                accept_multiple_files=True,
-                key="ai_topo_img"
-            )
-            if ai_images:
-                for img in ai_images:
-                    st.image(img, width=300)
-
-        with ai_input_tab2:
-            ai_text = st.text_area(
-                "粘贴设备信息（调研表内容、设备清单等）",
-                placeholder="例如：\n3台变频离心机，单台5274kW，COP 6.12\n4台冷冻泵132kW变频\n4台冷却泵132kW工频\n6台冷却塔22kW变频",
-                height=150,
-                key="ai_topo_text"
-            )
-
-        if st.button(" AI识别并填入参数", use_container_width=True, type="primary", key="ai_extract_btn"):
-            with st.spinner(" AI正在识别设备参数，请稍候..."):
-                has_images = ai_images and len(ai_images) > 0
-                has_text = bool(ai_text)
-
-                if has_images:
-                    # ── 多图批量识别：一次性识别所有铭牌照片 ──
-                    image_bytes_list = [img.getvalue() for img in ai_images]
-                    media_types = []
-                    for img in ai_images:
-                        fname = img.name.lower()
-                        media_types.append(
-                            "image/png" if fname.endswith(".png") else "image/jpeg"
+    # === 0. 调研表 Excel 上传（主入口）===
+    with st.expander("📋 上传调研表（自动识别设备参数）", expanded=False):
+        st.caption(
+            "上传调研表 Excel，自动识别主机/辅机/月度运行数据。"
+            "识别结果会预填到下方表单，可手动修改。"
+        )
+        survey_file = st.file_uploader(
+            "上传调研表 Excel",
+            type=["xlsx", "xls"],
+            key="sim_survey_upload",
+            label_visibility="collapsed",
+        )
+        if survey_file:
+            if st.button(
+                "🔍 解析调研表并预填",
+                type="primary",
+                use_container_width=True,
+                key="sim_survey_parse_btn",
+            ):
+                with st.spinner("正在解析调研表..."):
+                    try:
+                        survey_data = parse_survey_excel_from_bytes(
+                            survey_file.getvalue(), original_filename=survey_file.name
                         )
-
-                    result = extract_multi_chiller_topology(
-                        images=image_bytes_list,
-                        media_types=media_types,
-                    )
-
-                    if result and result.get("total_count", 0) > 0:
-                        # 提取成功识别和部分识别的 chillers
-                        chillers = result.get("chillers", [])
-                        valid_chillers = [
-                            ch for ch in chillers
-                            if ch.get("status") in ("success", "partial")
-                        ]
-
-                        if valid_chillers:
-                            # 构建 topology 结果（仅包含成功/部分识别的组）
-                            topology = {
-                                "chillers": [ch["data"] for ch in valid_chillers
-                                             if ch.get("data") is not None],
-                            }
-                            st.session_state.ai_extracted_topology = topology
-                            # 先递增版本号，统一使用一个 wv 给所有组
-                            st.session_state.sim_widget_version += 1
-                            wv = st.session_state.sim_widget_version
-
-                            # 逐组填入参数（直接写 session_state，使用统一的 wv）
-                            filled_index = 0
-                            for ch in chillers:
-                                if ch.get("status") == "success":
-                                    if ch.get("data"):
-                                        _write_chiller_to_session_state(filled_index, ch["data"], wv)
-                                    filled_index += 1
-                                elif ch.get("status") == "partial":
-                                    if ch.get("data"):
-                                        _write_chiller_to_session_state(filled_index, ch["data"], wv)
-                                    if ch.get("warning"):
-                                        st.session_state._pending_warnings.append(ch["warning"])
-                                    filled_index += 1
-                                elif ch.get("status") == "failed":
-                                    st.session_state._pending_warnings.append(ch["warning"])
-
-                            n_success = result.get("success_count", 0)
-                            n_partial = result.get("partial_count", 0)
-                            n_failed = result.get("failed_count", 0)
-
-                            # 构建成功消息
-                            msg_parts = []
-                            if n_success > 0:
-                                msg_parts.append(f"{n_success} 组成功识别")
-                            if n_partial > 0:
-                                msg_parts.append(f"{n_partial} 组部分识别（请核查）")
-                            if n_failed > 0:
-                                msg_parts.append(f"{n_failed} 张图片识别失败")
-
-                            st.session_state._pending_success = (
-                                f"识别完成！共 {n_success + n_partial} 组主机已填入表单"
-                                f"（{', '.join(msg_parts)}），请核对各主机组参数"
-                            )
-                        else:
-                            # 全部失败
-                            for ch in chillers:
-                                if ch.get("warning"):
-                                    st.session_state._pending_warnings.append(ch["warning"])
-                            st.session_state._pending_error = (
-                                "所有图片均识别失败，请检查图片质量或尝试粘贴文本方式"
-                            )
-                    else:
-                        st.session_state._pending_error = "识别失败，请检查图片质量或尝试粘贴文本方式"
-
-                elif has_text:
-                    # ── 纯文本方式（保持原有逻辑）──
-                    result = extract_plant_topology(
-                        content=ai_text,
-                        content_type="text",
-                    )
-
-                    if result:
-                        st.session_state.ai_extracted_topology = result
+                        _apply_survey_to_prefill(survey_data)
+                        # 递增 widget 版本号，强制刷新下方所有输入框
                         st.session_state.sim_widget_version += 1
-                        n_ch = len(result.get("chillers", []))
-                        n_chw = len(result.get("chw_pumps", []))
-                        n_cw = len(result.get("cw_pumps", []))
-                        n_tw = len(result.get("towers", []))
-                        st.session_state._pending_success = (
-                            f"识别成功！检测到 {n_ch} 组主机、{n_chw} 组冷冻泵、"
-                            f"{n_cw} 组冷却泵、{n_tw} 组冷却塔，参数已自动填入下方表单，请核对"
+                        n_ch = len(survey_data.get("chillers", []))
+                        n_chw = len(survey_data.get("chw_pumps", []))
+                        n_cw = len(survey_data.get("cw_pumps", []))
+                        n_tw = len(survey_data.get("towers", []))
+                        region = survey_data.get("region_hint") or "未知"
+                        station = survey_data.get("station_name") or ""
+                        msg = (
+                            f"识别完成：{n_ch} 组主机、{n_chw} 组冷冻泵、"
+                            f"{n_cw} 组冷却泵、{n_tw} 组冷却塔；地区={region}"
                         )
-                    else:
-                        st.session_state._pending_error = "识别失败，请检查文本内容或尝试上传图片方式"
-
-            st.rerun()
+                        if station:
+                            msg += f"；站房={station}"
+                        st.session_state._pending_success = msg
+                    except Exception as e:
+                        st.session_state._pending_error = f"解析失败: {e}"
+                st.rerun()
 
     # ── 展示延迟消息（toast，10 秒后自动消失，可手动关闭）──
     if st.session_state.get("_pending_success"):
@@ -392,148 +590,73 @@ def render_simulation_input_stage():
         st.toast(st.session_state._pending_error, icon="❌", duration="long")
         st.session_state._pending_error = None
 
-    # 从AI识别结果预填（如果有）
-    ai_topo = st.session_state.get("ai_extracted_topology", {})
-    wv = st.session_state.sim_widget_version  # widget 版本号，AI 识别后递增以强制刷新
+    # 从调研表识别结果预填（如果有）
+    prefill_data = st.session_state.get("survey_extracted_data", {})
+    wv = st.session_state.sim_widget_version  # widget 版本号，识别后递增以强制刷新
 
-    # === 1. 地区选择 ===
-    st.markdown("### 1. 冷站所在地区")
-    regions = get_regions()
-    ai_region = ai_topo.get("region", "华东")
-    default_region_idx = regions.index(ai_region) if ai_region in regions else (regions.index("华东") if "华东" in regions else 0)
-    region = st.selectbox("选择地区", regions, index=default_region_idx)
+    # 项目地区：从调研表识别，未识别则默认华东
+    region = prefill_data.get("region") or "华东"
 
-    # === 2. 主机信息 ===
-    st.markdown("### 2. 主机COP性能曲线")
-
-    cop_input_method = st.radio(
-        "COP曲线输入方式",
-        ["上传图片(AI识别)", "手动填写表格", "文本描述"],
-        horizontal=True,
-    )
+    # === 1. 主机信息 ===
+    st.markdown("### 1. 主机COP性能曲线")
 
     chiller_groups = []
-    ai_chillers = ai_topo.get("chillers", [])
+    prefill_chillers = prefill_data.get("chillers", [])
     n_groups = st.number_input("主机组数 (不同型号为一组)", min_value=1, max_value=6,
-                               value=max(1, len(ai_chillers)) if ai_chillers else 1)
+                               value=max(1, len(prefill_chillers)) if prefill_chillers else 1)
 
     for i in range(n_groups):
-        ai_ch = ai_chillers[i] if i < len(ai_chillers) else {}
+        prefill_ch = prefill_chillers[i] if i < len(prefill_chillers) else {}
         with st.expander(f"主机组 {i+1}", expanded=(i == 0)):
-            # ── 组内 AI 识图：只看当前主机的铭牌 ──
-            ai_tab1, ai_tab2 = st.tabs(["上传铭牌", "粘贴文本"])
-            with ai_tab1:
-                chiller_img = st.file_uploader(
-                    f"上传主机组{i+1}的铭牌照片",
-                    type=["jpg", "jpeg", "png"],
-                    key=f"chi_ai_img_{i}_v{wv}"
-                )
-                if chiller_img:
-                    st.image(chiller_img, width=280)
-            with ai_tab2:
-                chiller_text = st.text_area(
-                    f"粘贴主机组{i+1}参数",
-                    placeholder="例如：约克YK离心机，制冷量3868kW，输入功率632kW，COP6.12，变频",
-                    height=80,
-                    key=f"chi_ai_text_{i}_v{wv}"
-                )
-
-            if st.button(
-                f" AI识别并填入本组", 
-                use_container_width=True,
-                type="primary",
-                key=f"chi_ai_btn_{i}_v{wv}"
-            ):
-                with st.spinner(" 正在识别本组设备参数..."):
-                    chi_img_data = chiller_img.getvalue() if chiller_img else None
-                    chi_media = (
-                        "image/png"
-                        if chiller_img and chiller_img.name.lower().endswith(".png")
-                        else "image/jpeg"
-                    ) if chiller_img else "image/jpeg"
-                    chi_text = chiller_text if chiller_text else ""
-                    if chiller_img and not chi_text:
-                        chi_text = f"请识别这张主机组{i+1}的铭牌照片中的设备参数"
-
-                    # 只提取 chillers[0]，其余字段（辅机/地区）忽略
-                    raw = extract_plant_topology(
-                        content=chi_text,
-                        content_type="image" if chi_img_data else "text",
-                        image_data=chi_img_data,
-                        media_type=chi_media,
-                    )
-
-                    if raw and raw.get("chillers"):
-                        # 只取第一组主机的参数填入当前组
-                        matched = raw["chillers"][0]
-                        _apply_single_chiller_result(i, matched)
-                        # 如果 AI 碰巧也识别了辅机，顺便预填辅机
-                        if not ai_topo.get("chw_pumps") and raw.get("chw_pumps"):
-                            st.session_state.ai_extracted_topology = {
-                                **st.session_state.get("ai_extracted_topology", {}),
-                                "chw_pumps": raw["chw_pumps"],
-                                "cw_pumps": raw.get("cw_pumps"),
-                                "towers": raw.get("towers"),
-                                "region": raw.get("region"),
-                            }
-                        st.success(f" 主机组{i+1}参数已填入，请核对")
-                        st.rerun()
-                    else:
-                        st.error(" 识别失败，请检查图片或手动填写")
-
             col1, col2, col3 = st.columns(3)
             with col1:
-                name = st.text_input(f"名称", value=ai_ch.get("name", f"主机组{i+1}"), key=f"chi_name_{i}_v{wv}")
-                qty = st.number_input("台数", min_value=1, max_value=10,
-                                      value=ai_ch.get("qty", 1), key=f"chi_qty_{i}_v{wv}")
+                name = st.text_input(
+                    f"名称", value=prefill_ch.get("name", f"主机组{i+1}"),
+                    key=f"chi_name_{i}_v{wv}"
+                )
+                qty = st.number_input(
+                    "台数", min_value=1, max_value=10,
+                    value=int(prefill_ch.get("qty", 1)), key=f"chi_qty_{i}_v{wv}"
+                )
             with col2:
-                capacity = st.number_input("单台制冷量(kW)", min_value=100.0,
-                                           value=float(ai_ch.get("capacity_kw", 5000)), key=f"chi_cap_{i}_v{wv}")
-                power = st.number_input("单台额定功率(kW)", min_value=10.0,
-                                        value=float(ai_ch.get("rated_power_kw", 800)), key=f"chi_pow_{i}_v{wv}")
+                capacity = st.number_input(
+                    "单台制冷量(kW)", min_value=100.0,
+                    value=_f(prefill_ch.get("capacity_kw"), 5000.0),
+                    key=f"chi_cap_{i}_v{wv}"
+                )
+                power = st.number_input(
+                    "单台额定功率(kW)", min_value=10.0,
+                    value=_f(prefill_ch.get("rated_power_kw"), 800.0),
+                    key=f"chi_pow_{i}_v{wv}"
+                )
             with col3:
-                rated_cop = st.number_input("额定COP", min_value=1.0, max_value=15.0,
-                                            value=float(ai_ch.get("rated_cop", 6.0)), key=f"chi_cop_{i}_v{wv}")
-                vf = st.checkbox("变频", value=ai_ch.get("variable_freq", False), key=f"chi_vf_{i}_v{wv}")
+                rated_cop = st.number_input(
+                    "额定COP", min_value=1.0, max_value=15.0,
+                    value=_f(prefill_ch.get("rated_cop"), 6.0),
+                    key=f"chi_cop_{i}_v{wv}"
+                )
+                vf = st.checkbox(
+                    "变频", value=bool(prefill_ch.get("variable_freq", False)),
+                    key=f"chi_vf_{i}_v{wv}"
+                )
 
-            # COP曲线
+            # COP曲线 - 仅保留表格输入方式，实时绘制曲线
+            st.caption("填写负载率(%)和对应COP值，下方实时绘制曲线")
+            default_data = {"负载率(%)": [100, 90, 80, 70, 60, 50, 40, 30],
+                            "COP": [6.0, 6.2, 6.3, 6.3, 6.0, 5.6, 4.8, 3.6]}
+            df_input = pd.DataFrame(default_data)
+            edited_df = st.data_editor(
+                df_input, num_rows="dynamic", key=f"cop_table_{i}_v{wv}"
+            )
             cop_curve = None
-            if cop_input_method == "上传图片(AI识别)":
-                uploaded_img = st.file_uploader(
-                    "上传COP性能曲线图片", type=["jpg", "jpeg", "png"],
-                    key=f"cop_img_{i}_v{wv}"
+            if not edited_df.empty:
+                cop_curve = parse_cop_curve_from_table(
+                    edited_df["负载率(%)"].tolist(),
+                    edited_df["COP"].tolist()
                 )
-                if uploaded_img:
-                    st.image(uploaded_img, width=500)
-                    if st.button("AI识别曲线", key=f"parse_img_{i}_v{wv}"):
-                        with st.spinner("正在识别..."):
-                            cop_curve = _ai_parse_cop_image(uploaded_img)
-                            if cop_curve:
-                                st.success(f"识别到 {len(cop_curve)} 个数据点")
-                                st.json(cop_curve)
-                            else:
-                                st.warning("识别失败，请手动填写")
 
-            elif cop_input_method == "手动填写表格":
-                st.caption("填写负载率(%)和对应COP值")
-                default_data = {"负载率(%)": [100, 90, 80, 70, 60, 50, 40, 30],
-                                "COP": [6.0, 6.2, 6.3, 6.3, 6.0, 5.6, 4.8, 3.6]}
-                df_input = pd.DataFrame(default_data)
-                edited_df = st.data_editor(df_input, num_rows="dynamic", key=f"cop_table_{i}_v{wv}")
-                if not edited_df.empty:
-                    cop_curve = parse_cop_curve_from_table(
-                        edited_df["负载率(%)"].tolist(),
-                        edited_df["COP"].tolist()
-                    )
-
-            else:  # 文本描述
-                text = st.text_area(
-                    "输入COP数据 (每行: 负载率 COP)",
-                    value="100% 6.0\n80% 6.3\n60% 6.0\n40% 4.8",
-                    key=f"cop_text_{i}_v{wv}"
-                )
-                if text.strip():
-                    cop_curve = parse_cop_curve_from_text(text)
+            # 实时绘制 COP 性能曲线
+            _render_cop_curve_realtime(cop_curve, rated_cop, i, wv)
 
             chiller_groups.append({
                 "name": name, "qty": qty, "capacity_kw": capacity,
@@ -541,8 +664,8 @@ def render_simulation_input_stage():
                 "variable_freq": vf, "cop_curve": cop_curve,
             })
 
-    # === 3. 辅机参数 ===
-    st.markdown("### 3. 辅机参数")
+    # === 2. 辅机参数 ===
+    st.markdown("### 2. 辅机参数")
 
     # 添加自定义CSS样式 - 限制输入框最大宽度
     st.markdown("""
@@ -559,44 +682,42 @@ def render_simulation_input_stage():
     </style>
     """, unsafe_allow_html=True)
 
-    ai_chw = ai_topo.get("chw_pumps", [{}])[0] if ai_topo.get("chw_pumps") else {}
-    ai_cw = ai_topo.get("cw_pumps", [{}])[0] if ai_topo.get("cw_pumps") else {}
-    ai_tw = ai_topo.get("towers", [{}])[0] if ai_topo.get("towers") else {}
+    prefill_chw = prefill_data.get("chw_pumps", [{}])[0] if prefill_data.get("chw_pumps") else {}
+    prefill_cw = prefill_data.get("cw_pumps", [{}])[0] if prefill_data.get("cw_pumps") else {}
+    prefill_tw = prefill_data.get("towers", [{}])[0] if prefill_data.get("towers") else {}
 
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("**冷冻泵**")
-        chw_qty = st.number_input("台数", 1, 20, ai_chw.get("qty", 4), key=f"chw_qty_v{wv}")
-        chw_power = st.number_input("单台功率(kW)", 1.0, 500.0, float(ai_chw.get("power_kw", 132)), key=f"chw_pow_v{wv}")
-        chw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, float(ai_chw.get("flow_m3h", 920)), key=f"chw_flow_v{wv}")
-        chw_vf = st.checkbox("变频", value=ai_chw.get("variable_freq", True), key=f"chw_vf_v{wv}")
+        chw_qty = st.number_input("台数", 1, 20, int(prefill_chw.get("qty", 4)), key=f"chw_qty_v{wv}")
+        chw_power = st.number_input("单台功率(kW)", 1.0, 500.0, _f(prefill_chw.get("power_kw"), 132.0), key=f"chw_pow_v{wv}")
+        chw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, _f(prefill_chw.get("flow_m3h"), 920.0), key=f"chw_flow_v{wv}")
+        chw_vf = st.checkbox("变频", value=bool(prefill_chw.get("variable_freq", True)), key=f"chw_vf_v{wv}")
 
     with col_b:
         st.markdown("**冷却泵**")
-        cw_qty = st.number_input("台数", 1, 20, ai_cw.get("qty", 4), key=f"cw_qty_v{wv}")
-        cw_power = st.number_input("单台功率(kW)", 1.0, 500.0, float(ai_cw.get("power_kw", 132)), key=f"cw_pow_v{wv}")
-        cw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, float(ai_cw.get("flow_m3h", 1300)), key=f"cw_flow_v{wv}")
-        cw_vf = st.checkbox("变频", value=ai_cw.get("variable_freq", False), key=f"cw_vf_v{wv}")
+        cw_qty = st.number_input("台数", 1, 20, int(prefill_cw.get("qty", 4)), key=f"cw_qty_v{wv}")
+        cw_power = st.number_input("单台功率(kW)", 1.0, 500.0, _f(prefill_cw.get("power_kw"), 132.0), key=f"cw_pow_v{wv}")
+        cw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, _f(prefill_cw.get("flow_m3h"), 1300.0), key=f"cw_flow_v{wv}")
+        cw_vf = st.checkbox("变频", value=bool(prefill_cw.get("variable_freq", False)), key=f"cw_vf_v{wv}")
 
     st.markdown("**冷却塔**")
-    tower_qty = st.number_input("台数", 1, 20, ai_tw.get("qty", 4), key=f"tower_qty_v{wv}")
-    tower_fan_kw = st.number_input("单台风机功率(kW)", 1.0, 100.0, float(ai_tw.get("fan_power_kw", 22)), key=f"tower_fan_v{wv}")
-    tower_fans = st.number_input("每台风机数", 1, 4, ai_tw.get("fans_per_tower", 2), key=f"tower_fans_v{wv}")
-    tower_vf = st.checkbox("变频", value=ai_tw.get("variable_freq", True), key=f"tower_vf_v{wv}")
+    tower_qty = st.number_input("台数", 1, 20, int(prefill_tw.get("qty", 4)), key=f"tower_qty_v{wv}")
+    tower_fan_kw = st.number_input("单台风机功率(kW)", 1.0, 100.0, _f(prefill_tw.get("fan_power_kw"), 22.0), key=f"tower_fan_v{wv}")
+    tower_fans = st.number_input("每台风机数", 1, 4, int(prefill_tw.get("fans_per_tower", 2)), key=f"tower_fans_v{wv}")
+    tower_vf = st.checkbox("变频", value=bool(prefill_tw.get("variable_freq", True)), key=f"tower_vf_v{wv}")
 
-    # === 4. 运行参数 ===
-    st.markdown("### 4. 月度运行参数")
+    # === 3. 运行参数 ===
+    st.markdown("### 3. 月度运行参数")
 
     # 尝试从已有数据自动填入
     ac_data = st.session_state.get("ac_extracted_data")
-    ai_monthly = ai_topo.get("monthly_chiller_count")
-    default_chiller_count = ai_monthly if ai_monthly and len(ai_monthly) == 12 else [1]*12
-    default_load = ai_topo.get("base_load_ratio", 0.70)
+    prefill_monthly = prefill_data.get("monthly_chiller_count")
+    default_chiller_count = prefill_monthly if prefill_monthly and len(prefill_monthly) == 12 else [1]*12
+    default_load = 0.70
 
     if ac_data and "monthly_data" in ac_data:
         st.info("已从调研表数据自动填入月度参数，可修改")
-    elif ai_monthly:
-        st.info("已从AI识别结果填入月度参数，可修改")
 
     # ── AI 智能推荐月度运行参数 ──
     _init_aim_state()
@@ -616,7 +737,9 @@ def render_simulation_input_stage():
                 "can_identify": False, "summary": "用户手动配置项目参数。",
             }
             st.session_state.aim_analysis = default_analysis
-            st.session_state.aim_user_region = "未知"
+            # 地区优先从调研表识别结果继承，未识别则用 "未知"
+            if not st.session_state.get("aim_user_region"):
+                st.session_state.aim_user_region = prefill_data.get("region") or "未知"
             st.session_state.aim_total_chiller_count = 3
             _aim_apply_preset("单班制办公")
             st.session_state.aim_stage1_done = True
@@ -664,7 +787,9 @@ def render_simulation_input_stage():
                         if result:
                             analysis = result.get("analysis", {})
                             st.session_state.aim_analysis = analysis
-                            st.session_state.aim_user_region = analysis.get("region", "未知")
+                            # 地区不再暴露给用户选择，沿用调研表识别结果
+                            if not st.session_state.get("aim_user_region") or st.session_state.aim_user_region == "未知":
+                                st.session_state.aim_user_region = analysis.get("region", "未知") or prefill_data.get("region") or "未知"
                             st.session_state.aim_total_chiller_count = analysis.get("total_chiller_count", 3)
                             label = analysis.get("schedule_label", "单班制办公")
                             if label not in preset_manager.get_preset_names():
@@ -673,7 +798,7 @@ def render_simulation_input_stage():
                             st.session_state.aim_stage1_done = True
                             st.session_state.aim_stage2_done = False
                             st.success(f"✅ 分析完成：{analysis.get('project_type', '?')} | "
-                                       f"地区 {analysis.get('region', '?')} | "
+                                       f"地区 {st.session_state.aim_user_region} | "
                                        f"推荐 {analysis.get('schedule_label', '?')}")
                             st.rerun()
                         else:
@@ -681,25 +806,16 @@ def render_simulation_input_stage():
 
         st.divider()
 
-        # ═══════════════════════════════════════════════
-        #  二、项目地区
-        # ═══════════════════════════════════════════════
-        st.markdown("**二、项目地区**")
-        REGIONS = ["华南", "华东", "华中", "华北", "西南", "西北", "东北", "未知"]
-        ar = aim_analysis.get("region", "未知")
-        cur_r = st.session_state.get("aim_user_region") or ar
-        if cur_r not in REGIONS:
-            cur_r = "未知"
-        ur = st.selectbox("选择项目所在地区", REGIONS, index=REGIONS.index(cur_r), key="aim_region_sim",
-                          help="阶段二将以你选择的地区为准推荐月度参数。")
-        st.session_state.aim_user_region = ur
+        # 项目地区：从调研表识别继承，不再暴露选择给用户
+        ur = st.session_state.get("aim_user_region") or prefill_data.get("region") or "未知"
+        st.caption(f"📍 项目地区：**{ur}**（从调研表自动识别，如需修改请重新上传调研表）")
 
         st.divider()
 
         # ═══════════════════════════════════════════════
-        #  三、运行班制设置
+        #  二、运行班制设置
         # ═══════════════════════════════════════════════
-        st.markdown("**三、运行班制设置**")
+        st.markdown("**二、运行班制设置**")
         preset_manager.ensure_defaults()
 
         all_presets = preset_manager.get_all_presets()
@@ -770,9 +886,9 @@ def render_simulation_input_stage():
         st.divider()
 
         # ═══════════════════════════════════════════════
-        #  四、工作日历设置
+        #  三、工作日历设置
         # ═══════════════════════════════════════════════
-        st.markdown("**四、工作日历设置**")
+        st.markdown("**三、工作日历设置**")
         st.caption("设置工作/休息循环 + 节假日规则，决定每日选用工作日曲线还是休息日曲线。")
         cal_text = st.text_input(
             "运行日历规则",
@@ -795,9 +911,9 @@ def render_simulation_input_stage():
         st.divider()
 
         # ═══════════════════════════════════════════════
-        #  五、生成推荐参数
+        #  四、生成推荐参数
         # ═══════════════════════════════════════════════
-        st.markdown("**五、生成推荐参数**")
+        st.markdown("**四、生成推荐参数**")
         if st.button("📊 AI智能推荐月度运行参数并填入", type="primary", key="aim_stage2_btn_sim", use_container_width=True):
             tc = st.session_state.get("aim_total_chiller_count", 3)
             with st.spinner("AI 正在推荐月度参数..."):
@@ -823,6 +939,9 @@ def render_simulation_input_stage():
 
         if st.session_state.get("aim_stage2_done"):
             st.info(f"💡 {st.session_state.get('aim_summary', '')}")
+
+    # ── 设备运行规律（可选）：用户用自然语言描述后 AI 整理为 12 个月表 ──
+    _render_operation_rules_section(chiller_groups, wv)
 
     # 如果触发填入，直接写入 widget 的 session_state 键（Streamlit 用 key 缓存值，
     # 单纯改 value 参数不会生效，必须直接操作 session_state）
@@ -1067,17 +1186,6 @@ def _export_excel(df_opt: pd.DataFrame, summary: dict) -> bytes:
         summary_df = pd.DataFrame([summary])
         summary_df.to_excel(writer, sheet_name="年度汇总", index=False)
     return buf.getvalue()
-
-
-def _ai_parse_cop_image(uploaded_file) -> dict:
-    """调用AI解析COP曲线图片（委托给 ai_vision 模块）"""
-    try:
-        fname = uploaded_file.name.lower()
-        media_type = "image/png" if fname.endswith(".png") else "image/jpeg"
-        return extract_cop_curve(uploaded_file.getvalue(), media_type=media_type)
-    except Exception as e:
-        st.error(f"AI识别失败: {e}")
-        return None
 
 
 def _get_target_saving_pct() -> float:
