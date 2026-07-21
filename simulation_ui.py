@@ -106,12 +106,94 @@ def render_simulation_module():
 
 # ==================== Step 1: 拓扑信息收集 ====================
 
+def _normalize_topology(raw: dict) -> dict:
+    """标准化 AI 输出的拓扑 JSON，兼容多种键名格式"""
+    topology = {"project_name": raw.get("project_name", raw.get("项目名称", "未知项目"))}
+
+    # 冷水主机 - 兼容多种键名
+    chillers = (
+        raw.get("chillers") or raw.get("冷水主机") or raw.get("主机") or
+        raw.get("chiller") or raw.get("冷水机组") or []
+    )
+    normalized_chillers = []
+    for ch in chillers:
+        normalized_chillers.append({
+            "brand": ch.get("brand", ch.get("品牌", "")),
+            "model": ch.get("model", ch.get("型号", "")),
+            "type": ch.get("type", ch.get("类型", "")),
+            "count": int(ch.get("count", ch.get("台数", ch.get("数量", 1))) or 1),
+            "capacity_kw": float(ch.get("capacity_kw", ch.get("额定制冷量", ch.get("制冷量", ch.get("额定制冷量kW", 0)))) or 0),
+            "power_kw": float(ch.get("power_kw", ch.get("额定功率", ch.get("功率", ch.get("额定功率kW", 0)))) or 0),
+            "rated_cop": float(ch.get("rated_cop", ch.get("COP", ch.get("额定COP", ch.get("cop", 0)))) or 0),
+            "vfd": ch.get("vfd", ch.get("变频", True)),
+        })
+    topology["chillers"] = normalized_chillers
+
+    # 冷却泵
+    cooling_pumps = raw.get("cooling_pumps") or raw.get("冷却泵") or []
+    topology["cooling_pumps"] = [
+        {
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+        }
+        for p in cooling_pumps
+    ]
+
+    # 冷冻泵
+    chilled_pumps = raw.get("chilled_pumps") or raw.get("冷冻泵") or []
+    topology["chilled_pumps"] = [
+        {
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+        }
+        for p in chilled_pumps
+    ]
+
+    # 冷却塔
+    towers = raw.get("towers") or raw.get("冷却塔") or []
+    topology["towers"] = [
+        {
+            "fan_power_kw": float(t.get("fan_power_kw", t.get("风机功率", t.get("功率", 0))) or 0),
+            "count": int(t.get("count", t.get("台数", 1)) or 1),
+            "vfd": t.get("vfd", t.get("变频", True)),
+            "type": t.get("type", t.get("类型", "开式")),
+        }
+        for t in towers
+    ]
+
+    # 特殊结构
+    special = raw.get("special") or raw.get("特殊结构") or {"type": "none"}
+    if isinstance(special, str):
+        special = {"type": special}
+    if not special.get("type"):
+        special["type"] = "none"
+    topology["special"] = special
+
+    return topology
+
+
 def render_topology_stage():
     """Step 1: 站房拓扑信息收集"""
     st.header("📋 步骤 1: 站房拓扑信息收集")
 
-    sim_mode = st.session_state.sim_mode
+    # 已有拓扑数据时直接展示确认
+    if st.session_state.sim_topology is not None:
+        _display_topology(st.session_state.sim_topology)
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 重新收集", use_container_width=True):
+                st.session_state.sim_topology = None
+                st.rerun()
+        with col2:
+            if st.button("✅ 确认拓扑信息，进入下一步", type="primary", use_container_width=True):
+                st.session_state.sim_stage = 'cop_curves'
+                st.rerun()
+        return
 
+    sim_mode = st.session_state.sim_mode
     if sim_mode == 'old_station':
         _render_topology_old_station()
     else:
@@ -122,72 +204,63 @@ def _render_topology_old_station():
     """旧站房: 从调研表自动识别拓扑"""
     st.info("ℹ️ 将从已上传的调研表中自动识别站房设备拓扑信息")
 
-    # 检查是否有已提取的数据
-    extracted_data = st.session_state.get('extracted_data')
     session_dir = st.session_state.session_dir
+    upload_path = session_dir / "upload_survey.xlsx"
 
-    if st.session_state.sim_topology is not None:
-        # 已有拓扑数据，直接展示
-        _display_topology(st.session_state.sim_topology)
-        st.markdown("---")
-        if st.button("✅ 确认拓扑信息，进入下一步", type="primary", use_container_width=True):
-            st.session_state.sim_stage = 'cop_curves'
+    # 如果没有调研表，提供上传入口
+    if not upload_path.exists():
+        st.warning("⚠️ 未找到调研表文件，请上传")
+        uploaded_file = st.file_uploader("上传调研表", type=['xlsx', 'xls'], key="sim_survey_upload")
+        if uploaded_file:
+            with open(upload_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
             st.rerun()
         return
 
+    st.success(f"✅ 调研表已就绪：{upload_path.name}")
+
     if st.button("🔍 开始识别设备拓扑", type="primary", use_container_width=True):
-        _, log_container = create_streaming_container("🤖 AI 正在识别设备拓扑...")
-        streaming_logs = []
-
-        def on_text(timestamp, text):
-            streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
-            update_streaming_container(log_container, streaming_logs)
-
-        try:
-            caller = SkillCaller(timeout=300)
-            upload_path = session_dir / "upload_survey.xlsx"
-            output_path = session_dir / "sim_topology.json"
-
-            # 构建拓扑识别 prompt
-            prompt = (
-                f"请从调研表 {upload_path} 中识别冷站设备拓扑信息，输出为 JSON 文件 {output_path}。\n"
-                f"需要识别的设备包括：\n"
-                f"1. 冷水主机（品牌/型号/类型/台数/额定制冷量kW/额定功率kW/额定COP）\n"
-                f"2. 冷却泵（功率kW/台数/是否变频）\n"
-                f"3. 冷冻泵（功率kW/台数/是否变频）\n"
-                f"4. 冷却塔（风机功率kW/台数/是否变频/类型开式或闭式）\n"
-                f"5. 特殊结构（蓄冷/蓄冰/热回收，含容量参数）\n\n"
-                f"输出 JSON 格式：\n"
-                f'{{"project_name": "项目名称", "chillers": [...], "cooling_pumps": [...], '
-                f'"chilled_pumps": [...], "towers": [...], "special": {{...}}}}\n'
-                f"同类设备按型号汇总台数。请读取 Excel 文件并输出结构化 JSON。"
-            )
-
-            skill_result = caller.call_skill(
-                "plant-simulation",
-                str(upload_path),
-                str(output_path),
-                "extract_topology",
-                callback=on_text
-            )
-
-            if output_path.exists():
-                with open(output_path, 'r', encoding='utf-8') as f:
-                    topology = json.load(f)
-                st.session_state.sim_topology = topology
-                st.session_state.sim_project_name = topology.get('project_name', '未知项目')
-                st.rerun()
-            else:
-                st.error("❌ 拓扑识别完成但未生成输出文件")
-
-        except (SkillError, Exception) as e:
-            st.error(f"❌ 拓扑识别失败：{str(e)}")
+        _run_topology_extraction(upload_path)
 
 
 def _render_topology_new_station():
-    """新站房: 用户手动输入拓扑"""
-    st.markdown("请输入站房设备拓扑信息，AI 将自动解析为结构化数据。")
+    """新站房: 上传调研表或手动输入拓扑"""
 
+    # 方式选择: 上传调研表 或 手动输入
+    input_method = st.radio(
+        "选择拓扑信息输入方式",
+        ["📁 上传调研表（推荐）", "✍️ 手动输入"],
+        horizontal=True
+    )
+
+    session_dir = st.session_state.session_dir
+
+    if "上传调研表" in input_method:
+        # 上传调研表方式
+        st.info("ℹ️ 上传调研表后，AI 将自动识别站房设备拓扑信息")
+
+        uploaded_file = st.file_uploader(
+            "上传调研表",
+            type=['xlsx', 'xls'],
+            key="sim_survey_upload_new"
+        )
+
+        if uploaded_file:
+            upload_path = session_dir / "upload_survey.xlsx"
+            with open(upload_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
+
+            if st.button("🔍 开始识别设备拓扑", type="primary", use_container_width=True):
+                _run_topology_extraction(upload_path)
+    else:
+        # 手动输入方式
+        _render_topology_manual_input()
+
+
+def _render_topology_manual_input():
+    """手动输入拓扑信息"""
     with st.expander("📝 查看填写示例", expanded=True):
         st.code(TOPOLOGY_EXAMPLE, language="text")
 
@@ -205,78 +278,116 @@ def _render_topology_new_station():
         placeholder="请参照上方示例填写设备信息..."
     )
 
-    col1, col2 = st.columns(2)
+    if st.button("🔍 AI 解析拓扑信息", type="primary", use_container_width=True):
+        if not topology_input.strip():
+            st.warning("⚠️ 请先输入设备拓扑信息")
+            return
 
-    with col1:
-        if st.button("🔍 AI 解析拓扑信息", type="primary", use_container_width=True):
-            if not topology_input.strip():
-                st.warning("⚠️ 请先输入设备拓扑信息")
-                return
+        _, log_container = create_streaming_container("🤖 AI 正在解析拓扑信息...")
+        streaming_logs = []
 
-            _, log_container = create_streaming_container("🤖 AI 正在解析拓扑信息...")
-            streaming_logs = []
+        def on_text(timestamp, text):
+            streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+            update_streaming_container(log_container, streaming_logs)
 
-            def on_text(timestamp, text):
-                streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
-                update_streaming_container(log_container, streaming_logs)
+        try:
+            caller = SkillCaller(timeout=180)
+            session_dir = st.session_state.session_dir
+            output_path = session_dir / "sim_topology.json"
 
-            try:
-                caller = SkillCaller(timeout=180)
-                session_dir = st.session_state.session_dir
-                output_path = session_dir / "sim_topology.json"
+            # 将用户输入保存
+            input_path = session_dir / "sim_topology_input.txt"
+            with open(input_path, 'w', encoding='utf-8') as f:
+                f.write(topology_input)
 
-                # 将用户输入保存
-                input_path = session_dir / "sim_topology_input.txt"
-                with open(input_path, 'w', encoding='utf-8') as f:
-                    f.write(topology_input)
+            prompt = (
+                f"请将以下冷站设备拓扑描述解析为结构化 JSON，输出到 {output_path}。\n\n"
+                f"用户输入：\n{topology_input}\n\n"
+                f"项目名称：{project_name or '未知项目'}\n\n"
+                f"输出 JSON 格式（必须使用英文键名）：\n"
+                f'{{"project_name": "项目名称", "chillers": [{{"brand": "", "model": "", '
+                f'"type": "", "count": 0, "capacity_kw": 0, "power_kw": 0, "rated_cop": 0}}], '
+                f'"cooling_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+                f'"chilled_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+                f'"towers": [{{"fan_power_kw": 0, "count": 0, "vfd": true, "type": "闭式"}}], '
+                f'"special": {{"type": "none"}}}}\n'
+                f"同类设备按型号汇总台数。"
+            )
 
-                prompt = (
-                    f"请将以下冷站设备拓扑描述解析为结构化 JSON，输出到 {output_path}。\n\n"
-                    f"用户输入：\n{topology_input}\n\n"
-                    f"项目名称：{project_name or '未知项目'}\n\n"
-                    f"输出 JSON 格式：\n"
-                    f'{{"project_name": "项目名称", "chillers": [{{"brand": "", "model": "", '
-                    f'"type": "", "count": 0, "capacity_kw": 0, "power_kw": 0, "rated_cop": 0}}], '
-                    f'"cooling_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
-                    f'"chilled_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
-                    f'"towers": [{{"fan_power_kw": 0, "count": 0, "vfd": true, "type": "闭式"}}], '
-                    f'"special": {{"type": "none"}}}}\n'
-                    f"同类设备按型号汇总台数。"
-                )
+            skill_result = caller.call_skill(
+                "plant-simulation",
+                str(input_path),
+                str(output_path),
+                "parse_topology",
+                callback=on_text
+            )
 
-                skill_result = caller.call_skill(
-                    "plant-simulation",
-                    str(input_path),
-                    str(output_path),
-                    "parse_topology",
-                    callback=on_text
-                )
+            if output_path.exists():
+                with open(output_path, 'r', encoding='utf-8') as f:
+                    raw_topology = json.load(f)
+                topology = _normalize_topology(raw_topology)
+                st.session_state.sim_topology = topology
+                st.session_state.sim_project_name = topology.get('project_name', project_name)
+                st.rerun()
+            else:
+                st.error("❌ 解析完成但未生成输出文件")
 
-                if output_path.exists():
-                    with open(output_path, 'r', encoding='utf-8') as f:
-                        topology = json.load(f)
-                    st.session_state.sim_topology = topology
-                    st.session_state.sim_project_name = topology.get('project_name', project_name)
-                    st.rerun()
-                else:
-                    st.error("❌ 解析完成但未生成输出文件")
+        except (SkillError, Exception) as e:
+            st.error(f"❌ 解析失败：{str(e)}")
 
-            except (SkillError, Exception) as e:
-                st.error(f"❌ 解析失败：{str(e)}")
 
-    with col2:
-        if st.button("🔄 重置", use_container_width=True):
-            reset_simulation()
+def _run_topology_extraction(upload_path: Path):
+    """从调研表提取拓扑（共用逻辑）"""
+    _, log_container = create_streaming_container("🤖 AI 正在识别设备拓扑...")
+    streaming_logs = []
+
+    def on_text(timestamp, text):
+        streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+        update_streaming_container(log_container, streaming_logs)
+
+    try:
+        caller = SkillCaller(timeout=300)
+        session_dir = st.session_state.session_dir
+        output_path = session_dir / "sim_topology.json"
+
+        prompt = (
+            f"请从调研表 {upload_path} 中识别冷站设备拓扑信息，输出为 JSON 文件 {output_path}。\n"
+            f"需要识别的设备包括：\n"
+            f"1. 冷水主机（品牌/型号/类型/台数/额定制冷量kW/额定功率kW/额定COP）\n"
+            f"2. 冷却泵（功率kW/台数/是否变频）\n"
+            f"3. 冷冻泵（功率kW/台数/是否变频）\n"
+            f"4. 冷却塔（风机功率kW/台数/是否变频/类型开式或闭式）\n"
+            f"5. 特殊结构（蓄冷/蓄冰/热回收，含容量参数）\n\n"
+            f"输出 JSON 格式（必须使用英文键名）：\n"
+            f'{{"project_name": "项目名称", "chillers": [{{"brand": "", "model": "", '
+            f'"type": "", "count": 0, "capacity_kw": 0, "power_kw": 0, "rated_cop": 0}}], '
+            f'"cooling_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+            f'"chilled_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+            f'"towers": [{{"fan_power_kw": 0, "count": 0, "vfd": true, "type": "闭式"}}], '
+            f'"special": {{"type": "none"}}}}\n'
+            f"同类设备按型号汇总台数。请读取 Excel 文件并输出结构化 JSON。"
+        )
+
+        skill_result = caller.call_skill(
+            "plant-simulation",
+            str(upload_path),
+            str(output_path),
+            "extract_topology",
+            callback=on_text
+        )
+
+        if output_path.exists():
+            with open(output_path, 'r', encoding='utf-8') as f:
+                raw_topology = json.load(f)
+            topology = _normalize_topology(raw_topology)
+            st.session_state.sim_topology = topology
+            st.session_state.sim_project_name = topology.get('project_name', '未知项目')
             st.rerun()
+        else:
+            st.error("❌ 拓扑识别完成但未生成输出文件")
 
-    # 如果已有拓扑数据，展示
-    if st.session_state.sim_topology is not None:
-        st.markdown("---")
-        _display_topology(st.session_state.sim_topology)
-        st.markdown("---")
-        if st.button("✅ 确认拓扑信息，进入下一步", type="primary", use_container_width=True):
-            st.session_state.sim_stage = 'cop_curves'
-            st.rerun()
+    except (SkillError, Exception) as e:
+        st.error(f"❌ 拓扑识别失败：{str(e)}")
 
 
 def _display_topology(topology: dict):
