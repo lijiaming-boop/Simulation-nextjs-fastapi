@@ -248,3 +248,159 @@ def ai_parse_calendar(user_text: str) -> Optional[List[int]]:
     except Exception as e:
         print(f"[calendar_parse] Error: {e}")
         return None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  设备运行规律解析 Prompt
+#  根据用户文字描述 + 已识别主机清单，整理为 12 个月的运行组合/负载率/需求冷量表格
+# ═══════════════════════════════════════════════════════════════
+
+OPERATION_RULES_PROMPT = """你是一位资深暖通空调系统运行专家。请根据用户提供的设备运行规律文字描述，整理为 12 个月的运行参数表格。
+
+## 输出格式（严格 JSON，不要 Markdown 代码块）
+
+{
+  "chiller_combination": ["1月组合", "2月组合", ..., "12月组合"],
+  "load_factor": [0.00, 0.00, ..., 0.00],
+  "cooling_demand_kw": [0, 0, ..., 0],
+  "remark": ["1月备注", "2月备注", ..., "12月备注"],
+  "summary": "1-2 句话说明整理逻辑"
+}
+
+## 字段说明
+
+- chiller_combination: 字符串，描述当月冷机开机组合，例如：
+    - "2台约克3000RT变频" / "1台约克3000RT变频+1台约克1800RT变频" / "不开机"
+- load_factor: 浮点数 0.0~1.0，当月冷机平均负载率（保留两位小数）
+- cooling_demand_kw: 数值，当月需求冷量(kW)。若用户给了"负载率"，按"组合总容量×负载率"估算；若用户直接给了冷量，按用户值；不开机的月份填 0
+- remark: 字符串，当月备注（如"冬季停机"、"夏季工作日+休息日组合"），无备注填空字符串 ""
+
+## 季节定义
+
+- 冬季：12月、1月、2月
+- 过渡季：3月、4月、5月、10月、11月
+- 夏季：6月、7月、8月、9月
+
+## 整理规则
+
+1. 用户描述里"工作日/休息日"分别给定的组合 → 取加权平均负载率（如工作日80%+休息日70% → 月均约 75%），组合写主要组合或两种都列
+2. 用户描述里"夏季/冬季/过渡季"对应的月份 → 按上面季节定义分配到各月
+3. "冬季不开机" → 冬季 3 个月的 combination 填"不开机"，load_factor=0.0，cooling_demand_kw=0
+4. 若用户描述里同时给了"负载率"和"需求冷量"，优先用需求冷量；若只给一个，按"组合容量×负载率=冷量"或"冷量/组合容量=负载率"互相推算
+5. 若用户描述里没明确给的月份，按相邻月份或季节合理推断
+6. chiller_combination 字符串中保留主机型号/容量/变频等关键信息，便于核对
+
+## 输出严格规则
+
+- 所有数组长度必须为 12
+- 不要输出任何额外文字，只输出 JSON
+"""
+
+
+def ai_parse_operation_rules(
+    user_text: str,
+    chillers: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """根据用户文字描述 + 主机清单，解析为 12 个月运行参数表格。
+
+    Args:
+        user_text: 用户填写的运行规律文字描述，例如：
+            "过渡季节工作日开2台约克3000RT中温变频，75%负载
+             冬季不开机
+             夏季工作日开3台3000RT中温变频，80%负载"
+        chillers: 已识别的主机列表，每项含 name/qty/capacity_kw/variable_freq/brand/model 等
+
+    Returns:
+        {
+            "chiller_combination": [...],  # 12 个月组合描述
+            "load_factor": [...],          # 12 个月负载率 0.0~1.0
+            "cooling_demand_kw": [...],    # 12 个月需求冷量 kW
+            "remark": [...],               # 12 个月备注
+            "summary": "...",
+        }
+    """
+    client = _get_client()
+
+    # 拼装主机清单上下文
+    chiller_ctx = "（未提供主机清单）"
+    if chillers:
+        lines = []
+        for i, c in enumerate(chillers, 1):
+            qty = c.get("qty", 1)
+            cap = c.get("capacity_kw", 0)
+            vf = "变频" if c.get("variable_freq") else "工频"
+            brand = c.get("brand", "")
+            model = c.get("model", "")
+            name = c.get("name", "")
+            lines.append(
+                f"  主机组{i}: 名称={name} | 台数={qty} | 单台容量={cap}kW "
+                f"| {vf} | 品牌={brand} | 型号={model}"
+            )
+        chiller_ctx = "\n".join(lines)
+
+    prompt = (
+        f"## 用户填写的设备运行规律描述\n{user_text}\n\n"
+        f"## 已识别的主机清单\n{chiller_ctx}\n\n"
+        f"{OPERATION_RULES_PROMPT}"
+    )
+
+    try:
+        response = client.messages.create(
+            model=_get_model(), max_tokens=2500, temperature=0.1,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = _robust_extract_json(response.content[0].text)
+        if not result:
+            return None
+        # 校验/补齐 12 个月
+        for key in ("chiller_combination", "load_factor", "cooling_demand_kw", "remark"):
+            arr = result.get(key) or []
+            if not isinstance(arr, list):
+                arr = []
+            if len(arr) < 12:
+                arr = arr + [""] * (12 - len(arr)) if key in ("chiller_combination", "remark") else arr + [0] * (12 - len(arr))
+            elif len(arr) > 12:
+                arr = arr[:12]
+            result[key] = arr
+        # 数值规范化
+        result["load_factor"] = [round(max(0.0, min(1.0, float(v or 0))), 2) for v in result["load_factor"]]
+        result["cooling_demand_kw"] = [round(float(v or 0), 1) for v in result["cooling_demand_kw"]]
+        return result
+    except Exception as e:
+        print(f"[operation_rules_parse] Error: {e}")
+        return None
+
+
+def derive_monthly_chiller_count_from_combination(
+    combination: List[str],
+    total_available: int = 1,
+) -> List[int]:
+    """从冷机运行组合描述反推每月开机台数。
+
+    简单策略：
+    - "不开机" / 空 → 0（但仿真需要至少 1 台，调用方需处理）
+    - 提取"X台"中的数字，取第一个数字
+    - 含"+"（如"2台A+1台B"）→ 累加所有"X台"
+    - 无法识别 → 1
+
+    Args:
+        combination: 12 个月的组合描述字符串列表
+        total_available: 主机总台数上限
+    """
+    counts: List[int] = []
+    for desc in combination:
+        if not desc or not isinstance(desc, str):
+            counts.append(1)
+            continue
+        s = desc.strip()
+        if "不开机" in s or "停机" in s:
+            counts.append(0)
+            continue
+        # 提取所有"X台"
+        matches = re.findall(r"(\d+)\s*台", s)
+        if matches:
+            total = sum(int(m) for m in matches)
+            counts.append(min(total, max(1, total_available)))
+        else:
+            counts.append(1)
+    return counts
