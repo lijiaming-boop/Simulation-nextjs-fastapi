@@ -106,21 +106,79 @@ def render_simulation_module():
 
 # ==================== Step 1: 拓扑信息收集 ====================
 
+_INVALID_TEXT_PATTERNS = [
+    "例如：", "示例:", "选填", "选框勾选", "是否", "有没有",
+    "请注意", "举例", "需要让运维", "询问运维", "各设备铭牌",
+    "描述一下", "客户", "末端", "该项目", "涉及", "整体情况",
+    "运行规律", "特殊情况说明", "设备启停方式", "末端设备数量",
+    "通讯接口", "供水温度", "运行台数", "运行频率", "出水温度",
+    "工频运行则为", "变频运行可填写", "整个冷站", "填写大致的范围",
+]
+
+
+def _is_real_equipment(entry: dict) -> bool:
+    """判断一条记录是否是真实设备数据，而不是调研表的说明文本"""
+    brand = str(entry.get("brand", "") or "")
+    model = str(entry.get("model", "") or "")
+
+    # 如果 brand 或 model 太长（包含说明性文本），大概率不是设备数据
+    if len(brand) > 30 or len(model) > 30:
+        return False
+
+    # 包含常见调研表提示文本
+    combined = brand + model
+    for pattern in _INVALID_TEXT_PATTERNS:
+        if pattern in combined:
+            return False
+
+    # 至少有一个数值字段大于0 或 brand/model 是短文本
+    capacity = entry.get("capacity_kw") or entry.get("额定制冷量") or entry.get("制冷量") or 0
+    power = entry.get("power_kw") or entry.get("额定功率") or entry.get("功率") or 0
+    cop = entry.get("rated_cop") or entry.get("COP") or entry.get("cop") or 0
+    fan_power = entry.get("fan_power_kw") or entry.get("风机功率") or 0
+
+    try:
+        if float(capacity) > 0 or float(power) > 0 or float(cop) > 0 or float(fan_power) > 0:
+            return True
+    except (ValueError, TypeError):
+        pass
+
+    # brand/model 是合理的短文本（如品牌名、型号）
+    if brand and model and len(brand) <= 20 and len(model) <= 20:
+        return True
+    if brand and len(brand) <= 20 and not any(p in brand for p in ["类型", "否", "是", "/"]):
+        return True
+
+    return False
+
+
 def _normalize_topology(raw: dict) -> dict:
     """标准化 AI 输出的拓扑 JSON，兼容多种键名格式"""
-    topology = {"project_name": raw.get("project_name", raw.get("项目名称", "未知项目"))}
+    # 处理嵌套结构：AI 可能输出 {"source_file": ..., "topology": {...}, "notes": [...]}
+    if "topology" in raw and isinstance(raw["topology"], dict):
+        inner = raw["topology"]
+        project_name = raw.get("project_name", inner.get("project_name", raw.get("项目名称", "未知项目")))
+        raw = inner
+    else:
+        project_name = raw.get("project_name", raw.get("项目名称", "未知项目"))
 
-    # 冷水主机 - 兼容多种键名
+    topology = {"project_name": project_name}
+
+    # 冷水主机 - 兼容多种键名 + 过滤无效数据
     chillers = (
         raw.get("chillers") or raw.get("冷水主机") or raw.get("主机") or
         raw.get("chiller") or raw.get("冷水机组") or []
     )
     normalized_chillers = []
     for ch in chillers:
+        if not isinstance(ch, dict):
+            continue
+        if not _is_real_equipment(ch):
+            continue
         normalized_chillers.append({
-            "brand": ch.get("brand", ch.get("品牌", "")),
-            "model": ch.get("model", ch.get("型号", "")),
-            "type": ch.get("type", ch.get("类型", "")),
+            "brand": ch.get("brand", ch.get("品牌", "")) or "",
+            "model": ch.get("model", ch.get("型号", "")) or "",
+            "type": ch.get("type", ch.get("类型", "")) or "",
             "count": int(ch.get("count", ch.get("台数", ch.get("数量", 1))) or 1),
             "capacity_kw": float(ch.get("capacity_kw", ch.get("额定制冷量", ch.get("制冷量", ch.get("额定制冷量kW", 0)))) or 0),
             "power_kw": float(ch.get("power_kw", ch.get("额定功率", ch.get("功率", ch.get("额定功率kW", 0)))) or 0),
@@ -137,7 +195,7 @@ def _normalize_topology(raw: dict) -> dict:
             "count": int(p.get("count", p.get("台数", 1)) or 1),
             "vfd": p.get("vfd", p.get("变频", True)),
         }
-        for p in cooling_pumps
+        for p in cooling_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
 
     # 冷冻泵
@@ -148,7 +206,7 @@ def _normalize_topology(raw: dict) -> dict:
             "count": int(p.get("count", p.get("台数", 1)) or 1),
             "vfd": p.get("vfd", p.get("变频", True)),
         }
-        for p in chilled_pumps
+        for p in chilled_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
 
     # 冷却塔
@@ -160,15 +218,26 @@ def _normalize_topology(raw: dict) -> dict:
             "vfd": t.get("vfd", t.get("变频", True)),
             "type": t.get("type", t.get("类型", "开式")),
         }
-        for t in towers
+        for t in towers if isinstance(t, dict) and _is_real_equipment(t)
     ]
 
     # 特殊结构
     special = raw.get("special") or raw.get("特殊结构") or {"type": "none"}
-    if isinstance(special, str):
+    if isinstance(special, dict):
+        # 处理 features 列表格式
+        features = special.get("features", [])
+        if features and not special.get("type"):
+            type_map = {"热回收": "heat_recovery", "蓄冷": "storage", "蓄冰": "ice"}
+            for feat in features:
+                if feat in type_map:
+                    special["type"] = type_map[feat]
+                    break
+        if not special.get("type"):
+            special["type"] = "none"
+    elif isinstance(special, str):
         special = {"type": special}
-    if not special.get("type"):
-        special["type"] = "none"
+    else:
+        special = {"type": "none"}
     topology["special"] = special
 
     return topology
@@ -180,7 +249,36 @@ def render_topology_stage():
 
     # 已有拓扑数据时直接展示确认
     if st.session_state.sim_topology is not None:
-        _display_topology(st.session_state.sim_topology)
+        topology = st.session_state.sim_topology
+        _display_topology(topology)
+
+        # 检查关键设备是否为空
+        if not topology.get('chillers'):
+            st.warning("⚠️ 未识别到冷水主机，请手动添加或重新解析")
+            with st.form("manual_chiller_form"):
+                st.markdown("**手动添加冷水主机**")
+                mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+                with mc1:
+                    ch_brand = st.text_input("品牌", key="mc_brand")
+                with mc2:
+                    ch_model = st.text_input("型号", key="mc_model")
+                with mc3:
+                    ch_capacity = st.number_input("制冷量(kW)", min_value=0.0, key="mc_capacity")
+                with mc4:
+                    ch_power = st.number_input("功率(kW)", min_value=0.0, key="mc_power")
+                with mc5:
+                    ch_count = st.number_input("台数", min_value=1, value=1, key="mc_count")
+                ch_cop = st.number_input("COP", min_value=0.0, value=5.0, key="mc_cop")
+                if st.form_submit_button("➡️ 添加主机"):
+                    if ch_brand or ch_capacity > 0:
+                        topology["chillers"].append({
+                            "brand": ch_brand, "model": ch_model, "type": "",
+                            "count": ch_count, "capacity_kw": ch_capacity,
+                            "power_kw": ch_power, "rated_cop": ch_cop, "vfd": True
+                        })
+                        st.session_state.sim_topology = topology
+                        st.rerun()
+
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
@@ -188,7 +286,9 @@ def render_topology_stage():
                 st.session_state.sim_topology = None
                 st.rerun()
         with col2:
-            if st.button("✅ 确认拓扑信息，进入下一步", type="primary", use_container_width=True):
+            can_proceed = bool(topology.get('chillers'))
+            if st.button("✅ 确认拓扑信息，进入下一步", type="primary",
+                         use_container_width=True, disabled=not can_proceed):
                 st.session_state.sim_stage = 'cop_curves'
                 st.rerun()
         return
@@ -351,21 +451,59 @@ def _run_topology_extraction(upload_path: Path):
         output_path = session_dir / "sim_topology.json"
 
         prompt = (
-            f"请从调研表 {upload_path} 中识别冷站设备拓扑信息，输出为 JSON 文件 {output_path}。\n"
-            f"需要识别的设备包括：\n"
-            f"1. 冷水主机（品牌/型号/类型/台数/额定制冷量kW/额定功率kW/额定COP）\n"
-            f"2. 冷却泵（功率kW/台数/是否变频）\n"
-            f"3. 冷冻泵（功率kW/台数/是否变频）\n"
-            f"4. 冷却塔（风机功率kW/台数/是否变频/类型开式或闭式）\n"
-            f"5. 特殊结构（蓄冷/蓄冰/热回收，含容量参数）\n\n"
-            f"输出 JSON 格式（必须使用英文键名）：\n"
-            f'{{"project_name": "项目名称", "chillers": [{{"brand": "", "model": "", '
-            f'"type": "", "count": 0, "capacity_kw": 0, "power_kw": 0, "rated_cop": 0}}], '
-            f'"cooling_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
-            f'"chilled_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
-            f'"towers": [{{"fan_power_kw": 0, "count": 0, "vfd": true, "type": "闭式"}}], '
-            f'"special": {{"type": "none"}}}}\n'
-            f"同类设备按型号汇总台数。请读取 Excel 文件并输出结构化 JSON。"
+            f"你是一个暖通数据解析专家。请从调研表 Excel 文件中提取冷站设备拓扑信息。\n\n"
+            f"## 文件路径\n"
+            f"- 输入: {upload_path}\n"
+            f"- 输出: {output_path}\n\n"
+            f"## 解析步骤\n\n"
+            f"### 第一步：读取 Excel 文件\n"
+            f"用 openpyxl 读取 Excel，重点关注以下工作表：\n"
+            f"- 名称包含“冷站”的 sheet：这里包含设备规格表\n"
+            f"- 名称包含“项目总体情况”的 sheet：包含项目基本信息\n\n"
+            f"### 第二步：在“冷站”sheet 中定位设备表\n"
+            f"调研表的设备表格式通常是：\n"
+            f"- 表头行包含列名如：类型、品牌、型号、台数、制冷量/kW、功率/kW、COP、变频/工频\n"
+            f"- 设备分类可能包括：冷机、一次侧冷却泵、一次冷冻泵、二次冷冻泵、冷却塔\n"
+            f"- 每个分类下面有多行数据，每行是一个设备型号\n\n"
+            f"### 第三步：只提取真正的设备数据行\n"
+            f"**必须提取的数据行特征**：\n"
+            f"- 该行有具体的品牌名（如“约克”“特灵”“开利”“康迈斯”“元亨”等）\n"
+            f"- 该行有具体的型号（如“YKWEPEP96CQH”等）\n"
+            f"- 该行有数值型的制冷量/功率数据（如 3516、90、75、45 等）\n"
+            f"- 该行有台数信息（如 1、2、3、4 等正整数）\n\n"
+            f"**必须跳过的行**：\n"
+            f"- 表头行（包含“类型”“品牌”“型号”等字样的行）\n"
+            f"- 说明性文字（如“例如：”“示例：”“选填”等）\n"
+            f"- 调研表问题文本（如“现场是否有上位机系统”“询问运维人员”等）\n"
+            f"- 运行记录数据（如月度运行台数、供水温度等时间序列数据）\n"
+            f"- 空行或合并单元格\n\n"
+            f"### 第四步：输出 JSON\n"
+            f"使用 Write 工具将解析结果写入 {output_path}，格式如下：\n"
+            f"```json\n"
+            f'{{\n'
+            f'  "project_name": "项目名称",\n'
+            f'  "chillers": [\n'
+            f'    {{"brand": "约克", "model": "YKWEPEP96CQH", "type": "变频", "count": 2, "capacity_kw": 3516, "power_kw": 680, "rated_cop": 5.17, "vfd": true}}\n'
+            f'  ],\n'
+            f'  "cooling_pumps": [\n'
+            f'    {{"power_kw": 90, "count": 4, "vfd": true}}\n'
+            f'  ],\n'
+            f'  "chilled_pumps": [\n'
+            f'    {{"power_kw": 75, "count": 3, "vfd": true}}\n'
+            f'  ],\n'
+            f'  "towers": [\n'
+            f'    {{"fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式"}}\n'
+            f'  ],\n'
+            f'  "special": {{"type": "none"}}\n'
+            f'}}\n'
+            f"```\n\n"
+            f"## 重要约束\n"
+            f"1. 必须用英文键名，不能用中文键名\n"
+            f"2. capacity_kw/power_kw/rated_cop/fan_power_kw 必须是数字，不是 null\n"
+            f"3. 同类设备如果型号相同，合并台数（如2台相同参数的冷机 → count: 2）\n"
+            f"4. vfd 字段根据“变频”/“工频”判断，默认 true\n"
+            f"5. 不要包含调研表的问题文本和说明性文字\n"
+            f"6. special 字段如果调研表提到蓄冷/蓄冰/热回收，填入对应类型，否则 type 为 none\n"
         )
 
         skill_result = caller.call_skill(

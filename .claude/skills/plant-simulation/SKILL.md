@@ -15,8 +15,28 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 
 ### 1. extract_topology - 从调研表提取拓扑
 - 输入: 调研表Excel路径, 输出JSON路径
-- 任务: 读取Excel调研表，识别所有冷站设备信息
-- 输出: 结构化拓扑JSON
+- 任务: 用 openpyxl 读取 Excel，重点定位“冷站” sheet 中的设备规格表
+
+**解析要点**：
+1. 找到设备规格表：表头行包含列名如“类型、品牌、型号、台数、制冷量/kW、功率/kW、COP、变频/工频”
+2. 只提取真正的设备数据行（有具体品牌名+型号+数值型制冷量/功率数据）
+3. 必须跳过：表头行、说明性文字（“例如：”“示例：”）、调研问题文本（“现场是否有...”）、月度运行数据
+4. 设备分类：冷机、冷却泵、冷冻泵、冷却塔
+5. 同类设备合并台数
+
+**输出 JSON 格式**（必须用英文键名）：
+```json
+{
+  "project_name": "项目名称",
+  "chillers": [{"brand": "约克", "model": "YZ-3000RT", "type": "变频", "count": 2, "capacity_kw": 3516, "power_kw": 680, "rated_cop": 5.17, "vfd": true}],
+  "cooling_pumps": [{"power_kw": 90, "count": 4, "vfd": true}],
+  "chilled_pumps": [{"power_kw": 75, "count": 3, "vfd": true}],
+  "towers": [{"fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式"}],
+  "special": {"type": "none"}
+}
+```
+- capacity_kw/power_kw/rated_cop/fan_power_kw 必须是数字，不能是 null
+- 不要包含调研表的问题文本和说明性文字
 
 ### 2. parse_topology - 解析用户文本输入
 - 输入: 用户输入文本文件路径, 输出JSON路径
