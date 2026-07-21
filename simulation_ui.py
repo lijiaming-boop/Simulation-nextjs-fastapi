@@ -1173,21 +1173,24 @@ def _display_operating_table(operating: dict):
     # 编辑功能
     with st.expander("✏️ 编辑月度数据"):
         st.caption("修改后点击保存生效")
-        edit_df = pd.DataFrame(monthly_table) if monthly_table else pd.DataFrame()
-        if not edit_df.empty:
-            edited = st.data_editor(
-                edit_df[['month', 'season', 'chiller_combination', 'representative_load_ratio', 'cooling_demand_kw', 'note']],
-                num_rows="fixed",
-                key="operating_editor"
-            )
-            if st.button("💾 保存修改"):
-                for i, row_data in edited.iterrows():
-                    monthly_table[i]['representative_load_ratio'] = row_data.get('representative_load_ratio', 0)
-                    monthly_table[i]['cooling_demand_kw'] = row_data.get('cooling_demand_kw', 0)
-                    monthly_table[i]['note'] = row_data.get('note', '')
-                operating['monthly_table'] = monthly_table
-                st.session_state.sim_operating_conditions = operating
-                st.rerun()
+        if monthly_table:
+            edit_df = pd.DataFrame(monthly_table)
+            # 只选择实际存在的列
+            available_cols = [c for c in ['month', 'season', 'representative_load_ratio', 'cooling_demand_kw', 'note'] if c in edit_df.columns]
+            if available_cols:
+                edited = st.data_editor(
+                    edit_df[available_cols],
+                    num_rows="fixed",
+                    key="operating_editor"
+                )
+                if st.button("💾 保存修改"):
+                    for i, row_data in edited.iterrows():
+                        for col in available_cols:
+                            if col != 'month':
+                                monthly_table[i][col] = row_data.get(col, monthly_table[i].get(col))
+                    operating['monthly_table'] = monthly_table
+                    st.session_state.sim_operating_conditions = operating
+                    st.rerun()
 
 
 # ==================== Step 4: 仿真执行 ====================
