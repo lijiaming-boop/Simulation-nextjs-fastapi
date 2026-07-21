@@ -249,37 +249,11 @@ def render_topology_stage():
     """Step 1: 站房拓扑信息收集"""
     st.header("📋 步骤 1: 站房拓扑信息收集")
 
-    # 已有拓扑数据时直接展示确认
+    # 已有拓扑数据时展示编辑界面
     if st.session_state.sim_topology is not None:
         topology = st.session_state.sim_topology
         _display_topology(topology)
-
-        # 检查关键设备是否为空
-        if not topology.get('chillers'):
-            st.warning("⚠️ 未识别到冷水主机，请手动添加或重新解析")
-            with st.form("manual_chiller_form"):
-                st.markdown("**手动添加冷水主机**")
-                mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-                with mc1:
-                    ch_brand = st.text_input("品牌", key="mc_brand")
-                with mc2:
-                    ch_model = st.text_input("型号", key="mc_model")
-                with mc3:
-                    ch_capacity = st.number_input("制冷量(kW)", min_value=0.0, key="mc_capacity")
-                with mc4:
-                    ch_power = st.number_input("功率(kW)", min_value=0.0, key="mc_power")
-                with mc5:
-                    ch_count = st.number_input("台数", min_value=1, value=1, key="mc_count")
-                ch_cop = st.number_input("COP", min_value=0.0, value=5.0, key="mc_cop")
-                if st.form_submit_button("➡️ 添加主机"):
-                    if ch_brand or ch_capacity > 0:
-                        topology["chillers"].append({
-                            "brand": ch_brand, "model": ch_model, "type": "",
-                            "count": ch_count, "capacity_kw": ch_capacity,
-                            "power_kw": ch_power, "rated_cop": ch_cop, "vfd": True
-                        })
-                        st.session_state.sim_topology = topology
-                        st.rerun()
+        st.session_state.sim_topology = topology  # 保存编辑后的数据
 
         st.markdown("---")
         col1, col2 = st.columns(2)
@@ -531,63 +505,140 @@ def _run_topology_extraction(upload_path: Path):
 
 
 def _display_topology(topology: dict):
-    """展示拓扑识别结果"""
+    """展示并编辑拓扑识别结果"""
     st.success("✅ 设备拓扑识别完成")
 
-    project_name = topology.get('project_name', '未知项目')
-    st.markdown(f"**项目名称**: {project_name}")
+    # 项目名称可编辑
+    topology['project_name'] = st.text_input(
+        "项目名称", value=topology.get('project_name', '未知项目'), key="edit_project_name"
+    )
 
-    # 冷水主机
+    # === 冷水主机 ===
     chillers = topology.get('chillers', [])
+    st.subheader(f"❄️ 冷水主机 ({len(chillers)} 条)")
     if chillers:
-        st.subheader("❄️ 冷水主机")
-        for ch in chillers:
-            vfd_str = "变频" if ch.get('vfd', False) else "定频"
-            st.markdown(
-                f"- **{ch.get('brand', '')} {ch.get('model', '')}** "
-                f"({ch.get('type', '')}) × {ch.get('count', 0)} 台 | "
-                f"额定制冷量 {ch.get('capacity_kw', 0):.0f} kW | "
-                f"额定功率 {ch.get('power_kw', 0):.0f} kW | "
-                f"额定COP {ch.get('rated_cop', 0):.2f}"
-            )
+        with st.expander("展开编辑", expanded=True):
+            to_delete_ch = []
+            for idx, ch in enumerate(chillers):
+                st.markdown(f"**--- 主机 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    ch['brand'] = st.text_input("品牌", value=ch.get('brand', ''), key=f"ch_brand_{idx}")
+                    ch['model'] = st.text_input("型号", value=ch.get('model', ''), key=f"ch_model_{idx}")
+                with c2:
+                    ch['capacity_kw'] = st.number_input("制冷量(kW)", min_value=0.0, value=float(ch.get('capacity_kw', 0) or 0), key=f"ch_cap_{idx}")
+                    ch['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(ch.get('power_kw', 0) or 0), key=f"ch_pwr_{idx}")
+                with c3:
+                    ch['rated_cop'] = st.number_input("COP", min_value=0.0, value=float(ch.get('rated_cop', 0) or 0), step=0.01, key=f"ch_cop_{idx}")
+                    ch['count'] = st.number_input("台数", min_value=1, value=int(ch.get('count', 1) or 1), key=f"ch_cnt_{idx}")
+                ch['vfd'] = st.checkbox("变频", value=ch.get('vfd', True), key=f"ch_vfd_{idx}")
+                ch['type'] = st.text_input("类型", value=ch.get('type', ''), key=f"ch_type_{idx}")
+                if st.button("🗑️ 删除", key=f"ch_del_{idx}"):
+                    to_delete_ch.append(idx)
+            if to_delete_ch:
+                topology['chillers'] = [c for i, c in enumerate(chillers) if i not in to_delete_ch]
+                st.session_state.sim_topology = topology
+                st.rerun()
 
-    # 冷却泵
+    # 添加主机按钮
+    if st.button("➡️ 添加冷水主机", key="add_chiller"):
+        topology.setdefault('chillers', []).append({
+            "brand": "", "model": "", "type": "", "count": 1,
+            "capacity_kw": 0, "power_kw": 0, "rated_cop": 5.0, "vfd": True
+        })
+        st.session_state.sim_topology = topology
+        st.rerun()
+
+    # === 冷却泵 ===
     cooling_pumps = topology.get('cooling_pumps', [])
+    st.subheader(f"🔄 冷却泵 ({len(cooling_pumps)} 条)")
     if cooling_pumps:
-        st.subheader("🔄 冷却泵")
-        for p in cooling_pumps:
-            vfd_str = "变频" if p.get('vfd', True) else "工频"
-            st.markdown(f"- {p.get('power_kw', 0)} kW × {p.get('count', 0)} 台 ({vfd_str})")
+        with st.expander("展开编辑"):
+            to_delete_cp = []
+            for idx, p in enumerate(cooling_pumps):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"cp_pwr_{idx}")
+                with c2:
+                    p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"cp_cnt_{idx}")
+                with c3:
+                    p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"cp_vfd_{idx}")
+                if st.button("🗑️ 删除", key=f"cp_del_{idx}"):
+                    to_delete_cp.append(idx)
+            if to_delete_cp:
+                topology['cooling_pumps'] = [c for i, c in enumerate(cooling_pumps) if i not in to_delete_cp]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷却泵", key="add_cooling_pump"):
+        topology.setdefault('cooling_pumps', []).append({"power_kw": 0, "count": 1, "vfd": True})
+        st.session_state.sim_topology = topology
+        st.rerun()
 
-    # 冷冻泵
+    # === 冷冻泵 ===
     chilled_pumps = topology.get('chilled_pumps', [])
+    st.subheader(f"💧 冷冻泵 ({len(chilled_pumps)} 条)")
     if chilled_pumps:
-        st.subheader("💧 冷冻泵")
-        for p in chilled_pumps:
-            vfd_str = "变频" if p.get('vfd', True) else "工频"
-            st.markdown(f"- {p.get('power_kw', 0)} kW × {p.get('count', 0)} 台 ({vfd_str})")
+        with st.expander("展开编辑"):
+            to_delete_hc = []
+            for idx, p in enumerate(chilled_pumps):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"hp_pwr_{idx}")
+                with c2:
+                    p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"hp_cnt_{idx}")
+                with c3:
+                    p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"hp_vfd_{idx}")
+                if st.button("🗑️ 删除", key=f"hp_del_{idx}"):
+                    to_delete_hc.append(idx)
+            if to_delete_hc:
+                topology['chilled_pumps'] = [c for i, c in enumerate(chilled_pumps) if i not in to_delete_hc]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷冻泵", key="add_chilled_pump"):
+        topology.setdefault('chilled_pumps', []).append({"power_kw": 0, "count": 1, "vfd": True})
+        st.session_state.sim_topology = topology
+        st.rerun()
 
-    # 冷却塔
+    # === 冷却塔 ===
     towers = topology.get('towers', [])
+    st.subheader(f"🌡️ 冷却塔 ({len(towers)} 条)")
     if towers:
-        st.subheader("🌡️ 冷却塔")
-        for t in towers:
-            vfd_str = "变频" if t.get('vfd', True) else "工频"
-            st.markdown(
-                f"- 风机 {t.get('fan_power_kw', 0)} kW × {t.get('count', 0)} 台 "
-                f"({vfd_str}, {t.get('type', '开式')})"
-            )
+        with st.expander("展开编辑"):
+            to_delete_tw = []
+            for idx, t in enumerate(towers):
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    t['fan_power_kw'] = st.number_input("风机功率(kW)", min_value=0.0, value=float(t.get('fan_power_kw', 0) or 0), key=f"tw_pwr_{idx}")
+                with c2:
+                    t['count'] = st.number_input("台数", min_value=1, value=int(t.get('count', 1) or 1), key=f"tw_cnt_{idx}")
+                with c3:
+                    t['vfd'] = st.checkbox("变频", value=t.get('vfd', True), key=f"tw_vfd_{idx}")
+                with c4:
+                    t['type'] = st.text_input("类型", value=t.get('type', '开式'), key=f"tw_type_{idx}")
+                if st.button("🗑️ 删除", key=f"tw_del_{idx}"):
+                    to_delete_tw.append(idx)
+            if to_delete_tw:
+                topology['towers'] = [c for i, c in enumerate(towers) if i not in to_delete_tw]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷却塔", key="add_tower"):
+        topology.setdefault('towers', []).append({"fan_power_kw": 0, "count": 1, "vfd": True, "type": "开式"})
+        st.session_state.sim_topology = topology
+        st.rerun()
 
-    # 特殊结构
+    # === 特殊结构 ===
     special = topology.get('special', {})
-    if special.get('type', 'none') != 'none':
-        st.subheader("🏗️ 特殊结构")
-        type_names = {
-            'storage': '水蓄冷', 'ice': '冰蓄冷', 'heat_recovery': '热回收'
-        }
-        st.markdown(f"- 类型: {type_names.get(special.get('type'), special.get('type'))}")
-        if special.get('capacity'):
-            st.markdown(f"- 容量: {special['capacity']}")
+    st.subheader("🏗️ 特殊结构")
+    sp_type = special.get('type', 'none')
+    special_options = ['none', 'storage', 'ice', 'heat_recovery', 'storage_and_heat_recovery']
+    sp_labels = ['无', '水蓄冷', '冰蓄冷', '热回收', '蓄冷+热回收']
+    try:
+        sp_idx = special_options.index(sp_type) if sp_type in special_options else 0
+    except ValueError:
+        sp_idx = 0
+    new_sp = st.selectbox("类型", options=special_options, index=sp_idx, format_func=lambda x: sp_labels[special_options.index(x)], key="sp_type")
+    special['type'] = new_sp
+    topology['special'] = special
 
 
 # ==================== Step 2: 性能曲线收集 ====================
