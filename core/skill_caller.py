@@ -267,6 +267,64 @@ class SkillCaller:
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 
+        elif skill_name == "plant-simulation":
+            if len(args) < 3:
+                raise SkillError(
+                    "plant-simulation 需要3个参数: "
+                    "输入数据路径, 输出路径/目录, 任务类型"
+                )
+            task_type = args[2]
+
+            if task_type == "extract_topology":
+                return (
+                    f"请使用 plant-simulation skill 从调研表中提取冷站设备拓扑信息。\n"
+                    f"调研表路径: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请读取Excel文件，识别冷水主机、冷却泵、冷冻泵、冷却塔和特殊结构信息，"
+                    f"按型号汇总台数，输出结构化JSON。"
+                )
+            elif task_type == "parse_topology":
+                return (
+                    f"请使用 plant-simulation skill 解析用户输入的设备拓扑描述。\n"
+                    f"用户输入文件: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请将自然语言描述解析为结构化设备拓扑JSON。"
+                )
+            elif task_type == "parse_cop_curve":
+                return (
+                    f"请使用 plant-simulation skill 识别性能曲线图片中的COP数据。\n"
+                    f"图片路径: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请读取图片，提取冷却水温度×负荷率的二维COP查找表。"
+                )
+            elif task_type == "generate_operating":
+                return (
+                    f"请使用 plant-simulation skill 生成月度运行组合表格。\n"
+                    f"输入数据: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请整理为12个月的冷机运行组合、负载率和冷量需求。"
+                )
+            elif task_type in ("new_station", "old_station"):
+                mode_desc = "新站房仿真（需求冷量+COP计算）" if task_type == "new_station" else "旧站房仿真（基准+优化对比节能率）"
+                return (
+                    f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"
+                    f"输入数据(汇总JSON): {args[0]}\n"
+                    f"输出目录: {args[1]}\n"
+                    f"仿真模式: {mode_desc}\n"
+                    f"请根据 SKILL.md 规范：\n"
+                    f"1. 读取输入JSON中的拓扑、COP数据和工况信息\n"
+                    f"2. 生成完整的Python仿真脚本到输出目录\n"
+                    f"3. 执行仿真脚本\n"
+                    f"4. 确保输出8760h CSV、月度Excel、3张分析图表和Markdown报告"
+                )
+            else:
+                return (
+                    f"请使用 plant-simulation skill 完成任务。\n"
+                    f"输入: {args[0]}\n"
+                    f"输出: {args[1]}\n"
+                    f"任务类型: {task_type}"
+                )
+
         else:
             # 通用提示词
             params_str = ', '.join(str(arg) for arg in args)

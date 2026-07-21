@@ -45,7 +45,8 @@ def update_streaming_container(container, texts: list):
 def init_session_state():
     """初始化 session state"""
     if 'stage' not in st.session_state:
-        st.session_state.stage = 'upload'
+        st.session_state.stage = 'home'
+        st.session_state.module_type = None  # None=首页 / air_conditioner / air_compressor / plant_simulation
         st.session_state.uploaded_file = None
         st.session_state.original_filename = None
         st.session_state.extracted_data = None
@@ -61,18 +62,16 @@ def init_session_state():
 
 
 def reset_flow():
-    """重置流程"""
-    st.session_state.stage = 'upload'
+    """重置流程（回到首页）"""
+    st.session_state.stage = 'home'
+    st.session_state.module_type = None
     st.session_state.uploaded_file = None
-    st.session_state.original_filename = None  # 新增
+    st.session_state.original_filename = None
     st.session_state.extracted_data = None
     st.session_state.quality_report = None
     st.session_state.filling_suggestions = None
     st.session_state.result = None
-    # 重要：增加 uploader_key 强制清空 file_uploader 缓存
     st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
-
-    # 新增：创建新的会话目录
     st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
 
 
@@ -80,7 +79,7 @@ def main():
     """主函数"""
     # 页面配置
     st.set_page_config(
-        page_title="空调节能率智能测算工具",
+        page_title="暖通节能率智能测算工具",
         page_icon="❄️",
         layout="wide"
     )
@@ -93,17 +92,94 @@ def main():
     # 标题和退出按钮
     col_title, col_logout = st.columns([6, 1])
     with col_title:
-        st.title("❄️ 空调节能率智能测算工具")
+        if st.session_state.module_type == 'plant_simulation':
+            st.title("🔬 冷站性能仿真分析")
+        elif st.session_state.module_type == 'air_conditioner':
+            st.title("❄️ 空调节能率智能测算工具")
+        elif st.session_state.module_type == 'air_compressor':
+            st.title("🔧 空压AI节能率测算")
+        else:
+            st.title("暖通节能率智能测算工具")
     with col_logout:
         st.link_button("🚪 退出", "/logout", use_container_width=True)
     
     st.markdown("---")
 
-    # 滚动到顶部逻辑（在标题之后立即执行）
+    # 滚动到顶部逻辑
     if st.session_state.get('scroll_to_top', False):
         scroll_to_here(0, key='scroll_to_top_marker')
-        st.session_state.scroll_to_top = False  # 重置标志
+        st.session_state.scroll_to_top = False
 
+    # 根据模块类型路由
+    if st.session_state.module_type == 'plant_simulation':
+        from simulation_ui import render_simulation_module
+        render_simulation_module()
+    elif st.session_state.module_type == 'air_conditioner':
+        _render_air_conditioner_module()
+    elif st.session_state.module_type == 'air_compressor':
+        st.info("🔧 空压节能率计算模块（待接入）")
+        if st.button("🏠 返回首页", use_container_width=True):
+            reset_flow()
+            st.rerun()
+    else:
+        _render_home_page()
+
+
+def _render_home_page():
+    """模块选择首页"""
+    st.markdown("""
+    <div style="text-align: center; margin: 40px 0 30px 0;">
+        <h1 style="color: #1E293B; font-size: 28px; font-weight: 600; margin: 0;">
+            暖通节能率智能测算工具
+        </h1>
+        <p style="color: #64748B; font-size: 14px; margin-top: 8px;">基于AI的智能节能评估系统</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("### ❄️ 空调节能率计算")
+        st.caption("上传中央空调调研表，AI自动提取数据并计算节能率")
+        if st.button("进入空调节能率计算", use_container_width=True, type="primary"):
+            st.session_state.module_type = 'air_conditioner'
+            st.session_state.stage = 'upload'
+            st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
+            st.rerun()
+
+    with col2:
+        st.markdown("### 🔧 空压节能率计算")
+        st.caption("上传空压机调研表，AI自动提取数据并计算节能率")
+        if st.button("进入空压节能率计算", use_container_width=True, type="primary"):
+            st.session_state.module_type = 'air_compressor'
+            st.session_state.stage = 'upload'
+            st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
+            st.rerun()
+
+    with col3:
+        st.markdown("### 🔬 冷站性能仿真")
+        st.caption("输入设备拓扑，全年8760h仿真分析，输出优化控制策略报告")
+        if st.button("进入冷站性能仿真", use_container_width=True, type="primary"):
+            st.session_state.module_type = 'plant_simulation'
+            from simulation_ui import init_simulation_state
+            init_simulation_state()
+            st.session_state.sim_mode = 'new_station'
+            st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; color: #94A3B8; font-size: 12px; margin-top: 20px;">
+        空调节能率计算：适用于有调研表的旧站房节能评估<br>
+        冷站性能仿真：适用于新站房设计仿真或旧站房优化策略对比
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _render_air_conditioner_module():
+    """空调节能率计算模块主流程"""
     # 流程进度指示器
     stages = ['上传调研表', '数据提取 + 质量检查', '数据填充', '节能测算', '结果展示']
     stage_map = {
@@ -169,7 +245,7 @@ def render_upload_stage():
 
         if st.button("🚀 开始分析", type="primary", use_container_width=True):
             st.session_state.stage = 'extract_check'
-            st.session_state.scroll_to_top = True  # 新增：触发滚动
+            st.session_state.scroll_to_top = True
             st.rerun()
 
 
@@ -948,6 +1024,18 @@ def render_result_stage():
     # 元数据
     with st.expander("🔍 查看计算元数据", expanded=True):
         st.json(result)
+
+    st.markdown("---")
+
+    # 冷站仿真跳转入口（旧站房）
+    st.subheader("🔬 进阶：冷站性能仿真分析")
+    st.caption("基于调研表历史工况数据，进行全年8760h仿真，输出优化控制策略报告")
+    if st.button("进入冷站仿真分析 →", use_container_width=True):
+        st.session_state.module_type = 'plant_simulation'
+        from simulation_ui import init_simulation_state
+        init_simulation_state()
+        st.session_state.sim_mode = 'old_station'
+        st.rerun()
 
     st.markdown("---")
 
