@@ -488,9 +488,9 @@ def _run_topology_extraction(upload_path: Path):
             f"- 每个分类下面有多行数据，每行是一个设备型号\n\n"
             f"### 第三步：只提取真正的设备数据行\n"
             f"**必须提取的数据行特征**：\n"
-            f"- 该行有具体的品牌名（如“约克”“特灵”“开利”“康迈斯”“元亨”等）\n"
-            f"- 该行有具体的型号（如“YKWEPEP96CQH”等）\n"
-            f"- 该行有数值型的制冷量/功率数据（如 3516、90、75、45 等）\n"
+            f"- 该行有具体的品牌名（如“约克”“特灵”“开利”“康迈斯”“元亨”“南方泵业”“格兰富”“威乐”等）\n"
+            f"- 该行有具体的型号（如“YKWEPEP96CQH”“CDMF32-4”等）\n"
+            f"- 该行有数值型的制冷量/功率/流量数据\n"
             f"- 该行有台数信息（如 1、2、3、4 等正整数）\n\n"
             f"**必须跳过的行**：\n"
             f"- 表头行（包含“类型”“品牌”“型号”等字样的行）\n"
@@ -507,24 +507,31 @@ def _run_topology_extraction(upload_path: Path):
             f'    {{"brand": "约克", "model": "YKWEPEP96CQH", "type": "变频", "count": 2, "capacity_kw": 3516, "power_kw": 680, "rated_cop": 5.17, "vfd": true}}\n'
             f'  ],\n'
             f'  "cooling_pumps": [\n'
-            f'    {{"power_kw": 90, "count": 4, "vfd": true}}\n'
+            f'    {{"brand": "南方泵业", "model": "CDMF32-4", "power_kw": 90, "count": 4, "vfd": true, "flow_rate_m3h": 200, "head_m": 32}}\n'
             f'  ],\n'
             f'  "chilled_pumps": [\n'
-            f'    {{"power_kw": 75, "count": 3, "vfd": true}}\n'
+            f'    {{"brand": "南方泵业", "model": "CDMF25-3", "power_kw": 75, "count": 3, "vfd": true, "flow_rate_m3h": 150, "head_m": 25}}\n'
             f'  ],\n'
             f'  "towers": [\n'
-            f'    {{"fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式"}}\n'
+            f'    {{"brand": "元亨", "fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式", "flow_rate_m3h": 300}}\n'
             f'  ],\n'
             f'  "special": {{"type": "none"}}\n'
             f'}}\n'
             f"```\n\n"
+            f"## 设备分类识别要点\n"
+            f"1. **冷却泵 (cooling_pumps)**: 位于冷凝器侧，名称通常含“冷却”“condenser”“一次侧冷却泵”\n"
+            f"2. **冷冻泵 (chilled_pumps)**: 位于蒸发器侧，名称通常含“冷冻”“chilled”“一次冷冻泵”“二次冷冻泵”\n"
+            f"3. **冷却塔 (towers)**: 名称含“冷却塔”“cooling tower”“元亨”“良机”等\n"
+            f"4. **冷水主机 (chillers)**: 名称含“冷机”“chiller”“离心机”“螺杆机”\n\n"
             f"## 重要约束\n"
             f"1. 必须用英文键名，不能用中文键名\n"
-            f"2. capacity_kw/power_kw/rated_cop/fan_power_kw 必须是数字，不是 null\n"
-            f"3. 同类设备如果型号相同，合并台数（如2台相同参数的冷机 → count: 2）\n"
-            f"4. vfd 字段根据“变频”/“工频”判断，默认 true\n"
-            f"5. 不要包含调研表的问题文本和说明性文字\n"
-            f"6. special 字段如果调研表提到蓄冷/蓄冰/热回收，填入对应类型，否则 type 为 none\n"
+            f"2. 数值字段必须是数字，不是 null（找不到的填 0）\n"
+            f"3. 同类设备如果型号相同，合并台数\n"
+            f"4. vfd 字段根据“变频”/“工频”判断\n"
+            f"5. flow_rate_m3h 是额定流量（m³/h），从调研表的“流量”“流量(m³/h)”“额定流量”列提取\n"
+            f"6. head_m 是扬程（m），从调研表的“扬程”“扬程(m)”“压头”列提取\n"
+            f"7. 不要包含调研表的问题文本和说明性文字\n"
+            f"8. special 字段如果调研表提到蓄冷/蓄冰/热回收，填入对应类型，否则 type 为 none\n"
         )
 
         skill_result = caller.call_skill(

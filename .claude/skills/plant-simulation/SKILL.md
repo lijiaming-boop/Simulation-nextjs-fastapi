@@ -29,9 +29,9 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 {
   "project_name": "项目名称",
   "chillers": [{"brand": "约克", "model": "YZ-3000RT", "type": "变频", "count": 2, "capacity_kw": 3516, "power_kw": 680, "rated_cop": 5.17, "vfd": true}],
-  "cooling_pumps": [{"power_kw": 90, "count": 4, "vfd": true}],
-  "chilled_pumps": [{"power_kw": 75, "count": 3, "vfd": true}],
-  "towers": [{"fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式"}],
+  "cooling_pumps": [{"brand": "南方泵业", "model": "CDMF32-4", "power_kw": 90, "count": 4, "vfd": true, "flow_rate_m3h": 200, "head_m": 32}],
+  "chilled_pumps": [{"brand": "南方泵业", "model": "CDMF25-3", "power_kw": 75, "count": 3, "vfd": true, "flow_rate_m3h": 150, "head_m": 25}],
+  "towers": [{"brand": "元亨", "fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式", "flow_rate_m3h": 300}],
   "special": {"type": "none"}
 }
 ```
@@ -75,9 +75,9 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
     "chillers": [
       {"brand": "约克", "model": "YZ-3000RT", "type": "中温变频", "count": 2, "capacity_kw": 10551, "power_kw": 750, "rated_cop": 6.5}
     ],
-    "cooling_pumps": [{"power_kw": 90, "count": 4, "vfd": true}],
-    "chilled_pumps": [{"power_kw": 75, "count": 3, "vfd": true}],
-    "towers": [{"fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式"}],
+    "cooling_pumps": [{"brand": "南方泵业", "model": "CDMF32-4", "power_kw": 90, "count": 4, "vfd": true, "flow_rate_m3h": 200, "head_m": 32}],
+    "chilled_pumps": [{"brand": "南方泵业", "model": "CDMF25-3", "power_kw": 75, "count": 3, "vfd": true, "flow_rate_m3h": 150, "head_m": 25}],
+    "towers": [{"brand": "元亨", "fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式", "flow_rate_m3h": 300}],
     "special": {"type": "none|storage|ice|heat_recovery", "capacity": 0}
   },
   "cop_data": {
