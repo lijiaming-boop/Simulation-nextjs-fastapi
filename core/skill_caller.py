@@ -205,6 +205,26 @@ class SkillCaller:
                     raise SkillError(
                         f"Skill 执行完成，但未生成预期的输出文件: {output_file}"
                     )
+                
+                # 仿真任务特殊检查：args[1] 是目录，检查内部是否有实际输出文件
+                if skill_name == "plant-simulation" and len(args) >= 3:
+                    task_type = args[2]
+                    if task_type in ("new_station", "old_station"):
+                        output_dir = Path(args[1])
+                        # 检查是否有实际仿真输出文件
+                        csv_files = list(output_dir.glob("*.csv"))
+                        xlsx_files = list(output_dir.glob("*.xlsx"))
+                        if not csv_files and not xlsx_files:
+                            # 目录存在但没有输出文件 -> 仿真脚本执行失败
+                            last_error = self._extract_execution_error(all_messages, output_dir)
+                            if attempt < max_retries:
+                                if callback:
+                                    timestamp = datetime.now().strftime("%H:%M:%S")
+                                    callback(timestamp, f"⚠️ 仿真输出文件缺失，触发重试: {last_error[:200]}...")
+                                continue
+                            raise SkillError(
+                                f"仿真执行失败，输出目录 {output_dir} 中没有生成 CSV/Excel 文件"
+                            )
 
             # 成功！返回结果
             result_text = "\n".join(all_messages)
@@ -384,18 +404,23 @@ class SkillCaller:
             error_info = error_info[:2000] + "\n...(截断)"
 
         return (
-            f"上次执行失败，错误信息如下：\n\n"
-            f"```\n{error_info}\n```\n\n"
-            f"请根据错误信息修复仿真脚本并重新执行。\n"
-            f"这是第 {attempt} 次重试。\n\n"
-            f"## 修复要求\n"
-            f"1. 先读取输出目录中的仿真脚本，定位错误位置\n"
-            f"2. 修复错误（特别注意字符串换行、缩进、变量未定义等常见问题）\n"
-            f"3. 用 Write 工具覆盖写入修复后的脚本\n"
-            f"4. 用 ast.parse 验证语法\n"
-            f"5. 语法通过后重新执行\n"
-            f"6. 确认所有输出文件已生成\n\n"
-            f"输出目录: {output_dir}"
+            f"## ❌ 上次仿真执行失败（第 {attempt} 次重试）\n\n"
+            f"### 错误信息\n```\n{error_info}\n```\n\n"
+            f"### 修复步骤（必须严格执行）\n\n"
+            f"1. **用 Read 工具**读取输出目录中的仿真脚本 (`{output_dir}/simulate_*.py`)\n"
+            f"2. **定位错误位置**（通常是字符串换行、变量未定义、import缺失）\n"
+            f"3. **用 Write 工具直接覆盖修复后的完整脚本**（不要请求权限，直接写入）\n"
+            f"4. 用 Bash 执行: `python -c \"import ast; ast.parse(open('{output_dir}/simulate_*.py').read())\"`\n"
+            f"5. 语法通过后，用 Bash 执行: `python {output_dir}/simulate_*.py`\n"
+            f"6. 确认 {output_dir}/ 目录下生成了 *.csv 和 *.xlsx 文件\n\n"
+            f"### 常见错误修复示例\n"
+            f"- `SyntaxError: unterminated string literal` → 把 `'...'` 改为 `\"...\"` 或 `'''...'''`\n"
+            f"- `NameError` → 检查变量是否在使用前定义\n"
+            f"- `ModuleNotFoundError` → 用 try/except 包裹 import，缺失时降级\n\n"
+            f"### 重要\n"
+            f"- 你有 Write 工具权限，直接修复脚本，不要等待用户授权\n"
+            f"- 报告写入必须用: `Path(path).write_text(chr(10).join(lines), encoding='utf-8')`\n"
+            f"- 输出目录: {output_dir}"
         )
 
     def _extract_execution_error(self, all_messages: list, output_file: Path) -> str:
