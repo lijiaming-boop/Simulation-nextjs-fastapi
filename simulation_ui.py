@@ -303,13 +303,13 @@ def render_topology_stage():
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 重新收集", use_container_width=True):
+            if st.button("🔄 重新收集", width='stretch'):
                 st.session_state.sim_topology = None
                 st.rerun()
         with col2:
             can_proceed = bool(topology.get('chillers'))
             if st.button("✅ 确认拓扑信息，进入下一步", type="primary",
-                         use_container_width=True, disabled=not can_proceed):
+                         width='stretch', disabled=not can_proceed):
                 st.session_state.sim_stage = 'cop_curves'
                 st.rerun()
         return
@@ -341,7 +341,7 @@ def _render_topology_old_station():
 
     st.success(f"✅ 调研表已就绪：{upload_path.name}")
 
-    if st.button("🔍 开始识别设备拓扑", type="primary", use_container_width=True):
+    if st.button("🔍 开始识别设备拓扑", type="primary", width='stretch'):
         _run_topology_extraction(upload_path)
 
 
@@ -373,7 +373,7 @@ def _render_topology_new_station():
                 f.write(uploaded_file.getbuffer())
             st.success(f"✅ 文件已上传：{uploaded_file.name}")
 
-            if st.button("🔍 开始识别设备拓扑", type="primary", use_container_width=True):
+            if st.button("🔍 开始识别设备拓扑", type="primary", width='stretch'):
                 _run_topology_extraction(upload_path)
     else:
         # 手动输入方式
@@ -399,7 +399,7 @@ def _render_topology_manual_input():
         placeholder="请参照上方示例填写设备信息..."
     )
 
-    if st.button("🔍 AI 解析拓扑信息", type="primary", use_container_width=True):
+    if st.button("🔍 AI 解析拓扑信息", type="primary", width='stretch'):
         if not topology_input.strip():
             st.warning("⚠️ 请先输入设备拓扑信息")
             return
@@ -695,7 +695,7 @@ def render_cop_curves_stage():
     topology = st.session_state.sim_topology
     if not topology:
         st.error("❌ 请先完成拓扑信息收集")
-        if st.button("⬅️ 返回上一步", use_container_width=True):
+        if st.button("⬅️ 返回上一步", width='stretch'):
             st.session_state.sim_stage = 'topology'
             st.rerun()
         return
@@ -729,7 +729,7 @@ def render_cop_curves_stage():
                 with open(img_path, "wb") as f:
                     f.write(uploaded_img.getbuffer())
 
-                if st.button(f"🔍 AI 识别 COP 数据", key=f"parse_cop_{idx}", use_container_width=True):
+                if st.button(f"🔍 AI 识别 COP 数据", key=f"parse_cop_{idx}", width='stretch'):
                     _parse_cop_from_image(img_path, idx, model_name, chiller)
 
         with col_manual:
@@ -784,7 +784,7 @@ def render_cop_curves_stage():
                         index=[f"{t}°C" for t in cw_temps],
                         columns=[f"{int(r*100)}%" for r in load_ratios]
                     )
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(df, width='stretch')
             else:
                 st.warning("⚠️ COP 数据不完整")
 
@@ -798,12 +798,12 @@ def render_cop_curves_stage():
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("⬅️ 返回上一步", use_container_width=True):
+        if st.button("⬅️ 返回上一步", width='stretch'):
             st.session_state.sim_stage = 'topology'
             st.rerun()
     with col2:
         if all_have_cop:
-            if st.button("✅ 确认，进入工况收集", type="primary", use_container_width=True):
+            if st.button("✅ 确认，进入工况收集", type="primary", width='stretch'):
                 st.session_state.sim_stage = 'operating'
                 st.rerun()
         else:
@@ -923,16 +923,16 @@ def _render_operating_old_station():
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("⬅️ 返回上一步", use_container_width=True):
+            if st.button("⬅️ 返回上一步", width='stretch'):
                 st.session_state.sim_stage = 'cop_curves'
                 st.rerun()
         with col2:
-            if st.button("✅ 确认工况信息，开始仿真", type="primary", use_container_width=True):
+            if st.button("✅ 确认工况信息，开始仿真", type="primary", width='stretch'):
                 st.session_state.sim_stage = 'simulate'
                 st.rerun()
         return
 
-    if st.button("🔍 生成月度运行组合", type="primary", use_container_width=True):
+    if st.button("🔍 生成月度运行组合", type="primary", width='stretch'):
         _, log_container = create_streaming_container("🤖 AI 正在整理运行数据...")
         streaming_logs = []
 
@@ -1006,7 +1006,7 @@ def _render_operating_new_station():
             "电价 (元/kWh)", min_value=0.3, max_value=2.0, value=0.65, step=0.05
         )
 
-    if st.button("🔍 AI 整理为月度表格", type="primary", use_container_width=True):
+    if st.button("🔍 AI 整理为月度表格", type="primary", width='stretch'):
         if not operating_input.strip():
             st.warning("⚠️ 请先输入运行规律")
             return
@@ -1060,11 +1060,11 @@ def _render_operating_new_station():
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("⬅️ 返回上一步", use_container_width=True):
+            if st.button("⬅️ 返回上一步", width='stretch'):
                 st.session_state.sim_stage = 'cop_curves'
                 st.rerun()
         with col2:
-            if st.button("✅ 确认工况信息，开始仿真", type="primary", use_container_width=True):
+            if st.button("✅ 确认工况信息，开始仿真", type="primary", width='stretch'):
                 st.session_state.sim_stage = 'simulate'
                 st.rerun()
 
@@ -1117,7 +1117,7 @@ def _display_operating_table(operating: dict):
             })
 
         df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
         # 保存计算后的需求冷量到 operating 数据中
         for i, row in enumerate(monthly_table):
@@ -1168,7 +1168,7 @@ def _display_operating_table(operating: dict):
             '需求冷量(kW)': [f"{d:.0f}" if d else "-" for d in cooling_demands[:len(months)]],
             '备注': notes[:len(months)]
         })
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
     # 编辑功能
     with st.expander("✏️ 编辑月度数据"):
@@ -1206,7 +1206,7 @@ def render_simulate_stage():
 
     if not all([topology, cop_data, operating]):
         st.error("❌ 前置数据不完整，请返回补充")
-        if st.button("⬅️ 返回工况收集", use_container_width=True):
+        if st.button("⬅️ 返回工况收集", width='stretch'):
             st.session_state.sim_stage = 'operating'
             st.rerun()
         return
@@ -1231,7 +1231,7 @@ def render_simulate_stage():
 
     st.markdown("---")
 
-    if st.button("🔬 开始仿真", type="primary", use_container_width=True):
+    if st.button("🔬 开始仿真", type="primary", width='stretch'):
         _execute_simulation()
 
 
@@ -1337,7 +1337,7 @@ def _display_simulation_results(result: dict):
     if chart_files:
         st.subheader("📊 分析图表")
         for chart_path in chart_files:
-            st.image(str(chart_path), caption=chart_path.stem, use_container_width=True)
+            st.image(str(chart_path), caption=chart_path.stem, width='stretch')
 
     st.markdown("---")
 
@@ -1361,7 +1361,7 @@ def _display_simulation_results(result: dict):
                         label=f"📥 {fname}",
                         data=f.read(),
                         file_name=fname,
-                        use_container_width=True
+                        width='stretch'
                     )
 
     st.markdown("---")
@@ -1369,11 +1369,11 @@ def _display_simulation_results(result: dict):
     # 操作按钮
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 重新仿真", use_container_width=True):
+        if st.button("🔄 重新仿真", width='stretch'):
             st.session_state.sim_result = None
             st.rerun()
     with col2:
-        if st.button("🏠 返回首页", type="primary", use_container_width=True):
+        if st.button("🏠 返回首页", type="primary", width='stretch'):
             reset_simulation()
             st.session_state.stage = 'upload'
             st.rerun()

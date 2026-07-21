@@ -101,7 +101,7 @@ def main():
         else:
             st.title("暖通节能率智能测算工具")
     with col_logout:
-        st.link_button("🚪 退出", "/logout", use_container_width=True)
+        st.link_button("🚪 退出", "/logout", width='stretch')
     
     st.markdown("---")
 
@@ -118,7 +118,7 @@ def main():
         _render_air_conditioner_module()
     elif st.session_state.module_type == 'air_compressor':
         st.info("🔧 空压节能率计算模块（待接入）")
-        if st.button("🏠 返回首页", use_container_width=True):
+        if st.button("🏠 返回首页", width='stretch'):
             reset_flow()
             st.rerun()
     else:
@@ -143,7 +143,7 @@ def _render_home_page():
     with col1:
         st.markdown("### ❄️ 空调节能率计算")
         st.caption("上传中央空调调研表，AI自动提取数据并计算节能率")
-        if st.button("进入空调节能率计算", use_container_width=True, type="primary"):
+        if st.button("进入空调节能率计算", width='stretch', type="primary"):
             st.session_state.module_type = 'air_conditioner'
             st.session_state.stage = 'upload'
             st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
@@ -152,7 +152,7 @@ def _render_home_page():
     with col2:
         st.markdown("### 🔧 空压节能率计算")
         st.caption("上传空压机调研表，AI自动提取数据并计算节能率")
-        if st.button("进入空压节能率计算", use_container_width=True, type="primary"):
+        if st.button("进入空压节能率计算", width='stretch', type="primary"):
             st.session_state.module_type = 'air_compressor'
             st.session_state.stage = 'upload'
             st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
@@ -161,7 +161,7 @@ def _render_home_page():
     with col3:
         st.markdown("### 🔬 冷站性能仿真")
         st.caption("输入设备拓扑，全年8760h仿真分析，输出优化控制策略报告")
-        if st.button("进入冷站性能仿真", use_container_width=True, type="primary"):
+        if st.button("进入冷站性能仿真", width='stretch', type="primary"):
             st.session_state.module_type = 'plant_simulation'
             from simulation_ui import init_simulation_state
             init_simulation_state()
@@ -243,7 +243,7 @@ def render_upload_stage():
         st.info(f"文件大小：{uploaded_file.size / 1024:.2f} KB")
         st.info(f"📂 会话目录：{session_dir.name}")  # 新增：显示会话目录名
 
-        if st.button("🚀 开始分析", type="primary", use_container_width=True):
+        if st.button("🚀 开始分析", type="primary", width='stretch'):
             st.session_state.stage = 'extract_check'
             st.session_state.scroll_to_top = True
             st.rerun()
@@ -303,7 +303,7 @@ def render_extract_check_stage():
                 # 检查是否有错误
                 if result.get("error"):
                     st.error(f"❌ 数据处理失败：{result.get('message', '未知错误')}")
-                    if st.button("🔄 重新上传", use_container_width=True):
+                    if st.button("🔄 重新上传", width='stretch'):
                         reset_flow()
                         st.rerun()
                     return
@@ -325,13 +325,13 @@ def render_extract_check_stage():
 
             except SkillError as e:
                 st.error(f"❌ 数据处理失败：{str(e)}")
-                if st.button("🔄 重新上传", use_container_width=True):
+                if st.button("🔄 重新上传", width='stretch'):
                     reset_flow()
                     st.rerun()
                 return
             except Exception as e:
                 st.error(f"❌ 发生未知错误：{str(e)}")
-                if st.button("🔄 重新上传", use_container_width=True):
+                if st.button("🔄 重新上传", width='stretch'):
                     reset_flow()
                     st.rerun()
                 return
@@ -383,7 +383,7 @@ def render_extract_check_stage():
         )
 
         # 提供重新上传按钮
-        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+        if st.button("🔄 返回重新上传", type="primary", width='stretch'):
             reset_flow()
             st.rerun()
 
@@ -476,7 +476,7 @@ def render_extract_check_stage():
                 st.warning(f"... 还有 {len(critical_and_high) - 20} 个问题未显示")
 
         # 提供重新上传按钮
-        if st.button("🔄 返回重新上传", type="primary", use_container_width=True):
+        if st.button("🔄 返回重新上传", type="primary", width='stretch'):
             reset_flow()
             st.rerun()
 
@@ -496,7 +496,7 @@ def render_extract_check_stage():
 
     # 提供确认按钮进入下一阶段 (仅当置信度不是 low 时)
     st.markdown("---")
-    if st.button("✅ 确认，进行下一步", type="primary", use_container_width=True):
+    if st.button("✅ 确认，进行下一步", type="primary", width='stretch'):
         st.session_state.stage = 'filling'
         st.session_state.scroll_to_top = True  # 新增：触发滚动
         st.rerun()
@@ -550,13 +550,13 @@ def render_filling_stage():
 
             except SkillError as e:
                 st.error(f"❌ 生成填充建议失败：{str(e)}")
-                if st.button("🔄 返回重试", use_container_width=True):
+                if st.button("🔄 返回重试", width='stretch'):
                     st.session_state.stage = 'extract_check'
                     st.rerun()
                 return
             except Exception as e:
                 st.error(f"❌ 发生未知错误：{str(e)}")
-                if st.button("🔄 返回重试", use_container_width=True):
+                if st.button("🔄 返回重试", width='stretch'):
                     st.session_state.stage = 'extract_check'
                     st.rerun()
                 return
@@ -582,7 +582,7 @@ def render_filling_stage():
 
         st.info("💡 请在调研表中补充完整数据后重新上传")
 
-        if st.button("🔄 重新上传", type="primary", use_container_width=True):
+        if st.button("🔄 重新上传", type="primary", width='stretch'):
             reset_flow()
             st.rerun()
     else:
@@ -607,7 +607,7 @@ def render_filling_stage():
                 })
 
             df = pd.DataFrame(suggestions_data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
 
             st.info(
                 "ℹ️ 这些填充建议基于已有数据的模式推断得出。"
@@ -619,13 +619,13 @@ def render_filling_stage():
         # 用户确认按钮
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ 确认填充，开始计算", type="primary", use_container_width=True):
+            if st.button("✅ 确认填充，开始计算", type="primary", width='stretch'):
                 st.session_state.stage = 'calculate'
                 st.session_state.scroll_to_top = True  # 新增：触发滚动
                 st.rerun()
 
         with col2:
-            if st.button("❌ 取消，重新上传", use_container_width=True):
+            if st.button("❌ 取消，重新上传", width='stretch'):
                 reset_flow()
                 st.rerun()
 
@@ -662,7 +662,7 @@ def render_calculate_stage():
         # 再次检查是否为不支持类型（防御性编程）
         if station_type == "unsupported":
             st.error("❌ 该站房类型不支持自动计算")
-            if st.button("🔄 返回重新上传", use_container_width=True):
+            if st.button("🔄 返回重新上传", width='stretch'):
                 reset_flow()
                 st.rerun()
             return
@@ -713,17 +713,17 @@ def render_calculate_stage():
         # 捕获 unsupported 类型异常
         if "不支持的站房类型" in str(e):
             st.error(f"❌ {str(e)}")
-            if st.button("🔄 返回重新上传", use_container_width=True):
+            if st.button("🔄 返回重新上传", width='stretch'):
                 reset_flow()
                 st.rerun()
         else:
             st.error(f"❌ 计算失败：{str(e)}")
-            if st.button("🔄 返回重试", use_container_width=True):
+            if st.button("🔄 返回重试", width='stretch'):
                 st.session_state.stage = 'filling'
                 st.rerun()
     except Exception as e:
         st.error(f"❌ 计算失败：{str(e)}")
-        if st.button("🔄 返回重试", use_container_width=True):
+        if st.button("🔄 返回重试", width='stretch'):
             st.session_state.stage = 'filling'
             st.rerun()
 
@@ -740,7 +740,7 @@ def render_result_stage():
 
     if not result:
         st.error("❌ 未找到计算结果")
-        if st.button("🔄 重新开始", use_container_width=True):
+        if st.button("🔄 重新开始", width='stretch'):
             reset_flow()
             st.rerun()
         return
@@ -854,7 +854,7 @@ def render_result_stage():
         }
 
         df_savings = pd.DataFrame(savings_data)
-        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+        st.dataframe(df_savings, width='stretch', hide_index=True)
 
         # 柱状图 - 展示范围
         devices = ["冷机", "水泵", "冷却塔"]
@@ -896,7 +896,7 @@ def render_result_stage():
             barmode='group'
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     else:
         # 旧版：单一值（向后兼容）
@@ -919,7 +919,7 @@ def render_result_stage():
                 lambda x: f"{x / total * 100:.1f}%" if x != total else "100%"
             )
 
-        st.dataframe(df_savings, use_container_width=True, hide_index=True)
+        st.dataframe(df_savings, width='stretch', hide_index=True)
 
         # 柱状图
         fig = px.bar(
@@ -930,7 +930,7 @@ def render_result_stage():
             text="节能量 (万 kWh)"
         )
         fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     st.markdown("---")
 
@@ -982,7 +982,7 @@ def render_result_stage():
             data=simplified_excel_data,
             file_name=f"简化版节能测算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            width='stretch'
         )
     else:
         st.warning("⚠️ 简化版 Excel 文件未找到")
@@ -1012,7 +1012,7 @@ def render_result_stage():
                     data=excel_data,
                     file_name=f"节能率计算结果_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    width='stretch'
                 )
             else:
                 st.warning("⚠️ Excel 文件未找到")
@@ -1030,7 +1030,7 @@ def render_result_stage():
     # 冷站仿真跳转入口（旧站房）
     st.subheader("🔬 进阶：冷站性能仿真分析")
     st.caption("基于调研表历史工况数据，进行全年8760h仿真，输出优化控制策略报告")
-    if st.button("进入冷站仿真分析 →", use_container_width=True):
+    if st.button("进入冷站仿真分析 →", width='stretch'):
         st.session_state.module_type = 'plant_simulation'
         from simulation_ui import init_simulation_state
         init_simulation_state()
@@ -1040,7 +1040,7 @@ def render_result_stage():
     st.markdown("---")
 
     # 重新开始
-    if st.button("🔄 开始新的测算", type="primary", use_container_width=True):
+    if st.button("🔄 开始新的测算", type="primary", width='stretch'):
         reset_flow()
         st.rerun()
 

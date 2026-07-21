@@ -255,3 +255,42 @@ python {output_dir}/simulate_{project_name}.py
 - openpyxl: Excel输出
 - matplotlib: 图表生成
 - json, os, pathlib: 文件操作
+
+### 依赖可用性检查（必须实现）
+
+脚本顶部必须用 try/except 检查可选依赖，确保部分库缺失时仍能生成核心文件：
+```python
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # 无 GUI 后端
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
+
+try:
+    import scipy.interpolate as si
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+```
+
+生成图表前检查：
+```python
+if HAS_MATPLOTLIB:
+    # 生成图表
+    plt.savefig(...)
+    plt.close()
+else:
+    print('⚠️ matplotlib 未安装，跳过图表生成')
+```
+
+COP 插值时检查：
+```python
+if HAS_SCIPY:
+    from scipy.interpolate import RegularGridInterpolator
+    cop_func = RegularGridInterpolator(...)
+else:
+    # 降级为双线性插值或最近邻
+    cop_func = _simple_bilinear_interp(cop_table, cw_temps, load_ratios)
+```
