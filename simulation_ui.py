@@ -742,6 +742,7 @@ def render_cop_curves_stage():
                 # 使用默认曲线
                 rated_cop = chiller.get('rated_cop', 5.0)
                 default_cop = _generate_default_cop_table(rated_cop)
+                default_cop['_source'] = 'skip_default'
                 st.session_state.sim_cop_data[model_name] = default_cop
                 st.success(f"✅ 已使用额定COP {rated_cop:.2f} 生成典型部分负荷曲线")
 
@@ -751,6 +752,13 @@ def render_cop_curves_stage():
             cw_temps = cop_info.get('cw_temps', [])
             load_ratios = cop_info.get('load_ratios', [])
             cop_table = cop_info.get('cop_table', [])
+
+            # 标注数据来源
+            source = cop_info.get('_source', '')
+            if source == 'auto_fallback':
+                st.info(f"ℹ️ 使用默认典型曲线（基于额定COP {chiller.get('rated_cop', 0):.2f} 生成）")
+            elif source == 'skip_default':
+                st.info(f"ℹ️ 使用默认典型曲线（用户选择跳过图片识别）")
 
             if cop_table and cw_temps and load_ratios:
                 # 安全检查：确保维度匹配
@@ -841,7 +849,19 @@ def _parse_cop_from_image(img_path: Path, idx: int, model_name: str, chiller: di
         if output_path.exists():
             with open(output_path, 'r', encoding='utf-8') as f:
                 cop_data = json.load(f)
-            st.session_state.sim_cop_data[model_name] = cop_data
+            # 检查 AI 是否成功提取了有效数据
+            cw_temps = cop_data.get('cw_temps', [])
+            load_ratios = cop_data.get('load_ratios', [])
+            cop_table = cop_data.get('cop_table', [])
+            if not cw_temps or not load_ratios or not cop_table:
+                # AI 无法识别，自动使用默认曲线
+                rated_cop = chiller.get('rated_cop', 5.0)
+                default_cop = _generate_default_cop_table(rated_cop)
+                default_cop['_source'] = 'auto_fallback'
+                st.session_state.sim_cop_data[model_name] = default_cop
+                st.info(f"ℹ️ 图片识别未返回有效数据，已自动使用额定COP {rated_cop:.2f} 生成典型曲线")
+            else:
+                st.session_state.sim_cop_data[model_name] = cop_data
             st.rerun()
         else:
             st.error("❌ COP 识别完成但未生成输出文件")
