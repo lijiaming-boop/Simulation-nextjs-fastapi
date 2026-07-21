@@ -476,71 +476,40 @@ def _run_topology_extraction(upload_path: Path):
             f"## 文件路径\n"
             f"- 输入: {upload_path}\n"
             f"- 输出: {output_path}\n\n"
-            f"## 解析步骤\n\n"
-            f"### 第一步：读取 Excel 文件\n"
-            f"用 openpyxl 读取 Excel，重点关注以下工作表：\n"
-            f"- 名称包含“冷站”的 sheet：这里包含设备规格表\n"
-            f"- 名称包含“项目总体情况”的 sheet：包含项目基本信息\n\n"
-            f"### 第二步：定位项目名称\n"
-            f"在“冷站”sheet 的前几行找到“站房名称”字段，取其右侧的值（第2列）作为 project_name。\n"
-            f"例如：如果某行是 ['站房名称', 'F栋制冷站', ...] 则 project_name = 'F栋制冷站'\n\n"
-            f"### 第三步：定位设备表\n"
-            f"调研表的设备表格式是分段排列的，每段以设备类别开头：\n"
-            f"- 找到第一列值为“冷机”的行 → 该行是冷机表头，下面的行是冷机数据\n"
-            f"- 找到第一列值为“冷却泵”的行 → 该行是冷却泵表头，下面的行是冷却泵数据\n"
-            f"- 找到第一列值为“冷冻泵”的行 → 该行是冷冻泵表头，下面的行是冷冻泵数据\n"
-            f"- 找到第一列值为“冷却塔”的行 → 该行是冷却塔表头，下面的行是冷却塔数据\n\n"
-            f"设备表头格式示例：\n"
-            f"冷机: [冷机, 类型, 品牌, 型号, 台数, 制冷量/kW, 功率/kW, COP, 制造年份, 备注]\n"
-            f"冷却泵: [冷却泵, 类型, 品牌, 型号, 台数, 流量m³/h, 功率/kW, 扬程/m, 变频/工频, 备注]\n"
-            f"冷冻泵: [冷冻泵, 类型, 品牌, 型号, 台数, 流量m³/h, 功率/kW, 扬程/m, 变频/工频, 备注]\n"
-            f"冷却塔: [冷却塔, 序号, 品牌, 型号, 台数, 流量m³/h, 风机数量, 风机功率/kW, 变频/工频, 备注]\n\n"
-            f"### 第四步：只提取真正的设备数据行\n"
-            f"**必须提取的数据行特征**：\n"
-            f"- 该行有具体的品牌名（如“约克”“特灵”“开利”“康迈斯”“元亨”“南方泵业”“格兰富”“威乐”等）\n"
-            f"- 该行有具体的型号（如“YKWEPEP96CQH”“CDMF32-4”等）\n"
-            f"- 该行有数值型的制冷量/功率/流量数据\n"
-            f"- 该行有台数信息（如 1、2、3、4 等正整数）\n\n"
-            f"**必须跳过的行**：\n"
-            f"- 表头行（包含“类型”“品牌”“型号”等字样的行）\n"
-            f"- 说明性文字（如“例如：”“示例：”“选填”等）\n"
-            f"- 调研表问题文本（如“现场是否有上位机系统”“询问运维人员”等）\n"
-            f"- 运行记录数据（如月度运行台数、供水温度等时间序列数据）\n"
-            f"- 空行或合并单元格\n\n"
-            f"### 第五步：输出 JSON\n"
-            f"使用 Write 工具将解析结果写入 {output_path}，格式如下：\n"
-            f"```json\n"
+            f"## 任务\n\n"
+            f"1. 用 Bash 执行 Python 代码读取 Excel 文件（使用 openpyxl）\n"
+            f"2. 分析文件结构，找到以下设备信息：\n"
+            f"   - 冷水主机（冷机/chiller）\n"
+            f"   - 冷却泵（冷却水泵/condenser pump）\n"
+            f"   - 冷冻泵（冷冻水泵/chilled water pump）\n"
+            f"   - 冷却塔（cooling tower）\n"
+            f"3. 提取每台设备的：品牌、型号、台数、功率(kW)、变频/工频、额定流量(m³/h)、扬程(m)\n"
+            f"4. 提取项目名称（通常在“站房名称”或“项目名称”字段的右侧）\n"
+            f"5. 用 Write 工具将结果写入 {output_path}\n\n"
+            f"## 输出 JSON 格式\n"
             f'{{\n'
             f'  "project_name": "项目名称",\n'
             f'  "chillers": [\n'
-            f'    {{"brand": "约克", "model": "YKWEPEP96CQH", "type": "变频", "count": 2, "capacity_kw": 3516, "power_kw": 680, "rated_cop": 5.17, "vfd": true}}\n'
+            f'    {{"brand": "品牌", "model": "型号", "type": "类型", "count": 台数, "capacity_kw": 制冷量, "power_kw": 功率, "rated_cop": COP, "vfd": true/false}}\n'
             f'  ],\n'
             f'  "cooling_pumps": [\n'
-            f'    {{"brand": "南方泵业", "model": "CDMF32-4", "power_kw": 90, "count": 4, "vfd": true, "flow_rate_m3h": 200, "head_m": 32}}\n'
+            f'    {{"brand": "品牌", "model": "型号", "power_kw": 功率, "count": 台数, "vfd": true/false, "flow_rate_m3h": 流量, "head_m": 扬程}}\n'
             f'  ],\n'
             f'  "chilled_pumps": [\n'
-            f'    {{"brand": "南方泵业", "model": "CDMF25-3", "power_kw": 75, "count": 3, "vfd": true, "flow_rate_m3h": 150, "head_m": 25}}\n'
+            f'    {{"brand": "品牌", "model": "型号", "power_kw": 功率, "count": 台数, "vfd": true/false, "flow_rate_m3h": 流量, "head_m": 扬程}}\n'
             f'  ],\n'
             f'  "towers": [\n'
-            f'    {{"brand": "元亨", "fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式", "flow_rate_m3h": 300}}\n'
+            f'    {{"brand": "品牌", "model": "型号", "fan_power_kw": 风机功率, "count": 台数, "vfd": true/false, "type": "类型", "flow_rate_m3h": 流量}}\n'
             f'  ],\n'
             f'  "special": {{"type": "none"}}\n'
-            f'}}\n'
-            f"```\n\n"
-            f"## 设备分类识别要点\n"
-            f"1. **冷却泵 (cooling_pumps)**: 位于冷凝器侧，名称通常含“冷却”“condenser”“一次侧冷却泵”\n"
-            f"2. **冷冻泵 (chilled_pumps)**: 位于蒸发器侧，名称通常含“冷冻”“chilled”“一次冷冻泵”“二次冷冻泵”\n"
-            f"3. **冷却塔 (towers)**: 名称含“冷却塔”“cooling tower”“元亨”“良机”等\n"
-            f"4. **冷水主机 (chillers)**: 名称含“冷机”“chiller”“离心机”“螺杆机”\n\n"
-            f"## 重要约束\n"
-            f"1. 必须用英文键名，不能用中文键名\n"
-            f"2. 数值字段必须是数字，不是 null（找不到的填 0）\n"
-            f"3. 同类设备如果型号相同，合并台数\n"
-            f"4. vfd 字段根据“变频”/“工频”判断\n"
-            f"5. flow_rate_m3h 是额定流量（m³/h），从调研表的“流量”“流量(m³/h)”“额定流量”列提取\n"
-            f"6. head_m 是扬程（m），从调研表的“扬程”“扬程(m)”“压头”列提取\n"
-            f"7. 不要包含调研表的问题文本和说明性文字\n"
-            f"8. special 字段如果调研表提到蓄冷/蓄冰/热回收，填入对应类型，否则 type 为 none\n"
+            f'}}\n\n'
+            f"## 要求\n"
+            f"- 所有数值字段必须是数字（找不到的填 0）\n"
+            f"- 同类设备如果型号相同，合并台数\n"
+            f"- vfd 根据“变频”/“工频”判断\n"
+            f"- 跳过表头、说明性文字、运行记录数据\n"
+            f"- 如果某个设备类别在调研表中找不到，对应的数组为空 []\n"
+            f"- 必须用 Write 工具写入文件，不要只输出文本\n"
         )
 
         skill_result = caller.call_skill(
