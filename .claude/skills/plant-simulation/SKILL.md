@@ -180,10 +180,10 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
    - Sheet1: 月度能耗汇总
    - Sheet2: 设备运行统计
 
-3. **分析图表** (matplotlib, 中文标签):
-   - `{project}_COP专项分析.png`: 月度COP变化、负荷率-COP关系
-   - `{project}_设备运行分析.png`: 各设备能耗占比、运行时长
-   - `{project}_综合性能分析.png`: 能耗结构、季节对比
+3. **分析图表** (matplotlib, 英文标签):
+   - `{project}_cop_analysis.png`: Monthly COP trend, load-COP relationship
+   - `{project}_equipment_operation.png`: Equipment energy breakdown, runtime
+   - `{project}_overall_performance.png`: Energy structure, seasonal comparison
 
 4. **Markdown报告**: `{project}_仿真分析报告.md`
    - 项目概况、设备配置、仿真方法
@@ -203,10 +203,26 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 
 ### 图表规范
 
-- 使用 matplotlib + 中文字体 (SimHei 或 sans-serif)
+- 使用 matplotlib，**全部使用英文标签**（避免中文字体缺失导致方块）
 - 分辨率: dpi=150, figsize=(14, 8)
-- 配色: 使用专业配色方案
+- 配色: 使用专业配色方案 (如 plt.cm.Set2 或 tab10)
 - 必须包含: 标题、坐标轴标签、图例、网格线
+
+**标题/轴标签规范（必须英文）：**
+
+| 图表 | 标题 | X轴 | Y轴 |
+|------|------|-----|-----|
+| COP专项分析 | COP Analysis | Load Ratio (%) | COP |
+| 设备运行分析 | Equipment Operation | Month | Energy (kWh) |
+| 综合性能分析 | Overall Performance | Month | COP / Energy |
+
+**示例：**
+```python
+plt.title('Monthly COP Trend', fontsize=14)
+plt.xlabel('Month', fontsize=12)
+plt.ylabel('System COP', fontsize=12)
+plt.legend(['Chiller COP', 'System COP'], loc='best')
+```
 
 ## 执行方式
 
