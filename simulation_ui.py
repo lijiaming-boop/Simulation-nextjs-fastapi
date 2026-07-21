@@ -652,19 +652,37 @@ def render_cop_curves_stage():
         # 展示已识别的 COP 数据
         if model_name in st.session_state.sim_cop_data:
             cop_info = st.session_state.sim_cop_data[model_name]
-            st.success(f"✅ COP 数据已收集 ({len(cop_info.get('cw_temps', []))} 个温度点 × {len(cop_info.get('load_ratios', []))} 个负荷点)")
-            with st.expander("查看 COP 数据表"):
-                import pandas as pd
-                cw_temps = cop_info.get('cw_temps', [])
-                load_ratios = cop_info.get('load_ratios', [])
-                cop_table = cop_info.get('cop_table', [])
-                if cop_table and cw_temps and load_ratios:
+            cw_temps = cop_info.get('cw_temps', [])
+            load_ratios = cop_info.get('load_ratios', [])
+            cop_table = cop_info.get('cop_table', [])
+
+            if cop_table and cw_temps and load_ratios:
+                # 安全检查：确保维度匹配
+                actual_cols = len(cop_table[0]) if cop_table else 0
+                actual_rows = len(cop_table)
+                if actual_cols != len(load_ratios):
+                    # 维度不匹配时，截断或填充 load_ratios
+                    if actual_cols > len(load_ratios):
+                        load_ratios = load_ratios + [0.0] * (actual_cols - len(load_ratios))
+                    else:
+                        load_ratios = load_ratios[:actual_cols]
+                if actual_rows != len(cw_temps):
+                    if actual_rows > len(cw_temps):
+                        cw_temps = cw_temps + [0] * (actual_rows - len(cw_temps))
+                    else:
+                        cw_temps = cw_temps[:actual_rows]
+
+                st.success(f"✅ COP 数据已收集 ({len(cw_temps)} 个温度点 × {len(load_ratios)} 个负荷点)")
+                with st.expander("查看 COP 数据表"):
+                    import pandas as pd
                     df = pd.DataFrame(
                         cop_table,
                         index=[f"{t}°C" for t in cw_temps],
                         columns=[f"{int(r*100)}%" for r in load_ratios]
                     )
                     st.dataframe(df, use_container_width=True)
+            else:
+                st.warning("⚠️ COP 数据不完整")
 
     st.markdown("---")
 
