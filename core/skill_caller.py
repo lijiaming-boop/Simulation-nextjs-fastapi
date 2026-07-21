@@ -299,10 +299,25 @@ class SkillCaller:
                 )
             elif task_type == "generate_operating":
                 return (
-                    f"请使用 plant-simulation skill 生成月度运行组合表格。\n"
-                    f"输入数据: {args[0]}\n"
-                    f"输出JSON路径: {args[1]}\n"
-                    f"请整理为12个月的冷机运行组合、负载率和冷量需求。"
+                    f"请生成月度运行组合表格并写入 JSON 文件。\n\n"
+                    f"## 输入数据\n{args[0]}\n\n"
+                    f"## 输出路径\n{args[1]}\n\n"
+                    f"## 任务\n"
+                    f"1. 根据输入数据中的运行规律描述，整理为 12 个月的运行组合\n"
+                    f"2. 每个月包含：\n"
+                    f"   - 工作日运行: on_units(开机台数), load_ratio(负载率), description(描述)\n"
+                    f"   - 休息日运行: on_units(开机台数), load_ratio(负载率), description(描述)\n"
+                    f"   - 季节: winter/transition/summer\n"
+                    f"   - representative_load_ratio: 代表性负载率\n"
+                    f"3. 必须使用 Write 工具将结果写入 {args[1]}\n\n"
+                    f"## 输出 JSON 格式\n"
+                    f'{{"monthly_table": [{{"month": 1, "season": "winter", '
+                    f'"weekday_operation": {{"on_units": 0, "load_ratio": 0, "description": "不开机"}}, '
+                    f'"weekend_operation": {{"on_units": 0, "load_ratio": 0, "description": "不开机"}}, '
+                    f'"representative_load_ratio": 0, "cooling_demand_kw": 0, "note": "冬季"}}]}}\n\n'
+                    f"## 重要\n"
+                    f"- 必须立即使用 Write 工具写入文件，不要只输出 JSON 文本\n"
+                    f"- cooling_demand_kw 可以填 0（后续由代码自动计算）"
                 )
             elif task_type in ("new_station", "old_station"):
                 mode_desc = "新站房仿真（需求冷量+COP计算）" if task_type == "new_station" else "旧站房仿真（基准+优化对比节能率）"

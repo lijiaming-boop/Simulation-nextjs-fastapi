@@ -1022,31 +1022,21 @@ def _render_operating_new_station():
             caller = SkillCaller(timeout=180)
             session_dir = st.session_state.session_dir
             output_path = session_dir / "sim_operating.json"
-
+        
             topology = st.session_state.sim_topology or {}
             topology_str = json.dumps(topology, ensure_ascii=False)
-
-            prompt = (
-                f"请将以下运行规律描述整理为月度运行组合表格，输出到 {output_path}。\n\n"
+        
+            # 将完整上下文作为输入数据传递
+            full_input = (
                 f"运行规律：\n{operating_input}\n\n"
-                f"设备拓扑：{topology_str}\n"
-                f"项目地区：{project_region}\n\n"
-                f"输出 JSON 格式：\n"
-                f'{{"months": [1,2,...,12], '
-                f'"chiller_combination": ["1×3000RT+1×1800RT", ...], '
-                f'"load_ratio": [0.6, ...], '
-                f'"cooling_demand_kwh": [100000, ...], '
-                f'"chw_supply_temp": [7, ...], '
-                f'"cw_temp": [28, ...], '
-                f'"notes": ["冬季停机", ...], '
-                f'"region": "{project_region}", '
-                f'"electricity_price": {electricity_price}}}\n'
-                f"请根据地区气候特征估算冷却水温度和冷量需求。"
+                f"设备拓扑：\n{topology_str}\n\n"
+                f"项目地区：{project_region}\n"
+                f"电价：{electricity_price} 元/kWh"
             )
-
+        
             skill_result = caller.call_skill(
                 "plant-simulation",
-                operating_input,
+                full_input,
                 str(output_path),
                 "generate_operating",
                 callback=on_text
