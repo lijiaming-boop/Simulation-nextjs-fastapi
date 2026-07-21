@@ -189,6 +189,33 @@ def _normalize_topology(raw: dict) -> dict:
         })
     topology["chillers"] = normalized_chillers
 
+    # === 后处理：纠正AI错误分类 ===
+    # 如果 chillers 中有条目的 COP > 10，它很可能是水泵（被AI误分到了chillers）
+    misclassified_pumps = []
+    real_chillers = []
+    for ch in normalized_chillers:
+        cop = ch.get('rated_cop', 0)
+        power = ch.get('power_kw', 0)
+        capacity = ch.get('capacity_kw', 0)
+        # 判断标准：COP > 10 或 (容量/功率) > 10 且 功率 <= 100kW
+        computed_ratio = capacity / power if power > 0 else 0
+        if cop > 10 or (computed_ratio > 10 and power <= 200):
+            misclassified_pumps.append(ch)
+        else:
+            real_chillers.append(ch)
+
+    topology["chillers"] = real_chillers
+
+    # 将误分类的泵添加到 chilled_pumps
+    extra_chilled_pumps = [
+        {
+            "power_kw": p.get("power_kw", 0),
+            "count": p.get("count", 1),
+            "vfd": p.get("vfd", True),
+        }
+        for p in misclassified_pumps
+    ]
+
     # 冷却泵
     cooling_pumps = raw.get("cooling_pumps") or raw.get("冷却泵") or []
     topology["cooling_pumps"] = [
@@ -200,9 +227,9 @@ def _normalize_topology(raw: dict) -> dict:
         for p in cooling_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
 
-    # 冷冻泵
+    # 冷冻泵（包含从 chillers 纠正过来的水泵）
     chilled_pumps = raw.get("chilled_pumps") or raw.get("冷冻泵") or []
-    topology["chilled_pumps"] = [
+    normalized_chilled = [
         {
             "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
             "count": int(p.get("count", p.get("台数", 1)) or 1),
@@ -210,6 +237,12 @@ def _normalize_topology(raw: dict) -> dict:
         }
         for p in chilled_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
+    # 合并纠正过来的水泵（避免重复）
+    existing_powers = {p["power_kw"] for p in normalized_chilled}
+    for ep in extra_chilled_pumps:
+        if ep["power_kw"] not in existing_powers:
+            normalized_chilled.append(ep)
+    topology["chilled_pumps"] = normalized_chilled
 
     # 冷却塔
     towers = raw.get("towers") or raw.get("冷却塔") or []
@@ -234,10 +267,22 @@ def _normalize_topology(raw: dict) -> dict:
                 if feat in type_map:
                     special["type"] = type_map[feat]
                     break
-        if not special.get("type"):
-            special["type"] = "none"
+        sp_type = special.get("type", "none")
+        # 清理 type 字段：如果包含垃圾文本，尝试关键词匹配
+        if isinstance(sp_type, str) and len(sp_type) > 20:
+            # 从长文本中提取关键词
+            detected = []
+            if "热回收" in sp_type:
+                detected.append("heat_recovery")
+            if "蓄冷" in sp_type or "蓄冰" in sp_type:
+                detected.append("storage")
+            if detected:
+                sp_type = "_and_".join(detected) if len(detected) > 1 else detected[0]
+            else:
+                sp_type = "none"
+        special["type"] = sp_type
     elif isinstance(special, str):
-        special = {"type": special}
+        special = {"type": special if len(special) <= 20 else "none"}
     else:
         special = {"type": "none"}
     topology["special"] = special
