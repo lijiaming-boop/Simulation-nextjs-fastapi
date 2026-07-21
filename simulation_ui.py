@@ -121,11 +121,11 @@ def _is_real_equipment(entry: dict) -> bool:
     brand = str(entry.get("brand", "") or "")
     model = str(entry.get("model", "") or "")
 
-    # 如果 brand 或 model 太长（包含说明性文本），大概率不是设备数据
-    if len(brand) > 30 or len(model) > 30:
+    # 如果 brand 太长（包含说明性文本），大概率不是设备数据
+    if len(brand) > 40:
         return False
 
-    # 包含常见调研表提示文本
+    # brand/model 包含常见调研表提示文本 → 不是设备数据
     combined = brand + model
     for pattern in _INVALID_TEXT_PATTERNS:
         if pattern in combined:
@@ -143,10 +143,12 @@ def _is_real_equipment(entry: dict) -> bool:
     except (ValueError, TypeError):
         pass
 
-    # brand/model 是合理的短文本（如品牌名、型号）
-    if brand and model and len(brand) <= 20 and len(model) <= 20:
+    # brand/model 是合理的文本（品牌名、型号）
+    if brand and model:
         return True
     if brand and len(brand) <= 20 and not any(p in brand for p in ["类型", "否", "是", "/"]):
+        return True
+    if model and len(model) <= 60:
         return True
 
     return False
