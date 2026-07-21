@@ -325,12 +325,18 @@ class SkillCaller:
                     f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"
                     f"输入数据(汇总JSON): {args[0]}\n"
                     f"输出目录: {args[1]}\n"
-                    f"仿真模式: {mode_desc}\n"
+                    f"仿真模式: {mode_desc}\n\n"
                     f"请根据 SKILL.md 规范：\n"
                     f"1. 读取输入JSON中的拓扑、COP数据和工况信息\n"
                     f"2. 生成完整的Python仿真脚本到输出目录\n"
-                    f"3. 执行仿真脚本\n"
-                    f"4. 确保输出8760h CSV、月度Excel、3张分析图表和Markdown报告"
+                    f"3. **执行前先用 ast.parse 验证脚本语法**\n"
+                    f"4. 语法无误后执行脚本\n"
+                    f"5. 确保输出8760h CSV、月度Excel、3张分析图表和Markdown报告\n\n"
+                    f"## 代码质量要求\n"
+                    f"- 多行文本必须用三引号，禁止在单引号中嵌入未转义的换行\n"
+                    f"- 报告内容用列表拼接 + '\\n'.join(lines) 写入\n"
+                    f"- 生成脚本后先运行: python -c \"import ast; ast.parse(open('{args[1]}/simulate_*.py').read())\"\n"
+                    f"- 语法检查通过后再执行脚本"
                 )
             else:
                 return (

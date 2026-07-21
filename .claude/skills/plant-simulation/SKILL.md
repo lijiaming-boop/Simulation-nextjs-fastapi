@@ -217,6 +217,35 @@ python {output_dir}/simulate_{project_name}.py
 
 确保脚本可以独立运行，所有数据从输入JSON文件读取。
 
+## 代码质量要求（必须遵守）
+
+### 字符串与报告写入
+- **多行文本必须使用三引号** `"""..."""`，禁止在单引号字符串中嵌入未转义的换行
+- **报告内容用列表拼接**，最后用 `'\n'.join(lines)` 合并，禁止在单引号中直接写换行
+- **文件写入示例**：
+  ```python
+  # 正确
+  lines = []
+  lines.append('# 仿真报告')
+  lines.append(f'年度COP: {annual_cop:.2f}')
+  Path(report_path).write_text('\n'.join(lines), encoding='utf-8')
+  
+  # 错误
+  Path(report_path).write_text('第一行
+第二行', encoding='utf-8')  # 未终止字符串
+  ```
+
+### 脚本结构规范
+- 所有 import 放在文件顶部
+- 主函数用 `def main():` 包裹，末尾 `if __name__ == '__main__': main()`
+- 使用 `try/except` 捕获异常并打印有意义的错误信息
+- matplotlib 图表必须 `plt.close()` 释放内存
+
+### 执行前自检
+- 生成脚本后，先执行 `python -c "import ast; ast.parse(open('{script}').read())"` 验证语法
+- 语法检查通过后再执行脚本
+- 执行后检查所有输出文件是否生成成功
+
 ## 依赖库
 
 仿真脚本仅使用以下标准科学计算库：
