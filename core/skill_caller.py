@@ -63,7 +63,8 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True,
-        callback: Optional[Callable[[str, str], None]] = None
+        callback: Optional[Callable[[str, str], None]] = None,
+        max_retries: int = 0
     ) -> Dict[str, Any]:
         """调用 Claude Skill(同步包装器)
 
@@ -72,6 +73,7 @@ class SkillCaller:
             *args: Skill 参数(文件路径等)
             check_output: 是否检查输出文件
             callback: 回调函数 callback(timestamp, message)，每次 AI 回复时调用
+            max_retries: 最大重试次数，用于代码生成类任务(如仿真)，失败后自动修复重试
 
         Returns:
             包含执行结果的字典，结构如下：
@@ -93,7 +95,7 @@ class SkillCaller:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(
-            self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback)
+            self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback, max_retries=max_retries)
         )
 
     async def _call_skill_async(
@@ -101,7 +103,8 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True,
-        callback: Optional[Callable[[str, str], None]] = None
+        callback: Optional[Callable[[str, str], None]] = None,
+        max_retries: int = 0
     ) -> Dict[str, Any]:
         """调用 Claude Skill(异步实现)
 
@@ -110,6 +113,7 @@ class SkillCaller:
             *args: Skill 参数
             check_output: 是否检查输出文件
             callback: 回调函数，每次收到 AI 回复时调用
+            max_retries: 最大重试次数(用于仿真代码生成失败后自动修复)
 
         Returns:
             包含执行结果的字典
@@ -127,9 +131,6 @@ class SkillCaller:
             if not skill_md_old.exists():
                 raise SkillError(f"Skill not found: {skill_name}")
 
-        # 构建提示词
-        prompt = self._build_prompt(skill_name, *args)
-
         # 配置 Agent SDK
         # 注意: API key 通过环境变量 ANTHROPIC_API_KEY 传递
         options = ClaudeAgentOptions(
@@ -138,75 +139,85 @@ class SkillCaller:
             allowed_tools=["Skill", "Read", "Write", "Bash"]
         )
 
-        # 调用 Agent SDK（添加超时控制）
-        all_messages = []
-        ai_responses = []
-        try:
-            async with asyncio.timeout(self.timeout):  # 添加超时控制
-                async for message in query(prompt=prompt, options=options):
-                    # 收集所有消息的字符串表示
-                    all_messages.append(str(message))
-
-                    # 只提取 AssistantMessage 的文本内容
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            if isinstance(block, TextBlock):
-                                # 打印AI响应内容到console（方便调试）
-                                print(f"[AI Response] {block.text}")
-                                ai_responses.append(block.text)
-
-                                # 调用回调函数（新增）
-                                if callback:
-                                    timestamp = datetime.now().strftime("%H:%M:%S")
-                                    callback(timestamp, block.text)
-
-                                # 等待一小段时间让 Streamlit 有机会重绘
-                                await asyncio.sleep(0.01)
-
-        except asyncio.TimeoutError as e:
-            # 错误时也调用回调
-            if callback:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                callback(timestamp, f"❌ 执行超时（>{self.timeout}秒）")
-            raise SkillError(
-                f"Skill '{skill_name}' 执行超时(>{self.timeout}秒)"
-            ) from e
-        except Exception as e:
-            # 错误时也调用回调
-            if callback:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                callback(timestamp, f"❌ 执行出错: {str(e)}")
-            raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
-
-        # 合并结果文本
-        result_text = "\n".join(all_messages)
-
-        # 检查输出文件(如果需要)
-        if check_output and len(args) >= 2:
-            # 根据不同的skill确定输出文件的位置
-            if skill_name == "suggest-data-filling":
-                # suggest-data-filling: args[0]=输入, args[1]=输入, args[2]=输出
-                if len(args) < 3:
-                    raise SkillError(
-                        f"Skill '{skill_name}' 需要3个参数"
-                    )
-                output_file = Path(args[2])
-            else:
-                # 其他skill: args[0]=输入, args[1]=输出
-                output_file = Path(args[1])
+        # 重试循环：支持 Agent 多轮修复代码
+        last_error = None
+        for attempt in range(max_retries + 1):
+            all_messages = []
+            ai_responses = []
             
-            if not output_file.exists():
-                raise SkillError(
-                    f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
-                )
+            # 构建 prompt（首次用原始 prompt，重试用修正 prompt）
+            if attempt == 0:
+                prompt = self._build_prompt(skill_name, *args)
+            else:
+                prompt = self._build_retry_prompt(skill_name, args, last_error, attempt)
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"🔄 第 {attempt} 次重试修复...")
 
-        # 返回详细结果
-        return {
-            "success": True,
-            "ai_responses": ai_responses,
-            "all_messages": all_messages,
-            "result_text": result_text
-        }
+            try:
+                async with asyncio.timeout(self.timeout):
+                    async for message in query(prompt=prompt, options=options):
+                        all_messages.append(str(message))
+                        if isinstance(message, AssistantMessage):
+                            for block in message.content:
+                                if isinstance(block, TextBlock):
+                                    print(f"[AI Response] {block.text}")
+                                    ai_responses.append(block.text)
+                                    if callback:
+                                        timestamp = datetime.now().strftime("%H:%M:%S")
+                                        callback(timestamp, block.text)
+                                    await asyncio.sleep(0.01)
+            except asyncio.TimeoutError as e:
+                last_error = f"执行超时(>{self.timeout}秒)"
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"❌ {last_error}")
+                if attempt < max_retries:
+                    continue
+                raise SkillError(f"Skill '{skill_name}' {last_error}") from e
+            except Exception as e:
+                last_error = str(e)
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"❌ 执行出错: {last_error}")
+                if attempt < max_retries:
+                    continue
+                raise SkillError(f"Skill '{skill_name}' 执行出错: {last_error}") from e
+
+            # 检查输出文件（如果需要）
+            output_file = None
+            if check_output and len(args) >= 2:
+                if skill_name == "suggest-data-filling":
+                    if len(args) < 3:
+                        raise SkillError(f"Skill '{skill_name}' 需要3个参数")
+                    output_file = Path(args[2])
+                else:
+                    output_file = Path(args[1])
+
+                if output_file and not output_file.exists():
+                    # 检查是否是仿真脚本执行失败（需要查找错误信息）
+                    last_error = self._extract_execution_error(all_messages, output_file)
+                    if attempt < max_retries:
+                        if callback:
+                            timestamp = datetime.now().strftime("%H:%M:%S")
+                            callback(timestamp, f"⚠️ 输出不完整: {last_error[:200]}...")
+                        continue
+                    raise SkillError(
+                        f"Skill 执行完成，但未生成预期的输出文件: {output_file}"
+                    )
+
+            # 成功！返回结果
+            result_text = "\n".join(all_messages)
+            return {
+                "success": True,
+                "ai_responses": ai_responses,
+                "all_messages": all_messages,
+                "result_text": result_text,
+                "attempts": attempt + 1
+            }
+
+        # 不应到达这里
+        raise SkillError(f"Skill '{skill_name}' 重试 {max_retries} 次后仍然失败")
 
     def _build_prompt(self, skill_name: str, *args) -> str:
         """构建 Skill 调用提示词
@@ -353,3 +364,47 @@ class SkillCaller:
                 f"请使用 {skill_name} skill 完成任务。\n"
                 f"参数: {params_str}"
             )
+
+    def _build_retry_prompt(self, skill_name: str, args: tuple, error_info: str, attempt: int) -> str:
+        """构建重试修正 prompt，让 Agent 根据错误信息修复代码"""
+        output_dir = str(args[1]) if len(args) >= 2 else "未知"
+        
+        # 截断错误信息，避免过长
+        if len(error_info) > 2000:
+            error_info = error_info[:2000] + "\n...(截断)"
+
+        return (
+            f"上次执行失败，错误信息如下：\n\n"
+            f"```\n{error_info}\n```\n\n"
+            f"请根据错误信息修复仿真脚本并重新执行。\n"
+            f"这是第 {attempt} 次重试。\n\n"
+            f"## 修复要求\n"
+            f"1. 先读取输出目录中的仿真脚本，定位错误位置\n"
+            f"2. 修复错误（特别注意字符串换行、缩进、变量未定义等常见问题）\n"
+            f"3. 用 Write 工具覆盖写入修复后的脚本\n"
+            f"4. 用 ast.parse 验证语法\n"
+            f"5. 语法通过后重新执行\n"
+            f"6. 确认所有输出文件已生成\n\n"
+            f"输出目录: {output_dir}"
+        )
+
+    def _extract_execution_error(self, all_messages: list, output_file: Path) -> str:
+        """从 Agent 消息中提取执行错误信息"""
+        error_lines = []
+        for msg in all_messages:
+            msg_str = str(msg)
+            # 查找常见错误模式
+            if any(kw in msg_str.lower() for kw in ['error', 'traceback', 'exception', 'failed', 'syntaxerror', 'nameerror', 'typeerror']):
+                error_lines.append(msg_str)
+        
+        if error_lines:
+            return "\n".join(error_lines[-5:])  # 取最后 5 条错误相关消息
+        
+        # 查找输出目录中已生成的脚本文件
+        output_dir = output_file.parent if output_file.is_file() else output_file
+        script_files = list(output_dir.glob("simulate_*.py")) if output_dir.exists() else []
+        
+        if script_files:
+            return f"脚本已生成但未执行成功。脚本文件: {script_files[0].name}\n输出目录: {output_dir}"
+        
+        return f"输出文件不存在: {output_file}"

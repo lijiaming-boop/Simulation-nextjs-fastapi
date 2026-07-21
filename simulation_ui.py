@@ -1271,7 +1271,8 @@ def _execute_simulation():
             str(input_path),
             output_dir,
             sim_mode,
-            callback=on_text
+            callback=on_text,
+            max_retries=2  # 支持 Agent 多轮修复代码
         )
 
         # 检查输出
