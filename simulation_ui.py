@@ -932,6 +932,15 @@ def _render_operating_old_station():
                 st.rerun()
         return
 
+    # 旧站房特有：输入目标节能率
+    st.markdown("**目标节能率（来自空调节能率评估模块）**")
+    target_saving_rate = st.number_input(
+        "目标节能率 (%)",
+        min_value=0.0, max_value=50.0, value=st.session_state.get('sim_target_saving_rate', 6.5),
+        step=0.1, help="空调节能率模块计算出的节能率，仿真结果需与其对齐（误差<1%）"
+    )
+    st.session_state.sim_target_saving_rate = target_saving_rate
+
     if st.button("🔍 生成月度运行组合", type="primary", width='stretch'):
         _, log_container = create_streaming_container("🤖 AI 正在整理运行数据...")
         streaming_logs = []
@@ -1256,6 +1265,11 @@ def _execute_simulation():
             "cop_data": st.session_state.sim_cop_data,
             "operating_conditions": st.session_state.sim_operating_conditions,
         }
+
+        # 旧站房模式加入目标节能率
+        if sim_mode == 'old_station':
+            target_rate = st.session_state.get('sim_target_saving_rate', 0)
+            sim_input['target_energy_saving_rate'] = target_rate / 100.0  # 转为小数
 
         input_path = session_dir / "sim_input_all.json"
         with open(input_path, 'w', encoding='utf-8') as f:

@@ -97,7 +97,9 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
     "notes": ["冬季", ...],
     "region": "华南",
     "electricity_price": 0.65
-  }
+  },
+  "target_energy_saving_rate": 0.065,
+  "project_name": "XX工厂中央空调冷站"
 }
 ```
 
@@ -185,10 +187,24 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
    - `{project}_equipment_operation.png`: Equipment energy breakdown, runtime
    - `{project}_overall_performance.png`: Energy structure, seasonal comparison
 
-4. **Markdown报告**: `{project}_仿真分析报告.md`
-   - 项目概况、设备配置、仿真方法
-   - 年度核心指标、月度详细结果
-   - 节能分析（旧站房）、实施建议
+4. **Markdown报告**: `{project_name}_COP性能仿真分析报告.md`
+   - **标题格式**: `# {项目名称}中央空调冷站 控制策略优化仿真报告`
+   - **报告结构**（必须包含以下章节）：
+     - 一、项目概况（表格：项目名称、地址、系统类型、总装机制冷量、仿真时长）
+     - 二、设备现状（设备配置表、调研表实际月度运行参数表、关键问题识别）
+     - 三、优化控制策略（可优化设备表、冷冻泵温差控制逻辑、冷却塔优化逻辑）
+     - 四、仿真结果（年度核心指标对比表、分项能耗对比表、月度详细对比表）
+     - 五、节能分析（节能贡献分解表、经济效益表、仿真保守因素说明）
+     - 六、图表引用（嵌入生成的 PNG 图表）
+     - 七、实施建议（分阶段措施、注意事项）
+   - **报告由 AI 根据仿真数据动态生成**，不要使用硬编码文本
+
+### 节能率校验（旧站房必须遵守）
+
+- 输入 JSON 中 `target_energy_saving_rate` 字段为空调节能率模块的计算结果
+- 仿真计算出的节能率必须与 target 误差 < 1%
+- 若仿真节能率偏差过大，调整优化参数（如冷冻泵最低频率、目标温差）直到对齐
+- 在报告中标注：`仿真节能率 X.X%，评估模块节能率 Y.Y%，误差 Z.Z%`
 
 5. **汇总JSON**: `{project}_summary.json`
    ```json

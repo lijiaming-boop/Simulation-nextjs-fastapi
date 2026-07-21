@@ -332,6 +332,15 @@ class SkillCaller:
                 )
             elif task_type in ("new_station", "old_station"):
                 mode_desc = "新站房仿真（需求冷量+COP计算）" if task_type == "new_station" else "旧站房仿真（基准+优化对比节能率）"
+                report_hint = ""
+                if task_type == "old_station":
+                    report_hint = (
+                        f"\n## 旧站房特别要求\n"
+                        f"- 报告标题格式: `# {{项目名称}}中央空调冷站 控制策略优化仿真报告`\n"
+                        f"- 报告文件名: `{{项目名称}}_COP性能仿真分析报告.md`\n"
+                        f"- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
+                        f"- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
+                    )
                 return (
                     f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"
                     f"输入数据(汇总JSON): {args[0]}\n"
@@ -348,6 +357,7 @@ class SkillCaller:
                     f"- 报告内容用列表拼接 + '\\n'.join(lines) 写入\n"
                     f"- 生成脚本后先运行: python -c \"import ast; ast.parse(open('{args[1]}/simulate_*.py').read())\"\n"
                     f"- 语法检查通过后再执行脚本"
+                    f"{report_hint}"
                 )
             else:
                 return (
