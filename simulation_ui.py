@@ -920,11 +920,12 @@ def _render_operating_old_station():
     # 旧站房特有：输入目标节能率
     st.markdown("**目标节能率（来自空调节能率评估模块）**")
     target_saving_rate = st.number_input(
-        "目标节能率 (%)",
-        min_value=0.0, max_value=50.0, value=st.session_state.get('sim_target_saving_rate', 6.5),
-        step=0.1, help="空调节能率模块计算出的节能率，仿真结果需与其对齐（误差<1%）"
+        "目标节能率(%)", min_value=0.0, max_value=50.0,
+        value=st.session_state.get('sim_target_saving_rate', 0.0),
+        step=0.1, help="建议先从“空调节能率计算”模块进入，节能率会自动传入。也可手动输入。"
     )
-    st.session_state.sim_target_saving_rate = target_saving_rate
+    if target_saving_rate > 0:
+        st.session_state.sim_target_saving_rate = target_saving_rate
 
     if st.button("🔍 生成月度运行组合", type="primary", width='stretch'):
         _, log_container = create_streaming_container("🤖 AI 正在整理运行数据...")
