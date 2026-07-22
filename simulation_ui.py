@@ -220,9 +220,13 @@ def _normalize_topology(raw: dict) -> dict:
     cooling_pumps = raw.get("cooling_pumps") or raw.get("冷却泵") or []
     topology["cooling_pumps"] = [
         {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
             "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
             "count": int(p.get("count", p.get("台数", 1)) or 1),
             "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
         }
         for p in cooling_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
@@ -231,9 +235,13 @@ def _normalize_topology(raw: dict) -> dict:
     chilled_pumps = raw.get("chilled_pumps") or raw.get("冷冻泵") or []
     normalized_chilled = [
         {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
             "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
             "count": int(p.get("count", p.get("台数", 1)) or 1),
             "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
         }
         for p in chilled_pumps if isinstance(p, dict) and _is_real_equipment(p)
     ]
@@ -248,10 +256,13 @@ def _normalize_topology(raw: dict) -> dict:
     towers = raw.get("towers") or raw.get("冷却塔") or []
     topology["towers"] = [
         {
+            "brand": t.get("brand", t.get("品牌", "")) or "",
+            "model": t.get("model", t.get("型号", "")) or "",
             "fan_power_kw": float(t.get("fan_power_kw", t.get("风机功率", t.get("功率", 0))) or 0),
             "count": int(t.get("count", t.get("台数", 1)) or 1),
             "vfd": t.get("vfd", t.get("变频", True)),
             "type": t.get("type", t.get("类型", "开式")),
+            "flow_rate_m3h": float(t.get("flow_rate_m3h", t.get("流量", t.get("额定流量", 0))) or 0),
         }
         for t in towers if isinstance(t, dict) and _is_real_equipment(t)
     ]
@@ -583,16 +594,21 @@ def _display_topology(topology: dict):
     cooling_pumps = topology.get('cooling_pumps', [])
     st.subheader(f"🔄 冷却泵 ({len(cooling_pumps)} 条)")
     if cooling_pumps:
-        with st.expander("展开编辑"):
+        with st.expander("展开编辑", expanded=True):
             to_delete_cp = []
             for idx, p in enumerate(cooling_pumps):
+                st.markdown(f"**--- 冷却泵 #{idx+1} ---**")
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"cp_pwr_{idx}")
+                    p['brand'] = st.text_input("品牌", value=p.get('brand', ''), key=f"cp_brand_{idx}")
+                    p['model'] = st.text_input("型号", value=p.get('model', ''), key=f"cp_model_{idx}")
                 with c2:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"cp_pwr_{idx}")
                     p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"cp_cnt_{idx}")
                 with c3:
-                    p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"cp_vfd_{idx}")
+                    p['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(p.get('flow_rate_m3h', 0) or 0), key=f"cp_flow_{idx}")
+                    p['head_m'] = st.number_input("扬程(m)", min_value=0.0, value=float(p.get('head_m', 0) or 0), key=f"cp_head_{idx}")
+                p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"cp_vfd_{idx}")
                 if st.button("🗑️ 删除", key=f"cp_del_{idx}"):
                     to_delete_cp.append(idx)
             if to_delete_cp:
@@ -600,7 +616,7 @@ def _display_topology(topology: dict):
                 st.session_state.sim_topology = topology
                 st.rerun()
     if st.button("➡️ 添加冷却泵", key="add_cooling_pump"):
-        topology.setdefault('cooling_pumps', []).append({"power_kw": 0, "count": 1, "vfd": True})
+        topology.setdefault('cooling_pumps', []).append({"brand": "", "model": "", "power_kw": 0, "count": 1, "vfd": True, "flow_rate_m3h": 0, "head_m": 0})
         st.session_state.sim_topology = topology
         st.rerun()
 
@@ -608,16 +624,21 @@ def _display_topology(topology: dict):
     chilled_pumps = topology.get('chilled_pumps', [])
     st.subheader(f"💧 冷冻泵 ({len(chilled_pumps)} 条)")
     if chilled_pumps:
-        with st.expander("展开编辑"):
+        with st.expander("展开编辑", expanded=True):
             to_delete_hc = []
             for idx, p in enumerate(chilled_pumps):
+                st.markdown(f"**--- 冷冻泵 #{idx+1} ---**")
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"hp_pwr_{idx}")
+                    p['brand'] = st.text_input("品牌", value=p.get('brand', ''), key=f"hp_brand_{idx}")
+                    p['model'] = st.text_input("型号", value=p.get('model', ''), key=f"hp_model_{idx}")
                 with c2:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"hp_pwr_{idx}")
                     p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"hp_cnt_{idx}")
                 with c3:
-                    p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"hp_vfd_{idx}")
+                    p['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(p.get('flow_rate_m3h', 0) or 0), key=f"hp_flow_{idx}")
+                    p['head_m'] = st.number_input("扬程(m)", min_value=0.0, value=float(p.get('head_m', 0) or 0), key=f"hp_head_{idx}")
+                p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"hp_vfd_{idx}")
                 if st.button("🗑️ 删除", key=f"hp_del_{idx}"):
                     to_delete_hc.append(idx)
             if to_delete_hc:
@@ -625,7 +646,7 @@ def _display_topology(topology: dict):
                 st.session_state.sim_topology = topology
                 st.rerun()
     if st.button("➡️ 添加冷冻泵", key="add_chilled_pump"):
-        topology.setdefault('chilled_pumps', []).append({"power_kw": 0, "count": 1, "vfd": True})
+        topology.setdefault('chilled_pumps', []).append({"brand": "", "model": "", "power_kw": 0, "count": 1, "vfd": True, "flow_rate_m3h": 0, "head_m": 0})
         st.session_state.sim_topology = topology
         st.rerun()
 
@@ -633,18 +654,21 @@ def _display_topology(topology: dict):
     towers = topology.get('towers', [])
     st.subheader(f"🌡️ 冷却塔 ({len(towers)} 条)")
     if towers:
-        with st.expander("展开编辑"):
+        with st.expander("展开编辑", expanded=True):
             to_delete_tw = []
             for idx, t in enumerate(towers):
-                c1, c2, c3, c4 = st.columns(4)
+                st.markdown(f"**--- 冷却塔 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
                 with c1:
-                    t['fan_power_kw'] = st.number_input("风机功率(kW)", min_value=0.0, value=float(t.get('fan_power_kw', 0) or 0), key=f"tw_pwr_{idx}")
+                    t['brand'] = st.text_input("品牌", value=t.get('brand', ''), key=f"tw_brand_{idx}")
+                    t['model'] = st.text_input("型号", value=t.get('model', ''), key=f"tw_model_{idx}")
                 with c2:
+                    t['fan_power_kw'] = st.number_input("风机功率(kW)", min_value=0.0, value=float(t.get('fan_power_kw', 0) or 0), key=f"tw_pwr_{idx}")
                     t['count'] = st.number_input("台数", min_value=1, value=int(t.get('count', 1) or 1), key=f"tw_cnt_{idx}")
                 with c3:
-                    t['vfd'] = st.checkbox("变频", value=t.get('vfd', True), key=f"tw_vfd_{idx}")
-                with c4:
+                    t['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(t.get('flow_rate_m3h', 0) or 0), key=f"tw_flow_{idx}")
                     t['type'] = st.text_input("类型", value=t.get('type', '开式'), key=f"tw_type_{idx}")
+                t['vfd'] = st.checkbox("变频", value=t.get('vfd', True), key=f"tw_vfd_{idx}")
                 if st.button("🗑️ 删除", key=f"tw_del_{idx}"):
                     to_delete_tw.append(idx)
             if to_delete_tw:
@@ -652,7 +676,7 @@ def _display_topology(topology: dict):
                 st.session_state.sim_topology = topology
                 st.rerun()
     if st.button("➡️ 添加冷却塔", key="add_tower"):
-        topology.setdefault('towers', []).append({"fan_power_kw": 0, "count": 1, "vfd": True, "type": "开式"})
+        topology.setdefault('towers', []).append({"brand": "", "model": "", "fan_power_kw": 0, "count": 1, "vfd": True, "type": "开式", "flow_rate_m3h": 0})
         st.session_state.sim_topology = topology
         st.rerun()
 
