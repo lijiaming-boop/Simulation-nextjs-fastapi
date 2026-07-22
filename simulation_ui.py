@@ -1,521 +1,1405 @@
-"""冷站仿真 Streamlit UI - 输入页面和结果页面"""
-import io
-import json
+"""冷站性能仿真模块 - Streamlit UI
+
+支持两种场景:
+1. 旧站房仿真 (从空调节能率计算结果页跳转, 有调研表历史工况)
+2. 新站房仿真 (独立入口, 无调研表, 用户手动输入)
+
+4步流程: 拓扑收集 → 性能曲线 → 工况需求 → 仿真执行
+"""
 import streamlit as st
-import pandas as pd
-import numpy as np
+import json
+import time
 from pathlib import Path
-
-from simulation.simulator import PlantSimulator, PlantConfig, ChillerGroup, PumpGroup, TowerGroup
-from simulation.chart_generator import generate_monthly_cop_chart, generate_energy_structure_chart, generate_cop_heatmap
-from simulation.report_generator import generate_report_markdown
-from simulation.weather import get_regions, get_monthly_dry_bulb
-from simulation.input_parser import parse_cop_curve_from_text, parse_cop_curve_from_table, build_plant_config_from_extracted_data
-from simulation.ai_service import ai_extract_plant_topology, ai_generate_simulation_report
+from core.skill_caller import SkillCaller, SkillError
 
 
-def render_simulation_input_stage():
-    """仿真输入页面"""
-    st.subheader("🔬 冷站性能仿真 — 参数输入")
-    st.caption("基于主机COP性能曲线，仿真全年8760小时运行，输出优化控制策略")
+# ==================== 辅助函数 ====================
 
-    # 初始化仿真状态
-    if "sim_chiller_groups" not in st.session_state:
-        st.session_state.sim_chiller_groups = [{}]
+def create_streaming_container(title: str = "🤖 查看 AI 分析过程"):
+    """创建流式日志容器"""
+    expander = st.expander(title, expanded=True)
+    with expander:
+        container = st.empty()
+    return expander, container
 
-    # === 0. AI智能识别设备 ===
-    with st.expander("🤖 AI智能识别设备拓扑（可选）", expanded=False):
-        st.caption("上传设备清单图片、铭牌照片或粘贴文本，AI自动提取所有参数")
-        ai_input_tab1, ai_input_tab2 = st.tabs(["上传图片", "粘贴文本"])
 
-        with ai_input_tab1:
-            ai_images = st.file_uploader(
-                "上传设备清单/铭牌照片（支持多张）",
-                type=["jpg", "jpeg", "png"],
-                accept_multiple_files=True,
-                key="ai_topo_img"
-            )
-            if ai_images:
-                for img in ai_images:
-                    st.image(img, width=300)
+def update_streaming_container(container, texts: list):
+    """更新流式容器显示"""
+    combined_text = "\n\n".join(texts)
+    container.markdown(combined_text)
 
-        with ai_input_tab2:
-            ai_text = st.text_area(
-                "粘贴设备信息（调研表内容、设备清单等）",
-                placeholder="例如：\n3台变频离心机，单台5274kW，COP 6.12\n4台冷冻泵132kW变频\n4台冷却泵132kW工频\n6台冷却塔22kW变频",
-                height=150,
-                key="ai_topo_text"
-            )
 
-        if st.button("🧠 AI识别并填入参数", use_container_width=True, key="ai_extract_btn"):
-            with st.spinner("AI正在分析设备信息..."):
-                content = ai_text if ai_text else ""
-                image_data = None
-                media_type = "image/jpeg"
+def init_simulation_state():
+    """初始化仿真模块 session state"""
+    if 'sim_stage' not in st.session_state:
+        st.session_state.sim_stage = 'topology'
+        st.session_state.sim_mode = 'new_station'  # new_station / old_station
+        st.session_state.sim_topology = None
+        st.session_state.sim_cop_data = {}
+        st.session_state.sim_operating_conditions = None
+        st.session_state.sim_result = None
+        st.session_state.sim_project_name = ''
 
-                if ai_images:
-                    image_data = ai_images[0].getvalue()
-                    fname = ai_images[0].name.lower()
-                    media_type = "image/png" if fname.endswith(".png") else "image/jpeg"
-                    content += f"\n[已上传{len(ai_images)}张设备图片]"
 
-                result = ai_extract_plant_topology(
-                    content=content,
-                    content_type="image" if image_data else "text",
-                    image_data=image_data,
-                    media_type=media_type,
-                )
+def reset_simulation():
+    """重置仿真流程"""
+    st.session_state.sim_stage = 'topology'
+    st.session_state.sim_topology = None
+    st.session_state.sim_cop_data = {}
+    st.session_state.sim_operating_conditions = None
+    st.session_state.sim_result = None
+    st.session_state.sim_project_name = ''
 
-                if result:
-                    st.session_state.ai_extracted_topology = result
-                    st.success("识别成功，参数已填入下方表单")
-                    st.json(result)
-                else:
-                    st.error("识别失败，请手动填写或检查输入内容")
 
-    # 从AI识别结果预填（如果有）
-    ai_topo = st.session_state.get("ai_extracted_topology", {})
+# ==================== 拓扑输入示例 ====================
 
-    # === 1. 地区选择 ===
-    st.markdown("### 1. 冷站所在地区")
-    regions = get_regions()
-    ai_region = ai_topo.get("region", "华东")
-    default_region_idx = regions.index(ai_region) if ai_region in regions else (regions.index("华东") if "华东" in regions else 0)
-    region = st.selectbox("选择地区", regions, index=default_region_idx)
+TOPOLOGY_EXAMPLE = """冷水主机：
+- 约克 YZ系列 3000RT 中温变频离心机 × 2台，额定制冷量10551kW，额定功率750kW，额定COP 6.5
+- 约克 YZ系列 1800RT 低温变频离心机 × 1台，额定制冷量6331kW，额定功率480kW，额定COP 5.8
 
-    # === 2. 主机信息 ===
-    st.markdown("### 2. 主机COP性能曲线")
+冷却泵：90kW × 4台，变频
+冷冻泵：75kW × 3台 + 37kW × 2台，变频
+冷却塔：45kW风机 × 12台，变频，闭式
+特殊结构：无"""
 
-    cop_input_method = st.radio(
-        "COP曲线输入方式",
-        ["上传图片(AI识别)", "手动填写表格", "文本描述"],
-        horizontal=True,
-    )
+OPERATING_EXAMPLE = """过渡季节(3-5月,10-11月)工作日开2台约克3000RT中温变频，75%负载
+过渡季节休息日开1台约克1800RT低温变频，75%负载
+冬季(12-2月)不开机
+夏季(6-9月)工作日开3台3000RT中温变频，80%负载
+夏季休息日开1台3000RT中温变频和1台1800RT低温变频，70%负载"""
 
-    chiller_groups = []
-    ai_chillers = ai_topo.get("chillers", [])
-    n_groups = st.number_input("主机组数 (不同型号为一组)", min_value=1, max_value=6,
-                               value=max(1, len(ai_chillers)) if ai_chillers else 1)
 
-    for i in range(n_groups):
-        ai_ch = ai_chillers[i] if i < len(ai_chillers) else {}
-        with st.expander(f"主机组 {i+1}", expanded=(i == 0)):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                name = st.text_input(f"名称", value=ai_ch.get("name", f"主机组{i+1}"), key=f"chi_name_{i}")
-                qty = st.number_input("台数", min_value=1, max_value=10,
-                                      value=ai_ch.get("qty", 1), key=f"chi_qty_{i}")
-            with col2:
-                capacity = st.number_input("单台制冷量(kW)", min_value=100.0,
-                                           value=float(ai_ch.get("capacity_kw", 5000)), key=f"chi_cap_{i}")
-                power = st.number_input("单台额定功率(kW)", min_value=10.0,
-                                        value=float(ai_ch.get("rated_power_kw", 800)), key=f"chi_pow_{i}")
-            with col3:
-                rated_cop = st.number_input("额定COP", min_value=1.0, max_value=15.0,
-                                            value=float(ai_ch.get("rated_cop", 6.0)), key=f"chi_cop_{i}")
-                vf = st.checkbox("变频", value=ai_ch.get("variable_freq", False), key=f"chi_vf_{i}")
+# ==================== 主渲染函数 ====================
 
-            # COP曲线
-            cop_curve = None
-            if cop_input_method == "上传图片(AI识别)":
-                uploaded_img = st.file_uploader(
-                    "上传COP性能曲线图片", type=["jpg", "jpeg", "png"],
-                    key=f"cop_img_{i}"
-                )
-                if uploaded_img:
-                    st.image(uploaded_img, width=500)
-                    if st.button("AI识别曲线", key=f"parse_img_{i}"):
-                        with st.spinner("正在识别..."):
-                            cop_curve = _ai_parse_cop_image(uploaded_img)
-                            if cop_curve:
-                                st.success(f"识别到 {len(cop_curve)} 个数据点")
-                                st.json(cop_curve)
-                            else:
-                                st.warning("识别失败，请手动填写")
+def render_simulation_module():
+    """仿真模块主入口"""
+    init_simulation_state()
 
-            elif cop_input_method == "手动填写表格":
-                st.caption("填写负载率(%)和对应COP值")
-                default_data = {"负载率(%)": [100, 90, 80, 70, 60, 50, 40, 30],
-                                "COP": [6.0, 6.2, 6.3, 6.3, 6.0, 5.6, 4.8, 3.6]}
-                df_input = pd.DataFrame(default_data)
-                edited_df = st.data_editor(df_input, num_rows="dynamic", key=f"cop_table_{i}")
-                if not edited_df.empty:
-                    cop_curve = parse_cop_curve_from_table(
-                        edited_df["负载率(%)"].tolist(),
-                        edited_df["COP"].tolist()
-                    )
+    # 进度指示器
+    sim_stages = ['拓扑信息', '性能曲线', '工况需求', '仿真执行']
+    sim_stage_map = {'topology': 0, 'cop_curves': 1, 'operating': 2, 'simulate': 3}
+    current = sim_stage_map.get(st.session_state.sim_stage, 0)
 
-            else:  # 文本描述
-                text = st.text_area(
-                    "输入COP数据 (每行: 负载率 COP)",
-                    value="100% 6.0\n80% 6.3\n60% 6.0\n40% 4.8",
-                    key=f"cop_text_{i}"
-                )
-                if text.strip():
-                    cop_curve = parse_cop_curve_from_text(text)
-
-            chiller_groups.append({
-                "name": name, "qty": qty, "capacity_kw": capacity,
-                "rated_power_kw": power, "rated_cop": rated_cop,
-                "variable_freq": vf, "cop_curve": cop_curve,
-            })
-
-    # === 3. 辅机参数 ===
-    st.markdown("### 3. 辅机参数")
-
-    ai_chw = ai_topo.get("chw_pumps", [{}])[0] if ai_topo.get("chw_pumps") else {}
-    ai_cw = ai_topo.get("cw_pumps", [{}])[0] if ai_topo.get("cw_pumps") else {}
-    ai_tw = ai_topo.get("towers", [{}])[0] if ai_topo.get("towers") else {}
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("**冷冻泵**")
-        chw_qty = st.number_input("台数", 1, 20, ai_chw.get("qty", 4), key="chw_qty")
-        chw_power = st.number_input("单台功率(kW)", 1.0, 500.0, float(ai_chw.get("power_kw", 132)), key="chw_pow")
-        chw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, float(ai_chw.get("flow_m3h", 920)), key="chw_flow")
-        chw_vf = st.checkbox("变频", value=ai_chw.get("variable_freq", True), key="chw_vf")
-
-    with col_b:
-        st.markdown("**冷却泵**")
-        cw_qty = st.number_input("台数", 1, 20, ai_cw.get("qty", 4), key="cw_qty")
-        cw_power = st.number_input("单台功率(kW)", 1.0, 500.0, float(ai_cw.get("power_kw", 132)), key="cw_pow")
-        cw_flow = st.number_input("单台流量(m³/h)", 10.0, 5000.0, float(ai_cw.get("flow_m3h", 1300)), key="cw_flow")
-        cw_vf = st.checkbox("变频", value=ai_cw.get("variable_freq", False), key="cw_vf")
-
-    st.markdown("**冷却塔**")
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        tower_qty = st.number_input("台数", 1, 20, ai_tw.get("qty", 4), key="tower_qty")
-    with col_t2:
-        tower_fan_kw = st.number_input("单台风机功率(kW)", 1.0, 100.0, float(ai_tw.get("fan_power_kw", 22)), key="tower_fan")
-        tower_fans = st.number_input("每台风机数", 1, 4, ai_tw.get("fans_per_tower", 2), key="tower_fans")
-    with col_t3:
-        tower_vf = st.checkbox("变频", value=ai_tw.get("variable_freq", True), key="tower_vf")
-
-    # === 4. 运行参数 ===
-    st.markdown("### 4. 月度运行参数")
-
-    # 尝试从已有数据自动填入
-    ac_data = st.session_state.get("ac_extracted_data")
-    ai_monthly = ai_topo.get("monthly_chiller_count")
-    default_chiller_count = ai_monthly if ai_monthly and len(ai_monthly) == 12 else [1]*12
-    default_load = ai_topo.get("base_load_ratio", 0.70)
-
-    if ac_data and "monthly_data" in ac_data:
-        st.info("已从调研表数据自动填入月度参数，可修改")
-    elif ai_monthly:
-        st.info("已从AI识别结果填入月度参数，可修改")
-
-    load_ratio = st.slider("平均负载率", 0.3, 1.0, default_load, 0.05)
-
-    st.caption("每月开机台数")
-    monthly_counts = []
-    cols = st.columns(12)
-    for i, col in enumerate(cols):
+    cols = st.columns(len(sim_stages))
+    for i, (col, name) in enumerate(zip(cols, sim_stages)):
         with col:
-            v = col.number_input(f"{i+1}月", 1, 10, default_chiller_count[i], key=f"mc_{i}")
-            monthly_counts.append(v)
+            if i < current:
+                st.success(f"✅ {name}")
+            elif i == current:
+                st.info(f"▶️ {name}")
+            else:
+                st.text(f"⏸️ {name}")
 
-    # === 5. 开始仿真 ===
     st.markdown("---")
-    if st.button("开始仿真", type="primary", use_container_width=True):
-        user_inputs = {
-            "chiller_groups": chiller_groups,
-            "chw_pumps": [{"name": "冷冻泵", "qty": chw_qty, "power_kw": chw_power,
-                           "flow_m3h": chw_flow, "variable_freq": chw_vf}],
-            "cw_pumps": [{"name": "冷却泵", "qty": cw_qty, "power_kw": cw_power,
-                          "flow_m3h": cw_flow, "variable_freq": cw_vf}],
-            "towers": [{"name": "冷却塔", "qty": tower_qty, "fan_power_kw": tower_fan_kw,
-                        "fans_per_tower": tower_fans, "variable_freq": tower_vf}],
-            "monthly_chiller_count": monthly_counts,
-            "base_load_ratio": load_ratio,
+
+    # 路由
+    stage = st.session_state.sim_stage
+    if stage == 'topology':
+        render_topology_stage()
+    elif stage == 'cop_curves':
+        render_cop_curves_stage()
+    elif stage == 'operating':
+        render_operating_stage()
+    elif stage == 'simulate':
+        render_simulate_stage()
+
+
+# ==================== Step 1: 拓扑信息收集 ====================
+
+_INVALID_TEXT_PATTERNS = [
+    "例如：", "示例:", "选填", "选框勾选", "是否", "有没有",
+    "请注意", "举例", "需要让运维", "询问运维", "各设备铭牌",
+    "描述一下", "客户", "末端", "该项目", "涉及", "整体情况",
+    "运行规律", "特殊情况说明", "设备启停方式", "末端设备数量",
+    "通讯接口", "供水温度", "运行台数", "运行频率", "出水温度",
+    "工频运行则为", "变频运行可填写", "整个冷站", "填写大致的范围",
+]
+
+
+def _is_real_equipment(entry: dict) -> bool:
+    """判断一条记录是否是真实设备数据，而不是调研表的说明文本"""
+    brand = str(entry.get("brand", "") or "")
+    model = str(entry.get("model", "") or "")
+
+    # 如果 brand 太长（包含说明性文本），大概率不是设备数据
+    if len(brand) > 40:
+        return False
+
+    # brand/model 包含常见调研表提示文本 → 不是设备数据
+    combined = brand + model
+    for pattern in _INVALID_TEXT_PATTERNS:
+        if pattern in combined:
+            return False
+
+    # 至少有一个数值字段大于0 或 brand/model 是短文本
+    capacity = entry.get("capacity_kw") or entry.get("额定制冷量") or entry.get("制冷量") or 0
+    power = entry.get("power_kw") or entry.get("额定功率") or entry.get("功率") or 0
+    cop = entry.get("rated_cop") or entry.get("COP") or entry.get("cop") or 0
+    fan_power = entry.get("fan_power_kw") or entry.get("风机功率") or 0
+
+    try:
+        if float(capacity) > 0 or float(power) > 0 or float(cop) > 0 or float(fan_power) > 0:
+            return True
+    except (ValueError, TypeError):
+        pass
+
+    # brand/model 是合理的文本（品牌名、型号）
+    if brand and model:
+        return True
+    if brand and len(brand) <= 20 and not any(p in brand for p in ["类型", "否", "是", "/"]):
+        return True
+    if model and len(model) <= 60:
+        return True
+
+    return False
+
+
+def _normalize_topology(raw: dict) -> dict:
+    """标准化 AI 输出的拓扑 JSON，兼容多种键名格式"""
+    # 处理嵌套结构：AI 可能输出 {"source_file": ..., "topology": {...}, "notes": [...]}
+    if "topology" in raw and isinstance(raw["topology"], dict):
+        inner = raw["topology"]
+        project_name = raw.get("project_name", inner.get("project_name", raw.get("项目名称", "未知项目")))
+        raw = inner
+    else:
+        project_name = raw.get("project_name", raw.get("项目名称", "未知项目"))
+
+    topology = {"project_name": project_name}
+
+    # 冷水主机 - 兼容多种键名 + 过滤无效数据
+    chillers = (
+        raw.get("chillers") or raw.get("冷水主机") or raw.get("主机") or
+        raw.get("chiller") or raw.get("冷水机组") or []
+    )
+    normalized_chillers = []
+    for ch in chillers:
+        if not isinstance(ch, dict):
+            continue
+        if not _is_real_equipment(ch):
+            continue
+        normalized_chillers.append({
+            "brand": ch.get("brand", ch.get("品牌", "")) or "",
+            "model": ch.get("model", ch.get("型号", "")) or "",
+            "type": ch.get("type", ch.get("类型", "")) or "",
+            "count": int(ch.get("count", ch.get("台数", ch.get("数量", 1))) or 1),
+            "capacity_kw": float(ch.get("capacity_kw", ch.get("额定制冷量", ch.get("制冷量", ch.get("额定制冷量kW", 0)))) or 0),
+            "power_kw": float(ch.get("power_kw", ch.get("额定功率", ch.get("功率", ch.get("额定功率kW", 0)))) or 0),
+            "rated_cop": float(ch.get("rated_cop", ch.get("COP", ch.get("额定COP", ch.get("cop", 0)))) or 0),
+            "vfd": ch.get("vfd", ch.get("变频", True)),
+        })
+    topology["chillers"] = normalized_chillers
+
+    # === 后处理：纠正AI错误分类 ===
+    # 如果 chillers 中有条目的 COP > 10，它很可能是水泵（被AI误分到了chillers）
+    misclassified_pumps = []
+    real_chillers = []
+    for ch in normalized_chillers:
+        cop = ch.get('rated_cop', 0)
+        power = ch.get('power_kw', 0)
+        capacity = ch.get('capacity_kw', 0)
+        # 判断标准：COP > 10 或 (容量/功率) > 10 且 功率 <= 100kW
+        computed_ratio = capacity / power if power > 0 else 0
+        if cop > 10 or (computed_ratio > 10 and power <= 200):
+            misclassified_pumps.append(ch)
+        else:
+            real_chillers.append(ch)
+
+    topology["chillers"] = real_chillers
+
+    # 将误分类的泵添加到 chilled_pumps
+    extra_chilled_pumps = [
+        {
+            "power_kw": p.get("power_kw", 0),
+            "count": p.get("count", 1),
+            "vfd": p.get("vfd", True),
         }
+        for p in misclassified_pumps
+    ]
 
-        config = build_plant_config_from_extracted_data(ac_data, user_inputs)
-        monthly_ambient = get_monthly_dry_bulb(region)
-
-        with st.spinner("正在进行全年8760小时仿真..."):
-            simulator = PlantSimulator(config, monthly_ambient)
-            df_base = simulator.simulate_baseline()
-
-            # 参考前面节能率计算结果来校准优化力度
-            target_saving_pct = _get_target_saving_pct()
-            df_opt, chw_target_dt = _calibrated_optimization(
-                simulator, df_base, target_saving_pct)
-            summary = simulator.generate_summary(df_base, df_opt)
-            summary["chw_target_dt"] = chw_target_dt
-            summary["reference_saving_pct"] = target_saving_pct
-
-        st.session_state.sim_result = {
-            "df_base": df_base,
-            "df_opt": df_opt,
-            "summary": summary,
-            "region": region,
+    # 冷却泵
+    cooling_pumps = raw.get("cooling_pumps") or raw.get("冷却泵") or []
+    topology["cooling_pumps"] = [
+        {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
         }
-        st.session_state.stage = "simulation_result"
-        st.rerun()
+        for p in cooling_pumps if isinstance(p, dict) and _is_real_equipment(p)
+    ]
 
-    # 返回按钮
-    if st.button("← 返回节能率结果", use_container_width=True):
-        st.session_state.stage = "result"
-        st.rerun()
+    # 冷冻泵（包含从 chillers 纠正过来的水泵）
+    chilled_pumps = raw.get("chilled_pumps") or raw.get("冷冻泵") or []
+    normalized_chilled = [
+        {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
+        }
+        for p in chilled_pumps if isinstance(p, dict) and _is_real_equipment(p)
+    ]
+    # 合并纠正过来的水泵（避免重复）
+    existing_powers = {p["power_kw"] for p in normalized_chilled}
+    for ep in extra_chilled_pumps:
+        if ep["power_kw"] not in existing_powers:
+            normalized_chilled.append(ep)
+    topology["chilled_pumps"] = normalized_chilled
+
+    # 冷却塔
+    towers = raw.get("towers") or raw.get("冷却塔") or []
+    topology["towers"] = [
+        {
+            "brand": t.get("brand", t.get("品牌", "")) or "",
+            "model": t.get("model", t.get("型号", "")) or "",
+            "fan_power_kw": float(t.get("fan_power_kw", t.get("风机功率", t.get("功率", 0))) or 0),
+            "count": int(t.get("count", t.get("台数", 1)) or 1),
+            "vfd": t.get("vfd", t.get("变频", True)),
+            "type": t.get("type", t.get("类型", "开式")),
+            "flow_rate_m3h": float(t.get("flow_rate_m3h", t.get("流量", t.get("额定流量", 0))) or 0),
+        }
+        for t in towers if isinstance(t, dict) and _is_real_equipment(t)
+    ]
+
+    # 特殊结构
+    special = raw.get("special") or raw.get("特殊结构") or {"type": "none"}
+    if isinstance(special, dict):
+        # 处理 features 列表格式
+        features = special.get("features", [])
+        if features and not special.get("type"):
+            type_map = {"热回收": "heat_recovery", "蓄冷": "storage", "蓄冰": "ice"}
+            for feat in features:
+                if feat in type_map:
+                    special["type"] = type_map[feat]
+                    break
+        sp_type = special.get("type", "none")
+        # 清理 type 字段：如果包含垃圾文本，尝试关键词匹配
+        if isinstance(sp_type, str) and len(sp_type) > 20:
+            # 从长文本中提取关键词
+            detected = []
+            if "热回收" in sp_type:
+                detected.append("heat_recovery")
+            if "蓄冷" in sp_type or "蓄冰" in sp_type:
+                detected.append("storage")
+            if detected:
+                sp_type = "_and_".join(detected) if len(detected) > 1 else detected[0]
+            else:
+                sp_type = "none"
+        special["type"] = sp_type
+    elif isinstance(special, str):
+        special = {"type": special if len(special) <= 20 else "none"}
+    else:
+        special = {"type": "none"}
+    topology["special"] = special
+
+    return topology
 
 
-def render_simulation_result_stage():
-    """仿真结果页面"""
-    st.subheader("🔬 冷站性能仿真结果")
+def render_topology_stage():
+    """Step 1: 站房拓扑信息收集"""
+    st.header("📋 步骤 1: 站房拓扑信息收集")
 
-    sim_result = st.session_state.get("sim_result")
-    if not sim_result:
-        st.warning("未找到仿真结果，请重新运行")
-        if st.button("返回输入"):
-            st.session_state.stage = "simulation_input"
+    # 已有拓扑数据时展示编辑界面
+    if st.session_state.sim_topology is not None:
+        topology = st.session_state.sim_topology
+        _display_topology(topology)
+        st.session_state.sim_topology = topology  # 保存编辑后的数据
+
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 重新收集", width='stretch'):
+                st.session_state.sim_topology = None
+                st.rerun()
+        with col2:
+            can_proceed = bool(topology.get('chillers'))
+            if st.button("✅ 确认拓扑信息，进入下一步", type="primary",
+                         width='stretch', disabled=not can_proceed):
+                st.session_state.sim_stage = 'cop_curves'
+                st.rerun()
+        return
+
+    sim_mode = st.session_state.sim_mode
+    if sim_mode == 'old_station':
+        _render_topology_old_station()
+    else:
+        _render_topology_new_station()
+
+
+def _render_topology_old_station():
+    """旧站房: 从调研表自动识别拓扑"""
+    st.info("ℹ️ 将从已上传的调研表中自动识别站房设备拓扑信息")
+
+    session_dir = st.session_state.session_dir
+    upload_path = session_dir / "upload_survey.xlsx"
+
+    # 如果没有调研表，提供上传入口
+    if not upload_path.exists():
+        st.warning("⚠️ 未找到调研表文件，请上传")
+        uploaded_file = st.file_uploader("上传调研表", type=['xlsx', 'xls'], key="sim_survey_upload")
+        if uploaded_file:
+            with open(upload_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
             st.rerun()
         return
 
-    df_base = sim_result["df_base"]
-    df_opt = sim_result["df_opt"]
-    summary = sim_result["summary"]
+    st.success(f"✅ 调研表已就绪：{upload_path.name}")
 
-    # 核心指标
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("基线系统COP", f"{summary['baseline_cop']:.2f}")
-    with col2:
-        st.metric("优化系统COP", f"{summary['optimized_cop']:.2f}",
-                  f"+{(summary['optimized_cop']-summary['baseline_cop'])/summary['baseline_cop']*100:.1f}%")
-    with col3:
-        st.metric("年节电量", f"{summary['saving_kwh']/1e4:.0f}万kWh")
-    with col4:
-        st.metric("年节省电费", f"{summary['saving_cost_yuan']/1e4:.1f}万元")
+    if st.button("🔍 开始识别设备拓扑", type="primary", width='stretch'):
+        _run_topology_extraction(upload_path)
 
-    st.markdown("---")
 
-    # 图表
-    tab1, tab2, tab3 = st.tabs(["月度COP对比", "能耗结构对比", "全年COP热力图"])
+def _render_topology_new_station():
+    """新站房: 上传调研表或手动输入拓扑"""
 
-    with tab1:
-        fig1 = generate_monthly_cop_chart(df_base, df_opt)
-        st.plotly_chart(fig1, use_container_width=True)
+    # 方式选择: 上传调研表 或 手动输入
+    input_method = st.radio(
+        "选择拓扑信息输入方式",
+        ["📁 上传调研表（推荐）", "✍️ 手动输入"],
+        horizontal=True
+    )
 
-    with tab2:
-        fig2 = generate_energy_structure_chart(summary)
-        st.plotly_chart(fig2, use_container_width=True)
+    session_dir = st.session_state.session_dir
 
-    with tab3:
-        fig3 = generate_cop_heatmap(df_opt)
-        st.plotly_chart(fig3, use_container_width=True)
+    if "上传调研表" in input_method:
+        # 上传调研表方式
+        st.info("ℹ️ 上传调研表后，AI 将自动识别站房设备拓扑信息")
 
-    # 月度详表
-    st.markdown("### 月度详细数据")
-    monthly_table = _build_monthly_table(df_base, df_opt)
-    st.dataframe(monthly_table, use_container_width=True)
-
-    st.markdown("---")
-
-    # AI报告生成
-    st.markdown("### 🤖 AI优化分析报告")
-    if "sim_ai_report" not in st.session_state:
-        st.session_state.sim_ai_report = None
-
-    if st.session_state.sim_ai_report:
-        st.markdown(st.session_state.sim_ai_report)
-        st.download_button(
-            "📄 下载AI报告",
-            data=st.session_state.sim_ai_report.encode("utf-8"),
-            file_name="冷站AI优化分析报告.md",
-            mime="text/markdown",
-            use_container_width=True,
-            key="dl_ai_report",
+        uploaded_file = st.file_uploader(
+            "上传调研表",
+            type=['xlsx', 'xls'],
+            key="sim_survey_upload_new"
         )
+
+        if uploaded_file:
+            upload_path = session_dir / "upload_survey.xlsx"
+            with open(upload_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ 文件已上传：{uploaded_file.name}")
+
+            if st.button("🔍 开始识别设备拓扑", type="primary", width='stretch'):
+                _run_topology_extraction(upload_path)
     else:
-        if st.button("🧠 生成AI专业分析报告", type="primary", use_container_width=True):
-            with st.spinner("AI正在生成专业报告..."):
-                ai_report = ai_generate_simulation_report(summary)
-                if ai_report:
-                    st.session_state.sim_ai_report = ai_report
-                    st.rerun()
-                else:
-                    # 回退到模板报告
-                    st.session_state.sim_ai_report = generate_report_markdown(summary)
-                    st.warning("AI报告生成失败，已使用模板报告")
-                    st.rerun()
-
-    st.markdown("---")
-
-    # 下载
-    st.markdown("### 下载")
-    col_d1, col_d2, col_d3 = st.columns(3)
-
-    with col_d1:
-        report_md = generate_report_markdown(summary)
-        st.download_button(
-            "📄 下载报告",
-            data=report_md.encode("utf-8"),
-            file_name="冷站仿真报告.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-
-    with col_d2:
-        excel_buf = _export_excel(df_opt, summary)
-        st.download_button(
-            "📊 下载8760h仿真Excel",
-            data=excel_buf,
-            file_name="冷站8760h仿真结果.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
-    with col_d3:
-        json_data = json.dumps(summary, ensure_ascii=False, indent=2)
-        st.download_button(
-            "📋 下载汇总JSON",
-            data=json_data.encode("utf-8"),
-            file_name="仿真汇总.json",
-            mime="application/json",
-            use_container_width=True,
-        )
-
-    st.markdown("---")
-
-    # 导航
-    col_nav1, col_nav2 = st.columns(2)
-    with col_nav1:
-        if st.button("← 修改参数重新仿真", use_container_width=True):
-            st.session_state.stage = "simulation_input"
-            st.rerun()
-    with col_nav2:
-        if st.button("🔄 开始新的测算", type="primary", use_container_width=True):
-            from app import reset_flow
-            reset_flow()
-            st.rerun()
+        # 手动输入方式
+        _render_topology_manual_input()
 
 
-def _build_monthly_table(df_base, df_opt):
-    months = range(1, 13)
-    rows = []
-    for m in months:
-        base_m = df_base[df_base["month"] == m]
-        opt_m = df_opt[df_opt["month"] == m]
-        base_cop = base_m["cooling_load_kw"].sum() / base_m["total_power_kw"].sum() if base_m["total_power_kw"].sum() > 0 else 0
-        opt_cop = opt_m["cooling_load_kw"].sum() / opt_m["total_power_kw"].sum() if opt_m["total_power_kw"].sum() > 0 else 0
-        rows.append({
-            "月份": f"{m}月",
-            "基线COP": round(base_cop, 2),
-            "优化COP": round(opt_cop, 2),
-            "COP提升": f"+{(opt_cop-base_cop)/base_cop*100:.1f}%" if base_cop > 0 else "-",
-            "基线耗电(万kWh)": round(base_m["total_power_kw"].sum() / 1e4, 1),
-            "优化耗电(万kWh)": round(opt_m["total_power_kw"].sum() / 1e4, 1),
-            "节电(万kWh)": round((base_m["total_power_kw"].sum() - opt_m["total_power_kw"].sum()) / 1e4, 1),
-        })
-    return pd.DataFrame(rows)
+def _render_topology_manual_input():
+    """手动输入拓扑信息"""
+    with st.expander("📝 查看填写示例", expanded=True):
+        st.code(TOPOLOGY_EXAMPLE, language="text")
+
+    # 项目名称
+    project_name = st.text_input(
+        "项目名称",
+        value=st.session_state.sim_project_name,
+        placeholder="如：德丽科技冷站"
+    )
+
+    # 拓扑输入
+    topology_input = st.text_area(
+        "设备拓扑信息",
+        height=250,
+        placeholder="请参照上方示例填写设备信息..."
+    )
+
+    if st.button("🔍 AI 解析拓扑信息", type="primary", width='stretch'):
+        if not topology_input.strip():
+            st.warning("⚠️ 请先输入设备拓扑信息")
+            return
+
+        _, log_container = create_streaming_container("🤖 AI 正在解析拓扑信息...")
+        streaming_logs = []
+
+        def on_text(timestamp, text):
+            streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+            update_streaming_container(log_container, streaming_logs)
+
+        try:
+            caller = SkillCaller(timeout=180)
+            session_dir = st.session_state.session_dir
+            output_path = session_dir / "sim_topology.json"
+
+            # 将用户输入保存
+            input_path = session_dir / "sim_topology_input.txt"
+            with open(input_path, 'w', encoding='utf-8') as f:
+                f.write(topology_input)
+
+            prompt = (
+                f"请将以下冷站设备拓扑描述解析为结构化 JSON，输出到 {output_path}。\n\n"
+                f"用户输入：\n{topology_input}\n\n"
+                f"项目名称：{project_name or '未知项目'}\n\n"
+                f"输出 JSON 格式（必须使用英文键名）：\n"
+                f'{{"project_name": "项目名称", "chillers": [{{"brand": "", "model": "", '
+                f'"type": "", "count": 0, "capacity_kw": 0, "power_kw": 0, "rated_cop": 0}}], '
+                f'"cooling_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+                f'"chilled_pumps": [{{"power_kw": 0, "count": 0, "vfd": true}}], '
+                f'"towers": [{{"fan_power_kw": 0, "count": 0, "vfd": true, "type": "闭式"}}], '
+                f'"special": {{"type": "none"}}}}\n'
+                f"同类设备按型号汇总台数。"
+            )
+
+            skill_result = caller.call_skill(
+                "plant-simulation",
+                str(input_path),
+                str(output_path),
+                "parse_topology",
+                callback=on_text
+            )
+
+            if output_path.exists():
+                with open(output_path, 'r', encoding='utf-8') as f:
+                    raw_topology = json.load(f)
+                topology = _normalize_topology(raw_topology)
+                st.session_state.sim_topology = topology
+                st.session_state.sim_project_name = topology.get('project_name', project_name)
+                st.rerun()
+            else:
+                st.error("❌ 解析完成但未生成输出文件")
+
+        except (SkillError, Exception) as e:
+            st.error(f"❌ 解析失败：{str(e)}")
 
 
-def _export_excel(df_opt: pd.DataFrame, summary: dict) -> bytes:
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        df_opt.to_excel(writer, sheet_name="8760h逐时数据", index=False)
-        summary_df = pd.DataFrame([summary])
-        summary_df.to_excel(writer, sheet_name="年度汇总", index=False)
-    return buf.getvalue()
+def _run_topology_extraction(upload_path: Path):
+    """从调研表提取拓扑（共用逻辑）"""
+    _, log_container = create_streaming_container("🤖 AI 正在识别设备拓扑...")
+    streaming_logs = []
 
+    def on_text(timestamp, text):
+        streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+        update_streaming_container(log_container, streaming_logs)
 
-def _ai_parse_cop_image(uploaded_file) -> dict:
-    """调用AI解析COP曲线图片"""
     try:
-        import base64
-        from simulation.ai_service import _get_client, _get_model
+        caller = SkillCaller(timeout=300)
+        session_dir = st.session_state.session_dir
+        output_path = session_dir / "sim_topology.json"
 
-        image_data = uploaded_file.getvalue()
-        b64 = base64.b64encode(image_data).decode()
-        media_type = "image/jpeg" if uploaded_file.name.lower().endswith((".jpg", ".jpeg")) else "image/png"
-
-        client = _get_client()
-        response = client.messages.create(
-            model=_get_model(),
-            max_tokens=2000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
-                    {"type": "text", "text": "请从这张COP性能曲线图/表格中提取数据。输出格式为每行一个数据点：负载率百分比 COP值。例如：\n100 6.0\n90 6.2\n80 6.3\n只输出数据，不要其他文字。"}
-                ]
-            }]
+        prompt = (
+            f"你是一个暖通数据解析专家。请从调研表 Excel 文件中提取冷站设备拓扑信息。\n\n"
+            f"## 文件路径\n"
+            f"- 输入: {upload_path}\n"
+            f"- 输出: {output_path}\n\n"
+            f"## 任务\n\n"
+            f"1. 用 Bash 执行 Python 代码读取 Excel 文件（使用 openpyxl）\n"
+            f"2. 分析文件结构，找到以下设备信息：\n"
+            f"   - 冷水主机（冷机/chiller）\n"
+            f"   - 冷却泵（冷却水泵/condenser pump）\n"
+            f"   - 冷冻泵（冷冻水泵/chilled water pump）\n"
+            f"   - 冷却塔（cooling tower）\n"
+            f"3. 提取每台设备的：品牌、型号、台数、功率(kW)、变频/工频、额定流量(m³/h)、扬程(m)\n"
+            f"4. 提取项目名称（通常在“站房名称”或“项目名称”字段的右侧）\n"
+            f"5. 用 Write 工具将结果写入 {output_path}\n\n"
+            f"## 输出 JSON 格式\n"
+            f'{{\n'
+            f'  "project_name": "项目名称",\n'
+            f'  "chillers": [\n'
+            f'    {{"brand": "品牌", "model": "型号", "type": "类型", "count": 台数, "capacity_kw": 制冷量, "power_kw": 功率, "rated_cop": COP, "vfd": true/false}}\n'
+            f'  ],\n'
+            f'  "cooling_pumps": [\n'
+            f'    {{"brand": "品牌", "model": "型号", "power_kw": 功率, "count": 台数, "vfd": true/false, "flow_rate_m3h": 流量, "head_m": 扬程}}\n'
+            f'  ],\n'
+            f'  "chilled_pumps": [\n'
+            f'    {{"brand": "品牌", "model": "型号", "power_kw": 功率, "count": 台数, "vfd": true/false, "flow_rate_m3h": 流量, "head_m": 扬程}}\n'
+            f'  ],\n'
+            f'  "towers": [\n'
+            f'    {{"brand": "品牌", "model": "型号", "fan_power_kw": 风机功率, "count": 台数, "vfd": true/false, "type": "类型", "flow_rate_m3h": 流量}}\n'
+            f'  ],\n'
+            f'  "special": {{"type": "none"}}\n'
+            f'}}\n\n'
+            f"## 要求\n"
+            f"- 所有数值字段必须是数字（找不到的填 0）\n"
+            f"- 同类设备如果型号相同，合并台数\n"
+            f"- vfd 根据“变频”/“工频”判断\n"
+            f"- 跳过表头、说明性文字、运行记录数据\n"
+            f"- 如果某个设备类别在调研表中找不到，对应的数组为空 []\n"
+            f"- 必须用 Write 工具写入文件，不要只输出文本\n"
         )
 
-        text = response.content[0].text
-        from simulation.input_parser import parse_cop_curve_from_text
-        return parse_cop_curve_from_text(text)
-    except Exception as e:
-        st.error(f"AI识别失败: {e}")
-        return None
+        skill_result = caller.call_skill(
+            "plant-simulation",
+            str(upload_path),
+            str(output_path),
+            "extract_topology",
+            callback=on_text
+        )
 
-
-def _get_target_saving_pct() -> float:
-    """从前面节能率计算结果获取目标节能率，仿真取略低值（实际工程保守估计）"""
-    ac_result = st.session_state.get("ac_result")
-    if not ac_result:
-        return None
-
-    # 支持范围和单值两种格式
-    if "energy_saving_rate_range" in ac_result:
-        rate_range = ac_result["energy_saving_rate_range"]
-        low = rate_range.get("lower_bound", 0)
-        high = rate_range.get("upper_bound", 0)
-        # 取下限偏低值，仿真结果应低于节能率理论计算
-        return low * 0.85
-    elif "energy_saving_rate" in ac_result:
-        return float(ac_result["energy_saving_rate"]) * 0.85
-    return None
-
-
-def _calibrated_optimization(simulator, df_base, target_saving_pct):
-    """
-    校准优化力度使仿真节能率与节能率计算结果一致。
-
-    策略：通过调整温差控制目标来控制节能力度。
-    温差目标越大 → 流量越小 → 泵功耗越低 → 节能越多。
-    温差目标范围：3-7°C（工程合理区间）
-    """
-    if target_saving_pct is None:
-        # 没有参考值，使用默认5°C目标温差
-        df_opt = simulator.simulate_optimized(chw_target_dt=5.0)
-        return df_opt, 5.0
-
-    base_power = df_base["total_power_kw"].sum()
-    target_saving_ratio = target_saving_pct / 100.0
-
-    # 二分法搜索合适的温差目标使节能率接近目标
-    dt_low, dt_high = 3.5, 7.0
-    best_dt = 5.0
-    best_df = None
-    best_diff = float("inf")
-
-    for _ in range(8):
-        dt_mid = (dt_low + dt_high) / 2.0
-        df_opt = simulator.simulate_optimized(chw_target_dt=dt_mid)
-        opt_power = df_opt["total_power_kw"].sum()
-        actual_saving = (base_power - opt_power) / base_power
-
-        diff = abs(actual_saving - target_saving_ratio)
-        if diff < best_diff:
-            best_diff = diff
-            best_dt = dt_mid
-            best_df = df_opt
-
-        if actual_saving < target_saving_ratio:
-            dt_low = dt_mid
+        if output_path.exists():
+            with open(output_path, 'r', encoding='utf-8') as f:
+                raw_topology = json.load(f)
+            topology = _normalize_topology(raw_topology)
+            st.session_state.sim_topology = topology
+            st.session_state.sim_project_name = topology.get('project_name', '未知项目')
+            st.rerun()
         else:
-            dt_high = dt_mid
+            st.error("❌ 拓扑识别完成但未生成输出文件")
 
-        # 足够接近就退出 (误差<1个百分点)
-        if diff < 0.01:
-            break
+    except (SkillError, Exception) as e:
+        st.error(f"❌ 拓扑识别失败：{str(e)}")
 
-    # 如果校准后偏差仍大于3个百分点，限制在合理范围内输出
-    if best_diff > 0.03:
-        best_dt = max(4.0, min(6.0, best_dt))
-        best_df = simulator.simulate_optimized(chw_target_dt=best_dt)
 
-    return best_df, round(best_dt, 1)
+def _display_topology(topology: dict):
+    """展示并编辑拓扑识别结果"""
+    st.success("✅ 设备拓扑识别完成")
+
+    # 项目名称可编辑
+    topology['project_name'] = st.text_input(
+        "项目名称", value=topology.get('project_name', '未知项目'), key="edit_project_name"
+    )
+
+    # === 冷水主机 ===
+    chillers = topology.get('chillers', [])
+    st.subheader(f"❄️ 冷水主机 ({len(chillers)} 条)")
+    if chillers:
+        with st.expander("展开编辑", expanded=True):
+            to_delete_ch = []
+            for idx, ch in enumerate(chillers):
+                st.markdown(f"**--- 主机 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    ch['brand'] = st.text_input("品牌", value=ch.get('brand', ''), key=f"ch_brand_{idx}")
+                    ch['model'] = st.text_input("型号", value=ch.get('model', ''), key=f"ch_model_{idx}")
+                with c2:
+                    ch['capacity_kw'] = st.number_input("制冷量(kW)", min_value=0.0, value=float(ch.get('capacity_kw', 0) or 0), key=f"ch_cap_{idx}")
+                    ch['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(ch.get('power_kw', 0) or 0), key=f"ch_pwr_{idx}")
+                with c3:
+                    ch['rated_cop'] = st.number_input("COP", min_value=0.0, value=float(ch.get('rated_cop', 0) or 0), step=0.01, key=f"ch_cop_{idx}")
+                    ch['count'] = st.number_input("台数", min_value=1, value=int(ch.get('count', 1) or 1), key=f"ch_cnt_{idx}")
+                ch['vfd'] = st.checkbox("变频", value=ch.get('vfd', True), key=f"ch_vfd_{idx}")
+                ch['type'] = st.text_input("类型", value=ch.get('type', ''), key=f"ch_type_{idx}")
+                if st.button("🗑️ 删除", key=f"ch_del_{idx}"):
+                    to_delete_ch.append(idx)
+            if to_delete_ch:
+                topology['chillers'] = [c for i, c in enumerate(chillers) if i not in to_delete_ch]
+                st.session_state.sim_topology = topology
+                st.rerun()
+
+    # 添加主机按钮
+    if st.button("➡️ 添加冷水主机", key="add_chiller"):
+        topology.setdefault('chillers', []).append({
+            "brand": "", "model": "", "type": "", "count": 1,
+            "capacity_kw": 0, "power_kw": 0, "rated_cop": 5.0, "vfd": True
+        })
+        st.session_state.sim_topology = topology
+        st.rerun()
+
+    # === 冷却泵 ===
+    cooling_pumps = topology.get('cooling_pumps', [])
+    st.subheader(f"🔄 冷却泵 ({len(cooling_pumps)} 条)")
+    if cooling_pumps:
+        with st.expander("展开编辑", expanded=True):
+            to_delete_cp = []
+            for idx, p in enumerate(cooling_pumps):
+                st.markdown(f"**--- 冷却泵 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    p['brand'] = st.text_input("品牌", value=p.get('brand', ''), key=f"cp_brand_{idx}")
+                    p['model'] = st.text_input("型号", value=p.get('model', ''), key=f"cp_model_{idx}")
+                with c2:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"cp_pwr_{idx}")
+                    p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"cp_cnt_{idx}")
+                with c3:
+                    p['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(p.get('flow_rate_m3h', 0) or 0), key=f"cp_flow_{idx}")
+                    p['head_m'] = st.number_input("扬程(m)", min_value=0.0, value=float(p.get('head_m', 0) or 0), key=f"cp_head_{idx}")
+                p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"cp_vfd_{idx}")
+                if st.button("🗑️ 删除", key=f"cp_del_{idx}"):
+                    to_delete_cp.append(idx)
+            if to_delete_cp:
+                topology['cooling_pumps'] = [c for i, c in enumerate(cooling_pumps) if i not in to_delete_cp]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷却泵", key="add_cooling_pump"):
+        topology.setdefault('cooling_pumps', []).append({"brand": "", "model": "", "power_kw": 0, "count": 1, "vfd": True, "flow_rate_m3h": 0, "head_m": 0})
+        st.session_state.sim_topology = topology
+        st.rerun()
+
+    # === 冷冻泵 ===
+    chilled_pumps = topology.get('chilled_pumps', [])
+    st.subheader(f"💧 冷冻泵 ({len(chilled_pumps)} 条)")
+    if chilled_pumps:
+        with st.expander("展开编辑", expanded=True):
+            to_delete_hc = []
+            for idx, p in enumerate(chilled_pumps):
+                st.markdown(f"**--- 冷冻泵 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    p['brand'] = st.text_input("品牌", value=p.get('brand', ''), key=f"hp_brand_{idx}")
+                    p['model'] = st.text_input("型号", value=p.get('model', ''), key=f"hp_model_{idx}")
+                with c2:
+                    p['power_kw'] = st.number_input("功率(kW)", min_value=0.0, value=float(p.get('power_kw', 0) or 0), key=f"hp_pwr_{idx}")
+                    p['count'] = st.number_input("台数", min_value=1, value=int(p.get('count', 1) or 1), key=f"hp_cnt_{idx}")
+                with c3:
+                    p['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(p.get('flow_rate_m3h', 0) or 0), key=f"hp_flow_{idx}")
+                    p['head_m'] = st.number_input("扬程(m)", min_value=0.0, value=float(p.get('head_m', 0) or 0), key=f"hp_head_{idx}")
+                p['vfd'] = st.checkbox("变频", value=p.get('vfd', True), key=f"hp_vfd_{idx}")
+                if st.button("🗑️ 删除", key=f"hp_del_{idx}"):
+                    to_delete_hc.append(idx)
+            if to_delete_hc:
+                topology['chilled_pumps'] = [c for i, c in enumerate(chilled_pumps) if i not in to_delete_hc]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷冻泵", key="add_chilled_pump"):
+        topology.setdefault('chilled_pumps', []).append({"brand": "", "model": "", "power_kw": 0, "count": 1, "vfd": True, "flow_rate_m3h": 0, "head_m": 0})
+        st.session_state.sim_topology = topology
+        st.rerun()
+
+    # === 冷却塔 ===
+    towers = topology.get('towers', [])
+    st.subheader(f"🌡️ 冷却塔 ({len(towers)} 条)")
+    if towers:
+        with st.expander("展开编辑", expanded=True):
+            to_delete_tw = []
+            for idx, t in enumerate(towers):
+                st.markdown(f"**--- 冷却塔 #{idx+1} ---**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    t['brand'] = st.text_input("品牌", value=t.get('brand', ''), key=f"tw_brand_{idx}")
+                    t['model'] = st.text_input("型号", value=t.get('model', ''), key=f"tw_model_{idx}")
+                with c2:
+                    t['fan_power_kw'] = st.number_input("风机功率(kW)", min_value=0.0, value=float(t.get('fan_power_kw', 0) or 0), key=f"tw_pwr_{idx}")
+                    t['count'] = st.number_input("台数", min_value=1, value=int(t.get('count', 1) or 1), key=f"tw_cnt_{idx}")
+                with c3:
+                    t['flow_rate_m3h'] = st.number_input("流量(m³/h)", min_value=0.0, value=float(t.get('flow_rate_m3h', 0) or 0), key=f"tw_flow_{idx}")
+                    t['type'] = st.text_input("类型", value=t.get('type', '开式'), key=f"tw_type_{idx}")
+                t['vfd'] = st.checkbox("变频", value=t.get('vfd', True), key=f"tw_vfd_{idx}")
+                if st.button("🗑️ 删除", key=f"tw_del_{idx}"):
+                    to_delete_tw.append(idx)
+            if to_delete_tw:
+                topology['towers'] = [c for i, c in enumerate(towers) if i not in to_delete_tw]
+                st.session_state.sim_topology = topology
+                st.rerun()
+    if st.button("➡️ 添加冷却塔", key="add_tower"):
+        topology.setdefault('towers', []).append({"brand": "", "model": "", "fan_power_kw": 0, "count": 1, "vfd": True, "type": "开式", "flow_rate_m3h": 0})
+        st.session_state.sim_topology = topology
+        st.rerun()
+
+    # === 特殊结构 ===
+    special = topology.get('special', {})
+    st.subheader("🏗️ 特殊结构")
+    sp_type = special.get('type', 'none')
+    special_options = ['none', 'storage', 'ice', 'heat_recovery', 'storage_and_heat_recovery']
+    sp_labels = ['无', '水蓄冷', '冰蓄冷', '热回收', '蓄冷+热回收']
+    try:
+        sp_idx = special_options.index(sp_type) if sp_type in special_options else 0
+    except ValueError:
+        sp_idx = 0
+    new_sp = st.selectbox("类型", options=special_options, index=sp_idx, format_func=lambda x: sp_labels[special_options.index(x)], key="sp_type")
+    special['type'] = new_sp
+    topology['special'] = special
+
+
+# ==================== Step 2: 性能曲线收集 ====================
+
+def render_cop_curves_stage():
+    """Step 2: 设备性能铭牌信息收集"""
+    st.header("📈 步骤 2: 设备性能曲线收集")
+
+    topology = st.session_state.sim_topology
+    if not topology:
+        st.error("❌ 请先完成拓扑信息收集")
+        if st.button("⬅️ 返回上一步", width='stretch'):
+            st.session_state.sim_stage = 'topology'
+            st.rerun()
+        return
+
+    chillers = topology.get('chillers', [])
+    if not chillers:
+        st.warning("⚠️ 未识别到冷水主机，请返回上一步检查")
+        return
+
+    st.info("ℹ️ 请为每种型号主机上传性能曲线图片（COP vs 负荷率/冷却水温度），AI 将自动识别数据。")
+
+    session_dir = st.session_state.session_dir
+
+    # 为每种型号主机显示上传区域
+    for idx, chiller in enumerate(chillers):
+        model_name = f"{chiller.get('brand', '')} {chiller.get('model', '')} ({chiller.get('type', '')})"
+        st.subheader(f"🔧 {model_name} × {chiller.get('count', 0)} 台")
+
+        col_upload, col_manual = st.columns(2)
+
+        with col_upload:
+            uploaded_img = st.file_uploader(
+                "上传性能曲线图片",
+                type=['png', 'jpg', 'jpeg'],
+                key=f"cop_img_{idx}"
+            )
+
+            if uploaded_img:
+                # 保存图片
+                img_path = session_dir / f"cop_curve_{idx}_{uploaded_img.name}"
+                with open(img_path, "wb") as f:
+                    f.write(uploaded_img.getbuffer())
+
+                if st.button(f"🔍 AI 识别 COP 数据", key=f"parse_cop_{idx}", width='stretch'):
+                    _parse_cop_from_image(img_path, idx, model_name, chiller)
+
+        with col_manual:
+            st.markdown("**或手动输入/跳过**")
+            skip = st.checkbox(
+                "使用额定COP + 典型曲线（跳过图片识别）",
+                key=f"skip_cop_{idx}"
+            )
+            if skip:
+                # 使用默认曲线
+                rated_cop = chiller.get('rated_cop', 5.0)
+                default_cop = _generate_default_cop_table(rated_cop)
+                default_cop['_source'] = 'skip_default'
+                st.session_state.sim_cop_data[model_name] = default_cop
+                st.success(f"✅ 已使用额定COP {rated_cop:.2f} 生成典型部分负荷曲线")
+
+        # 展示已识别的 COP 数据
+        if model_name in st.session_state.sim_cop_data:
+            cop_info = st.session_state.sim_cop_data[model_name]
+            cw_temps = cop_info.get('cw_temps', [])
+            load_ratios = cop_info.get('load_ratios', [])
+            cop_table = cop_info.get('cop_table', [])
+
+            # 标注数据来源
+            source = cop_info.get('_source', '')
+            if source == 'auto_fallback':
+                st.info(f"ℹ️ 使用默认典型曲线（基于额定COP {chiller.get('rated_cop', 0):.2f} 生成）")
+            elif source == 'skip_default':
+                st.info(f"ℹ️ 使用默认典型曲线（用户选择跳过图片识别）")
+
+            if cop_table and cw_temps and load_ratios:
+                # 安全检查：确保维度匹配
+                actual_cols = len(cop_table[0]) if cop_table else 0
+                actual_rows = len(cop_table)
+                if actual_cols != len(load_ratios):
+                    # 维度不匹配时，截断或填充 load_ratios
+                    if actual_cols > len(load_ratios):
+                        load_ratios = load_ratios + [0.0] * (actual_cols - len(load_ratios))
+                    else:
+                        load_ratios = load_ratios[:actual_cols]
+                if actual_rows != len(cw_temps):
+                    if actual_rows > len(cw_temps):
+                        cw_temps = cw_temps + [0] * (actual_rows - len(cw_temps))
+                    else:
+                        cw_temps = cw_temps[:actual_rows]
+
+                st.success(f"✅ COP 数据已收集 ({len(cw_temps)} 个温度点 × {len(load_ratios)} 个负荷点)")
+                with st.expander("查看 COP 数据表"):
+                    import pandas as pd
+                    df = pd.DataFrame(
+                        cop_table,
+                        index=[f"{t}°C" for t in cw_temps],
+                        columns=[f"{int(r*100)}%" for r in load_ratios]
+                    )
+                    st.dataframe(df, width='stretch')
+            else:
+                st.warning("⚠️ COP 数据不完整")
+
+    st.markdown("---")
+
+    # 检查是否所有主机都有 COP 数据
+    all_have_cop = all(
+        f"{ch.get('brand', '')} {ch.get('model', '')} ({ch.get('type', '')})" in st.session_state.sim_cop_data
+        for ch in chillers
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ 返回上一步", width='stretch'):
+            st.session_state.sim_stage = 'topology'
+            st.rerun()
+    with col2:
+        if all_have_cop:
+            if st.button("✅ 确认，进入工况收集", type="primary", width='stretch'):
+                st.session_state.sim_stage = 'operating'
+                st.rerun()
+        else:
+            st.caption("⚠️ 请为所有主机提供 COP 数据（上传图片或勾选跳过）")
+
+
+def _parse_cop_from_image(img_path: Path, idx: int, model_name: str, chiller: dict):
+    """调用 AI 从性能曲线图片识别 COP 数据"""
+    _, log_container = create_streaming_container(f"🤖 AI 正在识别 {model_name} 性能曲线...")
+    streaming_logs = []
+
+    def on_text(timestamp, text):
+        streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+        update_streaming_container(log_container, streaming_logs)
+
+    try:
+        caller = SkillCaller(timeout=300)
+        session_dir = st.session_state.session_dir
+        output_path = session_dir / f"sim_cop_{idx}.json"
+
+        prompt = (
+            f"请识别性能曲线图片 {img_path} 中的 COP 数据。\n"
+            f"设备: {model_name}\n"
+            f"额定COP: {chiller.get('rated_cop', '未知')}\n\n"
+            f"请提取二维 COP 查找表：\n"
+            f"- 行: 冷却水温度 (通常 18~33°C)\n"
+            f"- 列: 负荷率 (通常 100%, 90%, 80%, ..., 20%)\n"
+            f"- 值: COP\n\n"
+            f"输出 JSON 到 {output_path}，格式：\n"
+            f'{{"cw_temps": [18,19,...,33], "load_ratios": [1.0,0.9,...,0.2], '
+            f'"cop_table": [[...], ...]}}\n'
+            f"请读取图片并提取数据。"
+        )
+
+        skill_result = caller.call_skill(
+            "plant-simulation",
+            str(img_path),
+            str(output_path),
+            "parse_cop_curve",
+            callback=on_text
+        )
+
+        if output_path.exists():
+            with open(output_path, 'r', encoding='utf-8') as f:
+                cop_data = json.load(f)
+            # 检查 AI 是否成功提取了有效数据
+            cw_temps = cop_data.get('cw_temps', [])
+            load_ratios = cop_data.get('load_ratios', [])
+            cop_table = cop_data.get('cop_table', [])
+            if not cw_temps or not load_ratios or not cop_table:
+                # AI 无法识别，自动使用默认曲线
+                rated_cop = chiller.get('rated_cop', 5.0)
+                default_cop = _generate_default_cop_table(rated_cop)
+                default_cop['_source'] = 'auto_fallback'
+                st.session_state.sim_cop_data[model_name] = default_cop
+                st.info(f"ℹ️ 图片识别未返回有效数据，已自动使用额定COP {rated_cop:.2f} 生成典型曲线")
+            else:
+                st.session_state.sim_cop_data[model_name] = cop_data
+            st.rerun()
+        else:
+            st.error("❌ COP 识别完成但未生成输出文件")
+
+    except (SkillError, Exception) as e:
+        st.error(f"❌ COP 识别失败：{str(e)}")
+
+
+def _generate_default_cop_table(rated_cop: float) -> dict:
+    """基于额定 COP 生成典型部分负荷曲线"""
+    cw_temps = list(range(18, 34))  # 18~33°C
+    load_ratios = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+
+    # 典型离心机部分负荷 COP 修正系数
+    # 满载时COP=额定值，60-70%负荷时COP最高（约1.15倍），低负荷下降
+    plr_factors = [1.00, 1.08, 1.14, 1.18, 1.15, 1.08, 0.95, 0.78, 0.58]
+
+    # 冷却水温度修正: 每升高1°C, COP下降约3%
+    base_cw_temp = 30.0  # 额定工况冷却水温度
+
+    cop_table = []
+    for cw_t in cw_temps:
+        row = []
+        temp_factor = 1.0 - 0.03 * (cw_t - base_cw_temp)
+        for plr_f in plr_factors:
+            cop = rated_cop * plr_f * temp_factor
+            row.append(round(max(cop, 2.0), 2))
+        cop_table.append(row)
+
+    return {
+        "cw_temps": cw_temps,
+        "load_ratios": load_ratios,
+        "cop_table": cop_table
+    }
+
+
+# ==================== Step 3: 工况需求收集 ====================
+
+def render_operating_stage():
+    """Step 3: 当前工况需求信息收集"""
+    st.header("⚙️ 步骤 3: 工况需求信息收集")
+
+    sim_mode = st.session_state.sim_mode
+
+    if sim_mode == 'old_station':
+        _render_operating_old_station()
+    else:
+        _render_operating_new_station()
+
+
+def _render_operating_old_station():
+    """旧站房: 从调研表数据生成月度运行组合"""
+    st.info("ℹ️ 将基于调研表中的运行数据生成月度运行组合表格，您可以补充或修改。")
+
+    session_dir = st.session_state.session_dir
+
+    if st.session_state.sim_operating_conditions is not None:
+        _display_operating_table(st.session_state.sim_operating_conditions)
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⬅️ 返回上一步", width='stretch'):
+                st.session_state.sim_stage = 'cop_curves'
+                st.rerun()
+        with col2:
+            if st.button("✅ 确认工况信息，开始仿真", type="primary", width='stretch'):
+                st.session_state.sim_stage = 'simulate'
+                st.rerun()
+        return
+
+    # 旧站房特有：输入目标节能率
+    st.markdown("**目标节能率（来自空调节能率评估模块）**")
+    target_saving_rate = st.number_input(
+        "目标节能率(%)", min_value=0.0, max_value=50.0,
+        value=st.session_state.get('sim_target_saving_rate', 0.0),
+        step=0.1, help="建议先从“空调节能率计算”模块进入，节能率会自动传入。也可手动输入。"
+    )
+    if target_saving_rate > 0:
+        st.session_state.sim_target_saving_rate = target_saving_rate
+
+    if st.button("🔍 生成月度运行组合", type="primary", width='stretch'):
+        _, log_container = create_streaming_container("🤖 AI 正在整理运行数据...")
+        streaming_logs = []
+
+        def on_text(timestamp, text):
+            streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+            update_streaming_container(log_container, streaming_logs)
+
+        try:
+            caller = SkillCaller(timeout=300)
+            extracted_path = session_dir / "extracted_data.json"
+            topology_path = session_dir / "sim_topology.json"
+            output_path = session_dir / "sim_operating.json"
+
+            prompt = (
+                f"请基于调研表提取数据 {extracted_path} 和设备拓扑 {topology_path}，"
+                f"生成月度运行组合表格，输出到 {output_path}。\n\n"
+                f"输出 JSON 格式：\n"
+                f'{{"months": [1,2,...,12], '
+                f'"chiller_combination": ["1×3000RT", ...], '
+                f'"load_ratio": [0.6, ...], '
+                f'"cooling_demand_kwh": [100000, ...], '
+                f'"chw_supply_temp": [7, ...], '
+                f'"cw_temp": [28, ...], '
+                f'"notes": ["冬季", ...]}}\n'
+                f"请读取数据文件并生成。"
+            )
+
+            skill_result = caller.call_skill(
+                "plant-simulation",
+                str(extracted_path),
+                str(output_path),
+                "generate_operating",
+                callback=on_text
+            )
+
+            if output_path.exists():
+                with open(output_path, 'r', encoding='utf-8') as f:
+                    operating = json.load(f)
+                st.session_state.sim_operating_conditions = operating
+                st.rerun()
+            else:
+                st.error("❌ 生成完成但未生成输出文件")
+
+        except (SkillError, Exception) as e:
+            st.error(f"❌ 生成失败：{str(e)}")
+
+
+def _render_operating_new_station():
+    """新站房: 用户输入运行规律"""
+    st.markdown("请输入设备运行规律，AI 将整理为月度运行组合表格。")
+
+    with st.expander("📝 查看填写示例", expanded=True):
+        st.code(OPERATING_EXAMPLE, language="text")
+
+    operating_input = st.text_area(
+        "运行规律描述",
+        height=200,
+        placeholder="请参照上方示例填写各季节运行组合..."
+    )
+
+    # 补充信息
+    st.markdown("**补充信息（可选）**")
+    col1, col2 = st.columns(2)
+    with col1:
+        project_region = st.selectbox(
+            "项目所在地区",
+            ["华南", "华东", "华中", "西南", "西北", "华北", "东北"]
+        )
+    with col2:
+        electricity_price = st.number_input(
+            "电价 (元/kWh)", min_value=0.3, max_value=2.0, value=0.65, step=0.05
+        )
+
+    if st.button("🔍 AI 整理为月度表格", type="primary", width='stretch'):
+        if not operating_input.strip():
+            st.warning("⚠️ 请先输入运行规律")
+            return
+
+        _, log_container = create_streaming_container("🤖 AI 正在整理运行组合...")
+        streaming_logs = []
+
+        def on_text(timestamp, text):
+            streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+            update_streaming_container(log_container, streaming_logs)
+
+        try:
+            caller = SkillCaller(timeout=180)
+            session_dir = st.session_state.session_dir
+            output_path = session_dir / "sim_operating.json"
+        
+            topology = st.session_state.sim_topology or {}
+            topology_str = json.dumps(topology, ensure_ascii=False)
+        
+            # 将完整上下文作为输入数据传递
+            full_input = (
+                f"运行规律：\n{operating_input}\n\n"
+                f"设备拓扑：\n{topology_str}\n\n"
+                f"项目地区：{project_region}\n"
+                f"电价：{electricity_price} 元/kWh"
+            )
+        
+            skill_result = caller.call_skill(
+                "plant-simulation",
+                full_input,
+                str(output_path),
+                "generate_operating",
+                callback=on_text
+            )
+
+            if output_path.exists():
+                with open(output_path, 'r', encoding='utf-8') as f:
+                    operating = json.load(f)
+                st.session_state.sim_operating_conditions = operating
+                st.rerun()
+            else:
+                st.error("❌ 整理完成但未生成输出文件")
+
+        except (SkillError, Exception) as e:
+            st.error(f"❌ 整理失败：{str(e)}")
+
+    # 展示已生成的表格
+    if st.session_state.sim_operating_conditions is not None:
+        st.markdown("---")
+        _display_operating_table(st.session_state.sim_operating_conditions)
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⬅️ 返回上一步", width='stretch'):
+                st.session_state.sim_stage = 'cop_curves'
+                st.rerun()
+        with col2:
+            if st.button("✅ 确认工况信息，开始仿真", type="primary", width='stretch'):
+                st.session_state.sim_stage = 'simulate'
+                st.rerun()
+
+
+def _display_operating_table(operating: dict):
+    """展示月度运行组合表格（支持工作日/休息日区分）"""
+    import pandas as pd
+
+    st.success("✅ 月度运行组合已生成")
+
+    # 数据后处理：填充 cooling_demand_kw
+    topology = st.session_state.sim_topology or {}
+    chillers = topology.get('chillers', [])
+    # 计算总装机容量（各台冷机 × 台数）
+    total_plant_capacity = sum(
+        ch.get('capacity_kw', 0) * ch.get('count', 1) for ch in chillers
+    ) if chillers else 0
+
+    # 优先从 monthly_table 获取数据，其次从顶层数组
+    monthly_table = operating.get('monthly_table',
+                       operating.get('operating_conditions', {}).get('monthly_table', []))
+
+    if monthly_table:
+        # AI 输出了详细的 monthly_table 结构
+        rows = []
+        for row in monthly_table:
+            month = row.get('month', 0)
+            weekday_op = row.get('weekday_operation', {})
+            weekend_op = row.get('weekend_operation', {})
+
+            wd_units = weekday_op.get('on_units', 0)
+            wd_lr = weekday_op.get('load_ratio', 0)
+            we_units = weekend_op.get('on_units', 0)
+            we_lr = weekend_op.get('load_ratio', 0)
+
+            # 计算需求冷量（如果为空则自动估算）
+            demand = row.get('cooling_demand_kw')
+            if demand is None or demand == 0:
+                # 加权平均：总装机容量 × 负荷率
+                wd_demand = total_plant_capacity * wd_lr if wd_units else 0
+                we_demand = total_plant_capacity * we_lr if we_units else 0
+                demand = (wd_demand * 22 + we_demand * 8) / 30 if (wd_units or we_units) else 0
+
+            rows.append({
+                '月份': f"{month}月",
+                '季节': row.get('season', ''),
+                '工作日': weekday_op.get('description', f"{wd_units}台@{wd_lr*100:.0f}%"),
+                '休息日': weekend_op.get('description', f"{we_units}台@{we_lr*100:.0f}%"),
+                '负载率': f"{row.get('representative_load_ratio', 0)*100:.0f}%" if row.get('representative_load_ratio', 0) else "-",
+                '估算冷量(kW)': f"{demand:.0f}" if demand else "-",
+                '备注': row.get('note', '')
+            })
+
+        df = pd.DataFrame(rows)
+        st.dataframe(df, width='stretch', hide_index=True)
+
+        # 保存计算后的需求冷量到 operating 数据中
+        for i, row in enumerate(monthly_table):
+            if row.get('cooling_demand_kw') is None or row.get('cooling_demand_kw') == 0:
+                wd_op = row.get('weekday_operation', {})
+                we_op = row.get('weekend_operation', {})
+                # 用总装机容量 × 负荷率 = 建筑实际需求冷量
+                wd_d = total_plant_capacity * wd_op.get('load_ratio', 0)
+                we_d = total_plant_capacity * we_op.get('load_ratio', 0)
+                monthly_table[i]['cooling_demand_kw'] = (wd_d * 22 + we_d * 8) / 30 if (wd_d or we_d) else 0
+
+    else:
+        # 简单数组结构
+        # 处理可能的嵌套结构：operating_conditions wrapper
+        inner = operating.get('operating_conditions', operating)
+        months = inner.get('months', operating.get('months', list(range(1, 13))))
+        combinations = inner.get('chiller_combination', operating.get('chiller_combination', [''] * 12))
+        load_ratios_raw = inner.get('load_ratio', operating.get('load_ratio', [0] * 12))
+        cooling_demands = inner.get('cooling_demand_kwh',
+                          inner.get('cooling_demand_kw',
+                          operating.get('cooling_demand_kwh', operating.get('cooling_demand_kw', [0] * 12))))
+        notes = inner.get('notes', operating.get('notes', [''] * 12))
+
+        # 安全提取 load_ratios（可能包含 dict 而非 float）
+        load_ratios = []
+        for r in load_ratios_raw:
+            if isinstance(r, dict):
+                load_ratios.append(float(r.get('load_ratio', r.get('value', 0)) or 0))
+            elif isinstance(r, (int, float)):
+                load_ratios.append(float(r))
+            else:
+                try:
+                    load_ratios.append(float(r))
+                except (ValueError, TypeError):
+                    load_ratios.append(0.0)
+
+        # 自动填充冷却需求
+        for i in range(len(months)):
+            d = cooling_demands[i] if i < len(cooling_demands) else 0
+            lr = load_ratios[i] if i < len(load_ratios) else 0
+            if not d and lr > 0:
+                cooling_demands[i] = total_plant_capacity * lr
+
+        df = pd.DataFrame({
+            '月份': [f"{m}月" for m in months[:12]],
+            '冷机运行组合': combinations[:len(months)],
+            '负载率': [f"{r*100:.0f}%" if r else "-" for r in load_ratios[:len(months)]],
+            '需求冷量(kW)': [f"{d:.0f}" if d else "-" for d in cooling_demands[:len(months)]],
+            '备注': notes[:len(months)]
+        })
+        st.dataframe(df, width='stretch', hide_index=True)
+
+    # 编辑功能
+    with st.expander("✏️ 编辑月度数据"):
+        st.caption("修改后点击保存生效")
+        if monthly_table:
+            edit_df = pd.DataFrame(monthly_table)
+            # 只选择实际存在的列
+            available_cols = [c for c in ['month', 'season', 'representative_load_ratio', 'cooling_demand_kw', 'note'] if c in edit_df.columns]
+            if available_cols:
+                edited = st.data_editor(
+                    edit_df[available_cols],
+                    num_rows="fixed",
+                    key="operating_editor"
+                )
+                if st.button("💾 保存修改"):
+                    for i, row_data in edited.iterrows():
+                        for col in available_cols:
+                            if col != 'month':
+                                monthly_table[i][col] = row_data.get(col, monthly_table[i].get(col))
+                    operating['monthly_table'] = monthly_table
+                    st.session_state.sim_operating_conditions = operating
+                    st.rerun()
+
+
+# ==================== Step 4: 仿真执行 ====================
+
+def render_simulate_stage():
+    """Step 4: 仿真执行与结果展示"""
+    st.header("🚀 步骤 4: 仿真执行")
+
+    # 检查前置数据
+    topology = st.session_state.sim_topology
+    cop_data = st.session_state.sim_cop_data
+    operating = st.session_state.sim_operating_conditions
+
+    if not all([topology, cop_data, operating]):
+        st.error("❌ 前置数据不完整，请返回补充")
+        if st.button("⬅️ 返回工况收集", width='stretch'):
+            st.session_state.sim_stage = 'operating'
+            st.rerun()
+        return
+
+    sim_mode = st.session_state.sim_mode
+    mode_label = "旧站房（基准+优化对比）" if sim_mode == 'old_station' else "新站房（需求冷量+COP计算）"
+    st.info(f"ℹ️ 仿真模式: **{mode_label}**")
+
+    # 展示汇总信息
+    with st.expander("📋 查看仿真输入汇总"):
+        st.json({
+            "topology": topology,
+            "cop_data_keys": list(cop_data.keys()),
+            "operating_conditions": operating,
+            "sim_mode": sim_mode
+        })
+
+    if st.session_state.sim_result is not None:
+        # 已有结果，展示
+        _display_simulation_results(st.session_state.sim_result)
+        return
+
+    st.markdown("---")
+
+    if st.button("🔬 开始仿真", type="primary", width='stretch'):
+        _execute_simulation()
+
+
+def _execute_simulation():
+    """执行仿真"""
+    _, log_container = create_streaming_container("🤖 AI 正在生成并执行仿真代码...")
+    streaming_logs = []
+
+    def on_text(timestamp, text):
+        streaming_logs.append(f"**[{timestamp}]** 灵知 AI：{text}")
+        update_streaming_container(log_container, streaming_logs)
+
+    try:
+        session_dir = st.session_state.session_dir
+        sim_mode = st.session_state.sim_mode
+
+        # 打包所有输入数据到一个 JSON
+        sim_input = {
+            "project_name": st.session_state.sim_project_name,
+            "sim_mode": sim_mode,
+            "topology": st.session_state.sim_topology,
+            "cop_data": st.session_state.sim_cop_data,
+            "operating_conditions": st.session_state.sim_operating_conditions,
+        }
+
+        # 旧站房模式加入目标节能率
+        if sim_mode == 'old_station':
+            target_rate = st.session_state.get('sim_target_saving_rate', 0)
+            sim_input['target_energy_saving_rate'] = target_rate / 100.0  # 转为小数
+
+        input_path = session_dir / "sim_input_all.json"
+        with open(input_path, 'w', encoding='utf-8') as f:
+            json.dump(sim_input, f, ensure_ascii=False, indent=2)
+
+        output_dir = str(session_dir / "sim_output")
+        Path(output_dir).mkdir(exist_ok=True)
+
+        caller = SkillCaller(timeout=600)  # 仿真可能需要更长时间
+
+        skill_result = caller.call_skill(
+            "plant-simulation",
+            str(input_path),
+            output_dir,
+            sim_mode,
+            callback=on_text,
+            max_retries=2  # 支持 Agent 多轮修复代码
+        )
+
+        # 检查输出
+        output_path = Path(output_dir)
+        result = {
+            "success": True,
+            "output_dir": output_dir,
+            "files": []
+        }
+
+        # 查找输出文件
+        for f in output_path.iterdir():
+            result["files"].append(f.name)
+
+        # 尝试读取报告
+        report_files = list(output_path.glob("*报告*.md")) + list(output_path.glob("*report*.md"))
+        if report_files:
+            with open(report_files[0], 'r', encoding='utf-8') as f:
+                result["report"] = f.read()
+
+        # 尝试读取汇总 JSON
+        summary_files = list(output_path.glob("*汇总*.json")) + list(output_path.glob("*summary*.json"))
+        if summary_files:
+            with open(summary_files[0], 'r', encoding='utf-8') as f:
+                result["summary"] = json.load(f)
+
+        st.session_state.sim_result = result
+        st.rerun()
+
+    except (SkillError, Exception) as e:
+        st.error(f"❌ 仿真执行失败：{str(e)}")
+
+
+def _display_simulation_results(result: dict):
+    """展示仿真结果"""
+    st.success("✅ 仿真完成！")
+
+    output_dir = Path(result.get("output_dir", ""))
+
+    # 关键指标
+    summary = result.get("summary", {})
+    if summary:
+        st.subheader("🎯 核心指标")
+        cols = st.columns(4)
+        with cols[0]:
+            st.metric("全年加权COP", f"{summary.get('annual_cop', 0):.2f}")
+        with cols[1]:
+            st.metric("年总耗电量", f"{summary.get('annual_power_mwh', 0):.0f} MWh")
+        with cols[2]:
+            st.metric("年总供冷量", f"{summary.get('annual_cooling_mwh', 0):.0f} MWh")
+        with cols[3]:
+            saving_rate = summary.get('energy_saving_rate')
+            if saving_rate is not None:
+                st.metric("节能率", f"{saving_rate * 100:.1f}%")
+            else:
+                st.metric("年节省电费", f"{summary.get('annual_saving_yuan', 0)/10000:.1f} 万元")
+
+    st.markdown("---")
+
+    # 图表展示
+    chart_files = list(output_dir.glob("*.png")) if output_dir.exists() else []
+    if chart_files:
+        st.subheader("📊 分析图表")
+        for chart_path in chart_files:
+            st.image(str(chart_path), caption=chart_path.stem, width='stretch')
+
+    st.markdown("---")
+
+    # 报告展示
+    report = result.get("report", "")
+    if report:
+        st.subheader("📄 仿真分析报告")
+        st.markdown(report)
+
+    st.markdown("---")
+
+    # 文件下载
+    st.subheader("📥 下载仿真结果")
+    files = result.get("files", [])
+    if files:
+        for fname in files:
+            fpath = output_dir / fname
+            if fpath.exists() and fpath.suffix in ['.xlsx', '.csv', '.md', '.json']:
+                with open(fpath, "rb") as f:
+                    st.download_button(
+                        label=f"📥 {fname}",
+                        data=f.read(),
+                        file_name=fname,
+                        width='stretch'
+                    )
+
+    st.markdown("---")
+
+    # 操作按钮
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 重新仿真", width='stretch'):
+            st.session_state.sim_result = None
+            st.rerun()
+    with col2:
+        if st.button("🏠 返回首页", type="primary", width='stretch'):
+            reset_simulation()
+            st.session_state.stage = 'upload'
+            st.rerun()
