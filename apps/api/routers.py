@@ -29,9 +29,16 @@ from .services import (
     is_extract_running,
     is_calculate_running,
     is_suggest_running,
+    is_sim_running,
     start_extract,
     start_calculate,
     start_suggest,
+    start_sim_topology_extract,
+    start_sim_topology_parse,
+    start_sim_cop_parse,
+    start_sim_operating_generate,
+    start_sim_execute,
+    _generate_default_cop_table,
 )
 
 
@@ -518,3 +525,237 @@ def get_suggest(session_id: str):
     if fs is None:
         raise HTTPException(status_code=404, detail="filling_suggestions 尚未生成，请先调用 POST /suggest")
     return fs
+
+
+# ==================== /sim（仿真模块） ====================
+
+
+class SimInitRequest(BaseModel):
+    sim_mode: str = Field(default="new_station", description="new_station | old_station")
+
+
+class SimTopologyParseRequest(BaseModel):
+    text: str = Field(..., description="拓扑文本描述")
+    project_name: str = Field(default="", description="项目名称")
+
+
+class SimOperatingRequest(BaseModel):
+    text: str = Field(..., description="运行工况文本描述")
+
+
+@router.post("/sim/init", tags=["simulation"])
+def sim_init(body: SimInitRequest, user: dict = Depends(get_current_user)):
+    """创建仿真专用 session（无需上传调研表）"""
+    session_id = session_store.init_sim_session(
+        user_id=user.get("sub") or user.get("id"),
+        sim_mode=body.sim_mode,
+    )
+    return {
+        "session_id": session_id,
+        "sim_mode": body.sim_mode,
+        "sim_stage": "topology",
+    }
+
+
+@router.get("/sim/state/{session_id}", tags=["simulation"])
+def sim_state(session_id: str):
+    """获取仿真模块全部状态"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    return {
+        "session_id": session_id,
+        "sim_stage": s.get("sim_stage", "topology"),
+        "sim_mode": s.get("sim_mode", "new_station"),
+        "sim_topology": s.get("sim_topology"),
+        "sim_cop_data": s.get("sim_cop_data", {}),
+        "sim_operating_conditions": s.get("sim_operating_conditions"),
+        "sim_result": s.get("sim_result"),
+        "sim_project_name": s.get("sim_project_name", ""),
+        "is_running": is_sim_running(session_id),
+    }
+
+
+@router.post("/sim/topology/extract/{session_id}", tags=["simulation"])
+async def sim_topology_extract(session_id: str, file: UploadFile = File(...)):
+    """从调研表 Excel 提取拓扑"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真任务仍在运行")
+
+    # 保存上传的调研表
+    session_dir = s["session_dir"]
+    upload_path = session_dir / "upload_survey.xlsx"
+    content = file.file.read()
+    with open(upload_path, "wb") as f:
+        f.write(content)
+
+    main_loop = asyncio.get_running_loop()
+    start_sim_topology_extract(session_id, upload_path, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "extracting_topology",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.post("/sim/topology/parse/{session_id}", tags=["simulation"])
+async def sim_topology_parse(session_id: str, body: SimTopologyParseRequest):
+    """文本解析拓扑"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真任务仍在运行")
+
+    main_loop = asyncio.get_running_loop()
+    start_sim_topology_parse(session_id, body.text, body.project_name, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "parsing_topology",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.put("/sim/topology/{session_id}", tags=["simulation"])
+def sim_save_topology(session_id: str, body: dict):
+    """保存编辑后的拓扑数据"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    s["sim_topology"] = body
+    if body.get("project_name"):
+        s["sim_project_name"] = body["project_name"]
+    return {"status": "ok", "sim_topology": body}
+
+
+@router.post("/sim/cop/parse/{session_id}/{idx}", tags=["simulation"])
+async def sim_cop_parse(
+    session_id: str,
+    idx: int,
+    model_name: str = Query(...),
+    rated_cop: float = Query(...),
+    file: UploadFile = File(...),
+):
+    """图片识别 COP 曲线"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真任务仍在运行")
+
+    session_dir = s["session_dir"]
+    img_path = session_dir / f"cop_curve_{idx}_{file.filename}"
+    content = file.file.read()
+    with open(img_path, "wb") as f:
+        f.write(content)
+
+    main_loop = asyncio.get_running_loop()
+    start_sim_cop_parse(session_id, img_path, idx, model_name, rated_cop, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "parsing_cop",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.post("/sim/cop/default/{session_id}/{idx}", tags=["simulation"])
+def sim_cop_default(session_id: str, idx: int, model_name: str = Query(...), rated_cop: float = Query(...)):
+    """使用默认 COP 曲线（跳过图片识别）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    default_cop = _generate_default_cop_table(rated_cop)
+    default_cop["_source"] = "skip_default"
+    s["sim_cop_data"][model_name] = default_cop
+
+    return {
+        "status": "ok",
+        "model_name": model_name,
+        "cop_data": default_cop,
+    }
+
+
+@router.post("/sim/operating/generate/{session_id}", tags=["simulation"])
+async def sim_operating_generate(session_id: str, body: SimOperatingRequest):
+    """生成工况需求"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真任务仍在运行")
+
+    main_loop = asyncio.get_running_loop()
+    start_sim_operating_generate(session_id, body.text, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "generating_operating",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.put("/sim/operating/{session_id}", tags=["simulation"])
+def sim_save_operating(session_id: str, body: dict):
+    """保存编辑后的工况数据"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    s["sim_operating_conditions"] = body
+    return {"status": "ok"}
+
+
+@router.post("/sim/execute/{session_id}", tags=["simulation"])
+async def sim_execute(session_id: str):
+    """执行仿真"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真任务仍在运行")
+
+    if not all([s.get("sim_topology"), s.get("sim_cop_data"), s.get("sim_operating_conditions")]):
+        raise HTTPException(status_code=400, detail="前置数据不完整")
+
+    main_loop = asyncio.get_running_loop()
+    start_sim_execute(session_id, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "simulating",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.get("/sim/result/{session_id}", tags=["simulation"])
+def sim_result(session_id: str):
+    """获取仿真结果"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_sim_running(session_id):
+        raise HTTPException(status_code=409, detail="仿真仍在运行")
+    result = s.get("sim_result")
+    if not result:
+        raise HTTPException(status_code=404, detail="仿真结果不存在")
+    return result
+
+
+@router.get("/sim/download/{session_id}/{filename}", tags=["simulation"])
+def sim_download(session_id: str, filename: str):
+    """下载仿真结果文件"""
+    from fastapi.responses import FileResponse
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    output_dir = s["session_dir"] / "sim_output"
+    fpath = output_dir / filename
+    if not fpath.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
+    return FileResponse(str(fpath), filename=filename)

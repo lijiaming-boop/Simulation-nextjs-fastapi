@@ -143,9 +143,9 @@ def _render_home_page():
 
     # P4 迁移公告
     st.warning("""
-    🚀 **空调 / 空压机节能测算已迁移到新版前端**
+    🚀 **全部功能已迁移到新版前端**
 
-    空调和空压机节能率计算功能已升级到 **Next.js + FastAPI** 架构，
+    空调、空压机节能率计算和冷站性能仿真均已升级到 **Next.js + FastAPI** 架构，
     请前往新版工具使用：[http://localhost:3000](http://localhost:3000)
 
     新版优势：更快的响应速度、实时 AI 日志流、LLM 智能填充建议。
@@ -167,20 +167,13 @@ def _render_home_page():
 
     with col3:
         st.markdown("### 🔬 冷站性能仿真")
-        st.caption("输入设备拓扑，全年8760h仿真分析，输出优化控制策略报告")
-        if st.button("进入冷站性能仿真", width='stretch', type="primary"):
-            st.session_state.module_type = 'plant_simulation'
-            from simulation_ui import init_simulation_state
-            init_simulation_state()
-            st.session_state.sim_mode = 'new_station'
-            st.session_state.session_dir = st.session_state.session_manager.create_session_directory()
-            st.rerun()
+        st.caption("已迁移 → [新版 http://localhost:3000](http://localhost:3000)")
+        st.button("进入冷站性能仿真（已迁移）", width='stretch', disabled=True)
 
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #94A3B8; font-size: 12px; margin-top: 20px;">
-        空调/空压节能率计算：请使用新版前端 localhost:3000<br>
-        冷站性能仿真：保留在此（适用于新站房设计仿真或旧站房优化策略对比）
+        所有功能已迁移到新版前端 localhost:3000，Streamlit 入口已停止维护
     </div>
     """, unsafe_allow_html=True)
 

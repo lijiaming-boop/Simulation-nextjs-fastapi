@@ -202,3 +202,215 @@ export async function fetchSuggest(
   if (!res.ok) throw new Error(`获取建议失败: ${res.status}`);
   return res.json();
 }
+
+// ==================== /sim（仿真模块） ====================
+
+export interface SimState {
+  session_id: string;
+  sim_stage: "topology" | "cop_curves" | "operating" | "simulate" | "done";
+  sim_mode: "new_station" | "old_station";
+  sim_topology: SimTopology | null;
+  sim_cop_data: Record<string, SimCopData>;
+  sim_operating_conditions: SimOperating | null;
+  sim_result: SimResult | null;
+  sim_project_name: string;
+  is_running: boolean;
+}
+
+export interface SimTopology {
+  project_name: string;
+  chillers: SimChiller[];
+  cooling_pumps: SimPump[];
+  chilled_pumps: SimPump[];
+  towers: SimTower[];
+  special: { type: string };
+}
+
+export interface SimChiller {
+  brand: string;
+  model: string;
+  type: string;
+  count: number;
+  capacity_kw: number;
+  power_kw: number;
+  rated_cop: number;
+  vfd: boolean;
+}
+
+export interface SimPump {
+  brand?: string;
+  model?: string;
+  power_kw: number;
+  count: number;
+  vfd: boolean;
+  flow_rate_m3h?: number;
+  head_m?: number;
+}
+
+export interface SimTower {
+  brand?: string;
+  model?: string;
+  fan_power_kw: number;
+  count: number;
+  vfd: boolean;
+  type?: string;
+  flow_rate_m3h?: number;
+}
+
+export interface SimCopData {
+  cw_temps?: number[];
+  load_ratios?: number[];
+  cop_table?: number[][];
+  _source?: string;
+}
+
+export interface SimOperating {
+  monthly_table?: Record<string, unknown>[];
+  [key: string]: unknown;
+}
+
+export interface SimResult {
+  success: boolean;
+  output_dir: string;
+  files: string[];
+  report?: string;
+  summary?: {
+    annual_cop?: number;
+    annual_power_mwh?: number;
+    annual_cooling_mwh?: number;
+    energy_saving_rate?: number;
+    annual_saving_yuan?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** 初始化仿真 session */
+export async function initSimSession(
+  simMode: "new_station" | "old_station" = "new_station"
+): Promise<{ session_id: string; sim_mode: string; sim_stage: string }> {
+  const res = await fetch(`${API_BASE}/sim/init`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sim_mode: simMode }),
+  });
+  if (!res.ok) throw new Error(`初始化仿真失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 获取仿真状态 */
+export async function fetchSimState(sessionId: string): Promise<SimState> {
+  const res = await fetch(`${API_BASE}/sim/state/${sessionId}`);
+  if (!res.ok) throw new Error(`获取仿真状态失败: ${res.status}`);
+  return res.json();
+}
+
+/** 上传调研表提取拓扑 */
+export async function extractTopology(sessionId: string, file: File): Promise<{ status: string; stream_url: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/sim/topology/extract/${sessionId}`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) throw new Error(`提取拓扑失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 文本解析拓扑 */
+export async function parseTopology(
+  sessionId: string,
+  text: string,
+  projectName: string = ""
+): Promise<{ status: string; stream_url: string }> {
+  const res = await fetch(`${API_BASE}/sim/topology/parse/${sessionId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, project_name: projectName }),
+  });
+  if (!res.ok) throw new Error(`解析拓扑失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 保存编辑后的拓扑 */
+export async function saveTopology(sessionId: string, topology: SimTopology): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/sim/topology/${sessionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(topology),
+  });
+  if (!res.ok) throw new Error(`保存拓扑失败: ${res.status}`);
+  return res.json();
+}
+
+/** 图片识别 COP 曲线 */
+export async function parseCopCurve(
+  sessionId: string,
+  idx: number,
+  model_name: string,
+  rated_cop: number,
+  file: File
+): Promise<{ status: string; stream_url: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(
+    `${API_BASE}/sim/cop/parse/${sessionId}/${idx}?model_name=${encodeURIComponent(model_name)}&rated_cop=${rated_cop}`,
+    { method: "POST", body: fd }
+  );
+  if (!res.ok) throw new Error(`识别 COP 失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 使用默认 COP 曲线 */
+export async function useDefaultCop(
+  sessionId: string,
+  idx: number,
+  model_name: string,
+  rated_cop: number
+): Promise<{ status: string; cop_data: SimCopData }> {
+  const res = await fetch(
+    `${API_BASE}/sim/cop/default/${sessionId}/${idx}?model_name=${encodeURIComponent(model_name)}&rated_cop=${rated_cop}`,
+    { method: "POST" }
+  );
+  if (!res.ok) throw new Error(`设置默认 COP 失败: ${res.status}`);
+  return res.json();
+}
+
+/** 生成工况 */
+export async function generateOperating(
+  sessionId: string,
+  text: string
+): Promise<{ status: string; stream_url: string }> {
+  const res = await fetch(`${API_BASE}/sim/operating/generate/${sessionId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`生成工况失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 保存编辑后的工况 */
+export async function saveOperating(sessionId: string, data: SimOperating): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/sim/operating/${sessionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`保存工况失败: ${res.status}`);
+  return res.json();
+}
+
+/** 执行仿真 */
+export async function executeSimulation(sessionId: string): Promise<{ status: string; stream_url: string }> {
+  const res = await fetch(`${API_BASE}/sim/execute/${sessionId}`, { method: "POST" });
+  if (!res.ok) throw new Error(`执行仿真失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 获取仿真结果 */
+export async function fetchSimResult(sessionId: string): Promise<SimResult | null> {
+  const res = await fetch(`${API_BASE}/sim/result/${sessionId}`);
+  if (res.status === 404 || res.status === 409) return null;
+  if (!res.ok) throw new Error(`获取仿真结果失败: ${res.status}`);
+  return res.json();
+}

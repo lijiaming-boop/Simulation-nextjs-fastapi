@@ -24,6 +24,8 @@ _extract_tasks: dict = {}
 _calculate_tasks: dict = {}
 # session_id → suggest 后台 thread
 _suggest_tasks: dict = {}
+# session_id → 仿真任务后台 thread
+_sim_tasks: dict = {}
 
 
 def is_extract_running(session_id: str) -> bool:
@@ -39,6 +41,11 @@ def is_calculate_running(session_id: str) -> bool:
 
 def is_suggest_running(session_id: str) -> bool:
     t = _suggest_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+def is_sim_running(session_id: str) -> bool:
+    t = _sim_tasks.get(session_id)
     return t is not None and t.is_alive()
 
 
@@ -792,4 +799,481 @@ def _parse_llm_json_output(llm_text: str) -> dict:
             "confidence": "low",
             "issues": [{"field": "system", "severity": "critical", "description": "LLM 输出解析失败"}],
         },
+    }
+
+
+# ==================== 仿真模块服务函数 ====================
+
+
+def _start_sim_task(
+    session_id: str,
+    task_func,
+    main_loop: asyncio.AbstractEventLoop,
+    **kwargs,
+) -> threading.Thread:
+    """启动仿真后台任务线程"""
+    session_store._main_loop = main_loop
+    t = threading.Thread(target=task_func, kwargs={"session_id": session_id, **kwargs}, daemon=True)
+    _sim_tasks[session_id] = t
+    t.start()
+    return t
+
+
+def _sim_callback(session_id: str, loop: asyncio.AbstractEventLoop, timestamp: str, message: str) -> None:
+    """仿真任务 AI 回调"""
+    session_store.append_ai_log(session_id, timestamp, message)
+    event = {"type": "log", "timestamp": timestamp, "message": message}
+    q = get_ai_queue(session_id)
+    if q is not None:
+        loop.call_soon_threadsafe(q.put_nowait, event)
+
+
+def _sim_done(session_id: str, loop: asyncio.AbstractEventLoop, error: str = None) -> None:
+    """仿真任务完成事件"""
+    event = {
+        "type": "error" if error else "done",
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
+    }
+    if error:
+        event["message"] = error
+    q = get_ai_queue(session_id)
+    if q is not None:
+        loop.call_soon_threadsafe(q.put_nowait, event)
+
+
+# --- 拓扑提取 ---
+
+def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.AbstractEventLoop) -> None:
+    """后台线程：从调研表提取拓扑"""
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+    output_path = session_dir / "sim_topology.json"
+
+    def cb(ts, msg):
+        _sim_callback(session_id, loop, ts, msg)
+
+    try:
+        caller = SkillCaller(timeout=300)
+        cb(datetime.now().strftime("%H:%M:%S"), "🚀 开始从调研表提取设备拓扑...")
+
+        skill_result = caller.call_skill(
+            "plant-simulation",
+            str(upload_path),
+            str(output_path),
+            "extract_topology",
+            callback=cb,
+        )
+
+        if output_path.exists():
+            with open(output_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            topology = _normalize_topology(raw)
+            s["sim_topology"] = topology
+            s["sim_project_name"] = topology.get("project_name", "未知项目")
+            s["sim_stage"] = "cop_curves"
+            cb(datetime.now().strftime("%H:%M:%S"), f"✅ 拓扑识别完成：{len(topology.get('chillers',[]))} 台主机")
+            _sim_done(session_id, loop)
+        else:
+            _sim_done(session_id, loop, "拓扑识别完成但未生成输出文件")
+    except Exception as e:
+        _sim_done(session_id, loop, f"拓扑提取失败: {e}")
+
+
+def _run_topology_parse(session_id: str, text_input: str, project_name: str, loop: asyncio.AbstractEventLoop) -> None:
+    """后台线程：文本解析拓扑"""
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+    input_path = session_dir / "sim_topology_input.txt"
+    output_path = session_dir / "sim_topology.json"
+
+    def cb(ts, msg):
+        _sim_callback(session_id, loop, ts, msg)
+
+    try:
+        input_path.write_text(text_input, encoding="utf-8")
+        caller = SkillCaller(timeout=180)
+        cb(datetime.now().strftime("%H:%M:%S"), "🚀 开始解析拓扑文本...")
+
+        caller.call_skill(
+            "plant-simulation",
+            str(input_path),
+            str(output_path),
+            "parse_topology",
+            callback=cb,
+        )
+
+        if output_path.exists():
+            with open(output_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            topology = _normalize_topology(raw)
+            s["sim_topology"] = topology
+            s["sim_project_name"] = topology.get("project_name", project_name or "未知项目")
+            s["sim_stage"] = "cop_curves"
+            cb(datetime.now().strftime("%H:%M:%S"), "✅ 拓扑解析完成")
+            _sim_done(session_id, loop)
+        else:
+            _sim_done(session_id, loop, "拓扑解析完成但未生成输出")
+    except Exception as e:
+        _sim_done(session_id, loop, f"拓扑解析失败: {e}")
+
+
+# --- COP 曲线解析 ---
+
+def _run_cop_parse(session_id: str, img_path: str, idx: int, model_name: str, rated_cop: float, loop: asyncio.AbstractEventLoop) -> None:
+    """后台线程：图片识别 COP 曲线"""
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+    output_path = session_dir / f"sim_cop_{idx}.json"
+
+    def cb(ts, msg):
+        _sim_callback(session_id, loop, ts, msg)
+
+    try:
+        caller = SkillCaller(timeout=300)
+        cb(datetime.now().strftime("%H:%M:%S"), f"🚀 开始识别 {model_name} COP 曲线...")
+
+        caller.call_skill(
+            "plant-simulation",
+            str(img_path),
+            str(output_path),
+            "parse_cop_curve",
+            callback=cb,
+        )
+
+        if output_path.exists():
+            with open(output_path, "r", encoding="utf-8") as f:
+                cop_data = json.load(f)
+            cw_temps = cop_data.get("cw_temps", [])
+            load_ratios = cop_data.get("load_ratios", [])
+            cop_table = cop_data.get("cop_table", [])
+            if not cw_temps or not load_ratios or not cop_table:
+                # fallback to default
+                default_cop = _generate_default_cop_table(rated_cop)
+                default_cop["_source"] = "auto_fallback"
+                s["sim_cop_data"][model_name] = default_cop
+                cb(datetime.now().strftime("%H:%M:%S"), "ℹ️ 图片识别未返回有效数据，已使用默认曲线")
+            else:
+                s["sim_cop_data"][model_name] = cop_data
+                cb(datetime.now().strftime("%H:%M:%S"), f"✅ COP 数据已收集 ({len(cw_temps)}×{len(load_ratios)})")
+            s["sim_stage"] = "cop_curves"
+            _sim_done(session_id, loop)
+        else:
+            _sim_done(session_id, loop, "COP 识别完成但未生成输出")
+    except Exception as e:
+        _sim_done(session_id, loop, f"COP 识别失败: {e}")
+
+
+# --- 工况生成 ---
+
+def _run_operating_generate(session_id: str, text_input: str, loop: asyncio.AbstractEventLoop) -> None:
+    """后台线程：生成月度运行工况"""
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+    input_path = session_dir / "sim_operating_input.txt"
+    output_path = session_dir / "sim_operating.json"
+
+    def cb(ts, msg):
+        _sim_callback(session_id, loop, ts, msg)
+
+    try:
+        input_path.write_text(text_input, encoding="utf-8")
+        caller = SkillCaller(timeout=300)
+        cb(datetime.now().strftime("%H:%M:%S"), "🚀 开始生成月度运行工况...")
+
+        caller.call_skill(
+            "plant-simulation",
+            str(input_path),
+            str(output_path),
+            "generate_operating",
+            callback=cb,
+        )
+
+        if output_path.exists():
+            with open(output_path, "r", encoding="utf-8") as f:
+                operating = json.load(f)
+            s["sim_operating_conditions"] = operating
+            s["sim_stage"] = "simulate"
+            cb(datetime.now().strftime("%H:%M:%S"), "✅ 工况数据已生成")
+            _sim_done(session_id, loop)
+        else:
+            _sim_done(session_id, loop, "工况生成完成但未生成输出")
+    except Exception as e:
+        _sim_done(session_id, loop, f"工况生成失败: {e}")
+
+
+# --- 仿真执行 ---
+
+def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
+    """后台线程：执行仿真"""
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+    sim_mode = s["sim_mode"]
+
+    def cb(ts, msg):
+        _sim_callback(session_id, loop, ts, msg)
+
+    try:
+        # 打包输入
+        sim_input = {
+            "project_name": s.get("sim_project_name", ""),
+            "sim_mode": sim_mode,
+            "topology": s.get("sim_topology"),
+            "cop_data": s.get("sim_cop_data", {}),
+            "operating_conditions": s.get("sim_operating_conditions"),
+        }
+
+        input_path = session_dir / "sim_input_all.json"
+        with open(input_path, "w", encoding="utf-8") as f:
+            json.dump(sim_input, f, ensure_ascii=False, indent=2)
+
+        output_dir = session_dir / "sim_output"
+        output_dir.mkdir(exist_ok=True)
+
+        caller = SkillCaller(timeout=600)
+        cb(datetime.now().strftime("%H:%M:%S"), f"🚀 开始仿真（{sim_mode}）...")
+
+        caller.call_skill(
+            "plant-simulation",
+            str(input_path),
+            str(output_dir),
+            sim_mode,
+            callback=cb,
+            max_retries=2,
+        )
+
+        # 收集结果
+        result = {"success": True, "output_dir": str(output_dir), "files": []}
+        for f in output_dir.iterdir():
+            result["files"].append(f.name)
+
+        report_files = list(output_dir.glob("*报告*.md")) + list(output_dir.glob("*report*.md"))
+        if report_files:
+            result["report"] = report_files[0].read_text(encoding="utf-8")
+
+        summary_files = list(output_dir.glob("*汇总*.json")) + list(output_dir.glob("*summary*.json"))
+        if summary_files:
+            with open(summary_files[0], "r", encoding="utf-8") as f:
+                result["summary"] = json.load(f)
+
+        s["sim_result"] = result
+        s["sim_stage"] = "done"
+        cb(datetime.now().strftime("%H:%M:%S"), "✅ 仿真完成")
+        _sim_done(session_id, loop)
+    except Exception as e:
+        _sim_done(session_id, loop, f"仿真执行失败: {e}")
+
+
+# --- 启动仿真任务的入口函数 ---
+
+def start_sim_topology_extract(session_id: str, upload_path: Path, main_loop) -> None:
+    ensure_ai_queue(session_id)
+    session_store._main_loop = main_loop
+    _start_sim_task(session_id, _run_topology_extraction, main_loop, upload_path=str(upload_path), loop=main_loop)
+
+
+def start_sim_topology_parse(session_id: str, text_input: str, project_name: str, main_loop) -> None:
+    ensure_ai_queue(session_id)
+    session_store._main_loop = main_loop
+    _start_sim_task(session_id, _run_topology_parse, main_loop, text_input=text_input, project_name=project_name, loop=main_loop)
+
+
+def start_sim_cop_parse(session_id: str, img_path: Path, idx: int, model_name: str, rated_cop: float, main_loop) -> None:
+    ensure_ai_queue(session_id)
+    session_store._main_loop = main_loop
+    _start_sim_task(session_id, _run_cop_parse, main_loop, img_path=str(img_path), idx=idx, model_name=model_name, rated_cop=rated_cop, loop=main_loop)
+
+
+def start_sim_operating_generate(session_id: str, text_input: str, main_loop) -> None:
+    ensure_ai_queue(session_id)
+    session_store._main_loop = main_loop
+    _start_sim_task(session_id, _run_operating_generate, main_loop, text_input=text_input, loop=main_loop)
+
+
+def start_sim_execute(session_id: str, main_loop) -> None:
+    ensure_ai_queue(session_id)
+    session_store._main_loop = main_loop
+    _start_sim_task(session_id, _run_simulation, main_loop, loop=main_loop)
+
+
+# ==================== 仿真辅助函数（从 simulation_ui.py 迁移） ====================
+
+_INVALID_TEXT_PATTERNS = [
+    "例如：", "示例:", "选填", "选框勾选", "是否", "有没有",
+    "请注意", "举例", "需要让运维", "询问运维", "各设备铭牌",
+    "描述一下", "客户", "末端", "该项目", "涉及", "整体情况",
+    "运行规律", "特殊情况说明", "设备启停方式", "末端设备数量",
+    "通讯接口", "供水温度", "运行台数", "运行频率", "出水温度",
+    "工频运行则为", "变频运行可填写", "整个冷站", "填写大致的范围",
+]
+
+
+def _is_real_equipment(entry: dict) -> bool:
+    """判断一条记录是否是真实设备数据"""
+    brand = str(entry.get("brand", "") or "")
+    model = str(entry.get("model", "") or "")
+    if len(brand) > 40:
+        return False
+    combined = brand + model
+    for pattern in _INVALID_TEXT_PATTERNS:
+        if pattern in combined:
+            return False
+    capacity = entry.get("capacity_kw") or entry.get("额定制冷量") or entry.get("制冷量") or 0
+    power = entry.get("power_kw") or entry.get("额定功率") or entry.get("功率") or 0
+    cop = entry.get("rated_cop") or entry.get("COP") or entry.get("cop") or 0
+    fan_power = entry.get("fan_power_kw") or entry.get("风机功率") or 0
+    try:
+        if float(capacity) > 0 or float(power) > 0 or float(cop) > 0 or float(fan_power) > 0:
+            return True
+    except (ValueError, TypeError):
+        pass
+    if brand and model:
+        return True
+    if brand and len(brand) <= 20 and not any(p in brand for p in ["类型", "否", "是", "/"]):
+        return True
+    if model and len(model) <= 60:
+        return True
+    return False
+
+
+def _normalize_topology(raw: dict) -> dict:
+    """标准化 AI 输出的拓扑 JSON"""
+    if "topology" in raw and isinstance(raw["topology"], dict):
+        inner = raw["topology"]
+        project_name = raw.get("project_name", inner.get("project_name", raw.get("项目名称", "未知项目")))
+        raw = inner
+    else:
+        project_name = raw.get("project_name", raw.get("项目名称", "未知项目"))
+
+    topology = {"project_name": project_name}
+
+    # 冷水主机
+    chillers = (
+        raw.get("chillers") or raw.get("冷水主机") or raw.get("主机") or
+        raw.get("chiller") or raw.get("冷水机组") or []
+    )
+    normalized_chillers = []
+    for ch in chillers:
+        if not isinstance(ch, dict) or not _is_real_equipment(ch):
+            continue
+        normalized_chillers.append({
+            "brand": ch.get("brand", ch.get("品牌", "")) or "",
+            "model": ch.get("model", ch.get("型号", "")) or "",
+            "type": ch.get("type", ch.get("类型", "")) or "",
+            "count": int(ch.get("count", ch.get("台数", ch.get("数量", 1))) or 1),
+            "capacity_kw": float(ch.get("capacity_kw", ch.get("额定制冷量", ch.get("制冷量", 0))) or 0),
+            "power_kw": float(ch.get("power_kw", ch.get("额定功率", ch.get("功率", 0))) or 0),
+            "rated_cop": float(ch.get("rated_cop", ch.get("COP", ch.get("额定COP", ch.get("cop", 0)))) or 0),
+            "vfd": ch.get("vfd", ch.get("变频", True)),
+        })
+
+    # 纠正水泵误分类
+    misclassified_pumps = []
+    real_chillers = []
+    for ch in normalized_chillers:
+        cop = ch.get("rated_cop", 0)
+        power = ch.get("power_kw", 0)
+        capacity = ch.get("capacity_kw", 0)
+        computed_ratio = capacity / power if power > 0 else 0
+        if cop > 10 or (computed_ratio > 10 and power <= 200):
+            misclassified_pumps.append(ch)
+        else:
+            real_chillers.append(ch)
+    topology["chillers"] = real_chillers
+
+    extra_chilled_pumps = [
+        {"power_kw": p.get("power_kw", 0), "count": p.get("count", 1), "vfd": p.get("vfd", True)}
+        for p in misclassified_pumps
+    ]
+
+    # 冷却泵
+    cooling_pumps = raw.get("cooling_pumps") or raw.get("冷却泵") or []
+    topology["cooling_pumps"] = [
+        {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
+        }
+        for p in cooling_pumps if isinstance(p, dict) and _is_real_equipment(p)
+    ]
+
+    # 冷冻泵
+    chilled_pumps = raw.get("chilled_pumps") or raw.get("冷冻泵") or []
+    normalized_chilled = [
+        {
+            "brand": p.get("brand", p.get("品牌", "")) or "",
+            "model": p.get("model", p.get("型号", "")) or "",
+            "power_kw": float(p.get("power_kw", p.get("功率", 0)) or 0),
+            "count": int(p.get("count", p.get("台数", 1)) or 1),
+            "vfd": p.get("vfd", p.get("变频", True)),
+            "flow_rate_m3h": float(p.get("flow_rate_m3h", p.get("流量", p.get("额定流量", 0))) or 0),
+            "head_m": float(p.get("head_m", p.get("扬程", p.get("压头", 0))) or 0),
+        }
+        for p in chilled_pumps if isinstance(p, dict) and _is_real_equipment(p)
+    ]
+    existing_powers = {p["power_kw"] for p in normalized_chilled}
+    for ep in extra_chilled_pumps:
+        if ep["power_kw"] not in existing_powers:
+            normalized_chilled.append(ep)
+    topology["chilled_pumps"] = normalized_chilled
+
+    # 冷却塔
+    towers = raw.get("towers") or raw.get("冷却塔") or []
+    topology["towers"] = [
+        {
+            "brand": t.get("brand", t.get("品牌", "")) or "",
+            "model": t.get("model", t.get("型号", "")) or "",
+            "fan_power_kw": float(t.get("fan_power_kw", t.get("风机功率", t.get("功率", 0))) or 0),
+            "count": int(t.get("count", t.get("台数", 1)) or 1),
+            "vfd": t.get("vfd", t.get("变频", True)),
+            "type": t.get("type", t.get("类型", "开式")),
+            "flow_rate_m3h": float(t.get("flow_rate_m3h", t.get("流量", t.get("额定流量", 0))) or 0),
+        }
+        for t in towers if isinstance(t, dict) and _is_real_equipment(t)
+    ]
+
+    # 特殊结构
+    special = raw.get("special") or raw.get("特殊结构") or {"type": "none"}
+    if isinstance(special, dict):
+        sp_type = special.get("type", "none")
+        if isinstance(sp_type, str) and len(sp_type) > 20:
+            detected = []
+            if "热回收" in sp_type:
+                detected.append("heat_recovery")
+            if "蓄冷" in sp_type or "蓄冰" in sp_type:
+                detected.append("storage")
+            sp_type = "_and_".join(detected) if detected else "none"
+        special["type"] = sp_type
+    elif isinstance(special, str):
+        special = {"type": special if len(special) <= 20 else "none"}
+    else:
+        special = {"type": "none"}
+    topology["special"] = special
+
+    return topology
+
+
+def _generate_default_cop_table(rated_cop: float) -> dict:
+    """基于额定 COP 生成典型部分负荷曲线"""
+    cw_temps = list(range(18, 34))
+    load_ratios = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+    plr_factors = [1.00, 1.08, 1.14, 1.18, 1.15, 1.08, 0.95, 0.78, 0.58]
+    base_cw_temp = 30.0
+
+    cop_table = []
+    for cw_t in cw_temps:
+        row = []
+        temp_factor = 1.0 - 0.03 * (cw_t - base_cw_temp)
+        for plr_f in plr_factors:
+            cop = rated_cop * plr_f * temp_factor
+            row.append(round(max(cop, 2.0), 2))
+        cop_table.append(row)
+
+    return {
+        "cw_temps": cw_temps,
+        "load_ratios": load_ratios,
+        "cop_table": cop_table,
     }

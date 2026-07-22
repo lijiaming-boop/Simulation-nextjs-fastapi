@@ -40,13 +40,51 @@ class SessionStore:
             "session_dir": session_dir,
             "original_filename": original_filename,
             "user_id": user_id,
-            "module_type": module_type,  # "air_conditioner" | "air_compressor"
+            "module_type": module_type,  # "air_conditioner" | "air_compressor" | "plant_simulation"
             "stage": "upload",
             "ai_logs": [],               # 累计 AI 消息（timestamp, message）
             "extracted_data": None,
             "quality_report": None,
             "filling_suggestions": None,
             "result": None,
+            # === 仿真模块专用字段 ===
+            "sim_stage": "topology",     # topology / cop_curves / operating / simulate
+            "sim_mode": "new_station",   # new_station / old_station
+            "sim_topology": None,
+            "sim_cop_data": {},
+            "sim_operating_conditions": None,
+            "sim_result": None,
+            "sim_project_name": "",
+        }
+        return session_id
+
+    def init_sim_session(
+        self,
+        user_id: Optional[str],
+        sim_mode: str = "new_station",
+    ) -> str:
+        """创建仿真专用 session（无需上传调研表）"""
+        session_dir = self._manager.create_session_directory()
+        session_id = session_dir.name
+        self._sessions[session_id] = {
+            "session_id": session_id,
+            "session_dir": session_dir,
+            "original_filename": None,
+            "user_id": user_id,
+            "module_type": "plant_simulation",
+            "stage": "simulation",
+            "ai_logs": [],
+            "extracted_data": None,
+            "quality_report": None,
+            "filling_suggestions": None,
+            "result": None,
+            "sim_stage": "topology",
+            "sim_mode": sim_mode,
+            "sim_topology": None,
+            "sim_cop_data": {},
+            "sim_operating_conditions": None,
+            "sim_result": None,
+            "sim_project_name": "",
         }
         return session_id
 
