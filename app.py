@@ -959,6 +959,36 @@ def render_result_stage():
 
     st.markdown("---")
 
+    # 进入冷站仿真按钮（传递节能率）
+    st.subheader("🔬 冷站性能仿真")
+    st.info("基于计算的节能率，进入冷站性能仿真模块进行详细验证")
+    
+    if st.button("🚀 进入冷站性能仿真", width='stretch', type="primary"):
+        # 存储节能率供仿真模块使用
+        rate = result.get("energy_saving_rate", 0)
+        st.session_state.sim_target_saving_rate = rate * 100  # 转为百分比
+        
+        # 创建新会话目录并复制源会话数据
+        source_session = st.session_state.session_dir
+        new_session = st.session_state.session_manager.create_session_directory()
+        
+        # 复制调研表和提取数据到仿真会话
+        import shutil
+        for fname in ['upload_survey.xlsx', 'extracted_data.json']:
+            src = Path(source_session) / fname
+            dst = Path(new_session) / fname
+            if src.exists():
+                shutil.copy2(src, dst)
+        
+        st.session_state.sim_source_session = source_session
+        st.session_state.module_type = 'plant_simulation'
+        st.session_state.sim_stage = 'topology'
+        st.session_state.sim_mode = 'old_station'  # 从空调模块跳转，默认为旧站房
+        st.session_state.session_dir = new_session
+        st.rerun()
+    
+    st.markdown("---")
+
     # 下载区域
     st.subheader("📥 下载计算结果")
     
