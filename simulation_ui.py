@@ -1097,8 +1097,10 @@ def _display_operating_table(operating: dict):
     # 数据后处理：填充 cooling_demand_kw
     topology = st.session_state.sim_topology or {}
     chillers = topology.get('chillers', [])
-    # 取最大单机制冷量用于估算需求冷量
-    max_chiller_capacity = max([ch.get('capacity_kw', 0) for ch in chillers]) if chillers else 0
+    # 计算总装机容量（各台冷机 × 台数）
+    total_plant_capacity = sum(
+        ch.get('capacity_kw', 0) * ch.get('count', 1) for ch in chillers
+    ) if chillers else 0
 
     # 优先从 monthly_table 获取数据，其次从顶层数组
     monthly_table = operating.get('monthly_table',
@@ -1120,9 +1122,9 @@ def _display_operating_table(operating: dict):
             # 计算需求冷量（如果为空则自动估算）
             demand = row.get('cooling_demand_kw')
             if demand is None or demand == 0:
-                # 加权平均：工作日×22天 + 休息日×8天
-                wd_demand = wd_units * max_chiller_capacity * wd_lr if wd_units else 0
-                we_demand = we_units * max_chiller_capacity * we_lr if we_units else 0
+                # 加权平均：总装机容量 × 负荷率
+                wd_demand = total_plant_capacity * wd_lr if wd_units else 0
+                we_demand = total_plant_capacity * we_lr if we_units else 0
                 demand = (wd_demand * 22 + we_demand * 8) / 30 if (wd_units or we_units) else 0
 
             rows.append({
@@ -1143,8 +1145,9 @@ def _display_operating_table(operating: dict):
             if row.get('cooling_demand_kw') is None or row.get('cooling_demand_kw') == 0:
                 wd_op = row.get('weekday_operation', {})
                 we_op = row.get('weekend_operation', {})
-                wd_d = wd_op.get('on_units', 0) * max_chiller_capacity * wd_op.get('load_ratio', 0)
-                we_d = we_op.get('on_units', 0) * max_chiller_capacity * we_op.get('load_ratio', 0)
+                # 用总装机容量 × 负荷率 = 建筑实际需求冷量
+                wd_d = total_plant_capacity * wd_op.get('load_ratio', 0)
+                we_d = total_plant_capacity * we_op.get('load_ratio', 0)
                 monthly_table[i]['cooling_demand_kw'] = (wd_d * 22 + we_d * 8) / 30 if (wd_d or we_d) else 0
 
     else:
@@ -1177,8 +1180,7 @@ def _display_operating_table(operating: dict):
             d = cooling_demands[i] if i < len(cooling_demands) else 0
             lr = load_ratios[i] if i < len(load_ratios) else 0
             if not d and lr > 0:
-                on_units = 1  # 默认1台
-                cooling_demands[i] = on_units * max_chiller_capacity * lr
+                cooling_demands[i] = total_plant_capacity * lr
 
         df = pd.DataFrame({
             '月份': [f"{m}月" for m in months[:12]],
