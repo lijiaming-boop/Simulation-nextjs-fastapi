@@ -965,7 +965,13 @@ def render_result_stage():
     
     if st.button("🚀 进入冷站性能仿真", width='stretch', type="primary"):
         # 存储节能率供仿真模块使用
+        # 兼容两种格式: 单值(energy_saving_rate) 或 范围(min/max)
         rate = result.get("energy_saving_rate", 0)
+        if rate == 0:
+            # 新格式：取范围中间值
+            rate_min = result.get("energy_saving_rate_min", 0)
+            rate_max = result.get("energy_saving_rate_max", 0)
+            rate = (rate_min + rate_max) / 2 if (rate_min > 0 and rate_max > 0) else 0
         st.session_state.sim_target_saving_rate = rate * 100  # 转为百分比
         
         # 创建新会话目录并复制源会话数据
