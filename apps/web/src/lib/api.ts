@@ -71,6 +71,16 @@ export interface ResultResponse {
     filled_count?: number;
     calculation_method?: string;
     mock?: boolean;
+    // 空压机专有字段
+    current_total_energy?: number;
+    optimized_total_energy?: number;
+    energy_saving?: number;
+    equipment_analysis?: {
+      total_air_compressors?: number;
+      total_power?: number;
+      average_efficiency?: number;
+      equipment_types?: Record<string, number>;
+    };
     [key: string]: unknown;
   };
   formatted_result?: unknown;

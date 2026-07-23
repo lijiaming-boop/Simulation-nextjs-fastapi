@@ -323,7 +323,7 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
         </button>
 
         {result?.result && (
-          <ResultPanel r={result.result} sessionId={sessionId} />
+          <ResultPanel r={result.result} sessionId={sessionId} moduleType={moduleType} />
         )}
       </section>
 
@@ -434,6 +434,22 @@ function SuggestPanel({ suggestions: s }: { suggestions: SuggestResult }) {
 function ResultPanel({
   r,
   sessionId,
+  moduleType,
+}: {
+  r: NonNullable<ResultResponse["result"]>;
+  sessionId: string;
+  moduleType: "air_conditioner" | "air_compressor";
+}) {
+  if (moduleType === "air_compressor") {
+    return <CompressorResultPanel r={r} sessionId={sessionId} />;
+  }
+  return <AcResultPanel r={r} sessionId={sessionId} />;
+}
+
+/** 空调节能结果：指标 + 冷机/水泵/冷却塔分项明细 + 下载 */
+function AcResultPanel({
+  r,
+  sessionId,
 }: {
   r: NonNullable<ResultResponse["result"]>;
   sessionId: string;
@@ -476,6 +492,90 @@ function ResultPanel({
 
       {/* 下载区 */}
       <DownloadSection sessionId={sessionId} />
+    </div>
+  );
+}
+
+/** 空压机节能结果：能耗对比指标 + 设备分析 + 报价单下载 */
+function CompressorResultPanel({
+  r,
+  sessionId,
+}: {
+  r: NonNullable<ResultResponse["result"]>;
+  sessionId: string;
+}) {
+  const wan = (v: unknown) => (typeof v === "number" ? (v / 10000).toFixed(2) : undefined);
+  const rows: Array<[string, string, string | number | undefined]> = [
+    ["节能率范围", "", r.energy_saving_rate_range],
+    ["综合节能率", "%", r.energy_saving_rate != null ? (r.energy_saving_rate * 100).toFixed(2) : undefined],
+    ["当前年总能耗", "万kW·h/年", wan(r.current_total_energy)],
+    ["优化后年总能耗", "万kW·h/年", wan(r.optimized_total_energy)],
+    ["预计年节能量", "万kW·h/年", wan(r.energy_saving)],
+    ["数据完整率", "", r.completeness != null ? `${(r.completeness * 100).toFixed(1)}%` : undefined],
+  ];
+
+  const ea = r.equipment_analysis;
+
+  return (
+    <div className="mt-4 rounded border border-green-200 bg-green-50 p-4 space-y-5">
+      <h3 className="font-medium text-green-900">📊 空压节能测算结果</h3>
+
+      {/* 核心指标 */}
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+        {rows.map(([label, unit, value], i) => (
+          <div key={i} className="flex justify-between py-1 border-b border-green-100">
+            <dt className="text-gray-600">{label}</dt>
+            <dd className="font-semibold text-gray-900">
+              {value ?? "-"} {unit}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* 设备分析 */}
+      {ea && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-green-900">🔧 设备分析</h4>
+          <table className="w-full text-xs border-collapse">
+            <tbody>
+              <tr>
+                <td className="border border-green-200 px-2 py-1 text-gray-600">空压机台数</td>
+                <td className="border border-green-200 px-2 py-1 text-right">{ea.total_air_compressors ?? "-"}</td>
+              </tr>
+              <tr>
+                <td className="border border-green-200 px-2 py-1 text-gray-600">总装机功率 (kW)</td>
+                <td className="border border-green-200 px-2 py-1 text-right">{ea.total_power != null ? ea.total_power.toFixed(1) : "-"}</td>
+              </tr>
+              {ea.equipment_types && Object.keys(ea.equipment_types).length > 0 && (
+                <tr>
+                  <td className="border border-green-200 px-2 py-1 text-gray-600">设备类型分布</td>
+                  <td className="border border-green-200 px-2 py-1 text-right">
+                    {Object.entries(ea.equipment_types).map(([k, v]) => `${k} × ${v}`).join("，")}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 置信度说明 */}
+      <ConfidenceNote r={r} />
+
+      {/* 下载区：报价单（直接下载，无密码） */}
+      <div className="space-y-3 border-t border-green-200 pt-4">
+        <h4 className="text-sm font-medium text-green-900">📥 下载报价单</h4>
+        <div className="flex items-center gap-3 text-sm">
+          <a
+            href={resultDownloadUrl(sessionId, "air_compressor_quotation.xlsx")}
+            className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+            download
+          >
+            下载空压报价单 Excel
+          </a>
+          <span className="text-xs text-gray-500">含项目节能测算汇总 + 云智控产品价目表</span>
+        </div>
+      </div>
     </div>
   );
 }

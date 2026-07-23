@@ -12,9 +12,13 @@ class AirCompressorCalculator:
     
     def __init__(self):
         """初始化计算器"""
-        self.template_dir = Path("00_sample/模板测算表")
+        # 模板目录基于项目根目录解析，避免依赖运行时工作目录
+        project_root = Path(__file__).resolve().parent.parent
+        self.template_dir = project_root / "00_sample" / "模板测算表"
         self.scheme_template_path = self.template_dir / "空压系统数智化升级方案模板.docx"
         self.quotation_template_path = self.template_dir / "2026年空压云智控报价模板.xlsx"
+        # 报价单固定输出文件名（供下载白名单匹配）
+        self.quotation_filename = "air_compressor_quotation.xlsx"
     
     def calculate(self, filled_data_path: str, result_path: str) -> str:
         """执行空压机节能率计算
@@ -196,44 +200,60 @@ class AirCompressorCalculator:
         
     def _generate_quotation(self, filled_data: dict, result: dict):
         """生成报价单
-        
+
+        报价模板本身是标准产品目录/价目表（含定价公式），没有项目、客户、
+        节能率等可注入的字段。为避免破坏模板公式，这里采用非破坏性做法：
+        在工作簿最前面插入一张「项目节能测算」汇总表，写入项目信息与节能
+        计算结果，再连同原始价目表一并另存到会话目录，供前端下载。
+
         Args:
             filled_data: 填充后的数据
             result: 计算结果
         """
-        # 读取报价模板
         if not self.quotation_template_path.exists():
             print(f"报价模板不存在: {self.quotation_template_path}")
-            return
-        
-        # 这里需要实现报价单生成逻辑
-        # 可以使用 openpyxl 或 pandas 来处理 Excel 文档
-        print("正在生成报价单...")
-        
-        # 示例：读取模板并保存为新文件
+            return None
+
+        session_dir = Path(filled_data.get("session_dir", "."))
+        quotation_path = session_dir / self.quotation_filename
+
         try:
             wb = load_workbook(self.quotation_template_path)
-            ws = wb.active
-            
-            # 在模板中填写必要的信息
-            # 这里需要根据实际模板的单元格映射来填写
-            ws['B3'] = filled_data.get("system_info", {}).get("project_name", "未命名项目")
-            ws['B4'] = filled_data.get("system_info", {}).get("customer_name", "未知客户")
-            ws['B5'] = filled_data.get("system_info", {}).get("contact_person", "未知联系人")
-            ws['B6'] = filled_data.get("system_info", {}).get("contact_phone", "未知电话")
-            
-            # 填写节能率信息
-            ws['F10'] = f"{result['energy_saving_rate'] * 100:.1f}%"
-            ws['F11'] = f"{result['energy_saving'] / 10000:.2f} 万 kWh"
-            
-            # 保存报价单
-            session_dir = Path(filled_data.get("session_dir", "."))
-            quotation_path = session_dir / f"空压系统报价单_{filled_data.get('original_filename', '').split('.')[0]}.xlsx"
+
+            # 在最前面插入项目节能测算汇总表（非破坏性，不改动原有价目表公式）
+            ws = wb.create_sheet("项目节能测算", 0)
+            ws.column_dimensions["A"].width = 22
+            ws.column_dimensions["B"].width = 30
+
+            info = filled_data.get("system_info", {})
+            analysis = result.get("equipment_analysis", {})
+            rows = [
+                ("项目名称", info.get("project_name", "未命名项目")),
+                ("客户名称", info.get("customer_name", "")),
+                ("联系人", info.get("contact_person", "")),
+                ("联系电话", info.get("contact_phone", "")),
+                ("", ""),
+                ("空压机台数", analysis.get("total_air_compressors", 0)),
+                ("总装机功率 (kW)", round(float(analysis.get("total_power", 0)), 1)),
+                ("", ""),
+                ("当前年总能耗 (万kWh/年)", round(result.get("current_total_energy", 0) / 10000, 2)),
+                ("优化后年总能耗 (万kWh/年)", round(result.get("optimized_total_energy", 0) / 10000, 2)),
+                ("预计年节能量 (万kWh/年)", round(result.get("energy_saving", 0) / 10000, 2)),
+                ("综合节能率", f"{result.get('energy_saving_rate', 0) * 100:.1f}%"),
+                ("节能率范围", result.get("energy_saving_rate_range", "")),
+            ]
+            ws["A1"] = "空压系统节能测算汇总"
+            for idx, (label, value) in enumerate(rows, start=2):
+                ws.cell(row=idx, column=1, value=label)
+                ws.cell(row=idx, column=2, value=value)
+
             wb.save(quotation_path)
             print(f"报价单已生成: {quotation_path}")
-            
+            return str(quotation_path)
+
         except Exception as e:
             print(f"生成报价单失败: {str(e)}")
+            return None
     
     def format_export_results(self, filled_data: dict, result: dict) -> dict:
         """格式化导出结果

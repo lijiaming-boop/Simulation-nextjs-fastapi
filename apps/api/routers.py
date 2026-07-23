@@ -459,7 +459,11 @@ def get_result(session_id: str):
 
 
 # 允许下载的结果文件白名单
-_RESULT_DOWNLOAD_WHITELIST = {"simplified_result.xlsx", "calculation_result.xlsx"}
+_RESULT_DOWNLOAD_WHITELIST = {
+    "simplified_result.xlsx",       # 空调简化版
+    "calculation_result.xlsx",      # 空调完整版（需密码）
+    "air_compressor_quotation.xlsx",  # 空压机报价单
+}
 # 完整计算表格需管理员密码（可用环境变量覆盖）
 _ADMIN_DOWNLOAD_PASSWORD = os.getenv("ADMIN_DOWNLOAD_PASSWORD", "admin123")
 
