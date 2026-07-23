@@ -3,6 +3,12 @@
 包装 core 模块，为 Next.js 前端提供 HTTP 接口。
 启动：uvicorn apps.api.main:app --reload --port 8000
 """
+from pathlib import Path
+from dotenv import load_dotenv
+
+# 加载项目根目录的 .env 文件
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
