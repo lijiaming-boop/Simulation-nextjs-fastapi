@@ -129,6 +129,15 @@ export function SimulationWorkflow() {
   const currentStage = simState?.sim_stage ?? "topology";
   const currentIdx = STAGE_ORDER.indexOf(currentStage as SimStageKey);
 
+  // session 已创建但状态尚未加载
+  if (!simState) {
+    return (
+      <div className="max-w-2xl mx-auto p-8 text-center text-gray-500">
+        正在加载仿真状态...
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       {/* 进度指示器 */}

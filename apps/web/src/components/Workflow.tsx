@@ -27,7 +27,7 @@ type Stage =
   | "done"
   | "error";
 
-export default function Workflow() {
+export default function Workflow({ moduleType, title }: { moduleType: "air_conditioner" | "air_compressor"; title: string }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>("");
@@ -36,9 +36,6 @@ export default function Workflow() {
   const [result, setResult] = useState<ResultResponse | null>(null);
   const [useLlm, setUseLlm] = useState<boolean>(true);
   const [suggestions, setSuggestions] = useState<SuggestResult | null>(null);
-  const [moduleType, setModuleType] = useState<
-    "air_conditioner" | "air_compressor"
-  >("air_conditioner");
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const extractedDataRef = useRef<Record<string, unknown> | null>(null);
@@ -191,7 +188,7 @@ export default function Workflow() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
-            空调 / 空压机节能测算
+            {title}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             FastAPI + Next.js 重构版（P2 MVP）
@@ -214,19 +211,6 @@ export default function Workflow() {
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="font-medium mb-3">① 上传调研表</h2>
         <div className="flex items-center gap-3">
-          <select
-            value={moduleType}
-            onChange={(e) =>
-              setModuleType(
-                e.target.value as "air_conditioner" | "air_compressor"
-              )
-            }
-            disabled={stage !== "idle" && stage !== "error"}
-            className="border rounded px-3 py-2 text-sm"
-          >
-            <option value="air_conditioner">中央空调</option>
-            <option value="air_compressor">空压机</option>
-          </select>
           <label
             className={`cursor-pointer px-4 py-2 rounded text-white text-sm ${
               stage === "idle" || stage === "error"
