@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   },
   // 生产构建：不启用 standalone（保持默认，便于部署）
   output: undefined,
+  // 代理（rewrites）转发时的请求体上限，默认 10MB，调高以支持大调研表上传
+  experimental: {
+    proxyClientMaxBodySize: "50mb",
+  },
 };
 
 export default nextConfig;
