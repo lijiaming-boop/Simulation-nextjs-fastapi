@@ -12,10 +12,8 @@ from core.skill_caller import SkillCaller, SkillError
 from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
 
-# 模块加载时缓存 LLM 环境变量（线程内可能读不到）
+# 模块加载时缓存 API Key（供后台线程创建 SkillCaller 时显式传入）
 _LLM_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-_LLM_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
-_LLM_MODEL = os.getenv("ANTHROPIC_MODEL", "")
 from config import WeatherService
 
 from .deps import PROJECT_ROOT, session_store
@@ -131,7 +129,7 @@ def _run_extract_in_thread(
             if not output_json_path.exists():
                 raise SkillError(f"脚本执行完成但未生成输出: {output_json_path}")
         else:
-            # === 空压场景：subprocess 文本提取 + DirectLLMClient 结构化分析 ===
+            # === 空压场景：subprocess 文本提取 + SkillCaller(SDK) 结构化分析 ===
             session_dir = session_store.get(session_id)["session_dir"]
             text_json_path = session_dir / "extracted_air_compressor_text.json"
 
@@ -180,15 +178,10 @@ def _run_extract_in_thread(
                 f"✅ 文本提取完成（{len(text_content)} 字符）",
             )
 
-            # Step 2: LLM 结构化分析
+            # Step 2: LLM 结构化分析（走 Claude Agent SDK）
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🤖 [空压] Step 2: LLM 结构化分析...")
-            from core.llm_client import DirectLLMClient
 
-            client = DirectLLMClient(
-                api_key=_LLM_API_KEY or None,
-                base_url=_LLM_BASE_URL or None,
-                model=_LLM_MODEL or None,
-            )
+            client = SkillCaller(timeout=180, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
             system_prompt = _build_air_compressor_extract_prompt()
             user_prompt = (
                 f"以下是空压机调研表的文本内容，请按照系统指令提取结构化数据并以 JSON 格式输出。\n\n"
@@ -508,7 +501,7 @@ def _run_suggest_in_thread(
 
     1. 把内存里的 extracted_data / quality_report 写盘
     2. subprocess 调脚本生成规则建议（区域电价 + 季节默认值）
-    3. use_llm=True 时，再用 DirectLLMClient 对规则建议做智能增强
+    3. use_llm=True 时，再用 SkillCaller(SDK) 对规则建议做智能增强
     """
     loop = session_store._main_loop
     s = session_store.get(session_id)
@@ -586,17 +579,11 @@ def _run_suggest_in_thread(
             suggestions = json.load(f)
         emit("log", "✅ 规则建议生成完成")
 
-        # 3. LLM 增强（可选）
+        # 3. LLM 增强（可选，走 Claude Agent SDK）
         if use_llm:
             emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
             try:
-                from core.llm_client import DirectLLMClient
-
-                client = DirectLLMClient(
-                    api_key=_LLM_API_KEY or None,
-                    base_url=_LLM_BASE_URL or None,
-                    model=_LLM_MODEL or None,
-                )
+                client = SkillCaller(timeout=180, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
                 if module_type == "air_compressor":
                     prompt = (
                         "你是一位空压机节能测算顾问。下面是某空压机项目的提取数据、质量报告以及基于规则生成的填充建议。\n"

@@ -239,6 +239,76 @@ class SkillCaller:
         # 不应到达这里
         raise SkillError(f"Skill '{skill_name}' 重试 {max_retries} 次后仍然失败")
 
+    def create_message(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        max_tokens: int = 4096,
+        model: Optional[str] = None,
+    ) -> str:
+        """使用 Claude Agent SDK 做一次纯文本 LLM 调用（同步包装器）
+
+        禁用工具与技能加载，只要 AssistantMessage 的文本输出。
+        接口与 DirectLLMClient.create_message 兼容：prompt -> 文本。
+
+        Args:
+            prompt: 用户提示词
+            system: 系统提示词（可选）
+            max_tokens: 保留参数（SDK 不直接使用，仅为接口兼容）
+            model: 模型名（可选，默认读 ANTHROPIC_MODEL 环境变量）
+
+        Returns:
+            LLM 返回的文本
+
+        Raises:
+            SkillError: 调用失败或返回空响应
+        """
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self._create_message_async(prompt, system=system, model=model)
+        )
+
+    async def _create_message_async(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> str:
+        """纯文本 LLM 调用的异步实现"""
+        options = ClaudeAgentOptions(
+            cwd=str(self.project_root),
+            setting_sources=[],          # 不加载项目/用户技能设置，纯对话
+            allowed_tools=[],            # 禁用工具，只要文本回复
+            max_turns=1,                 # 单轮
+            system_prompt=system,
+            model=model or os.getenv("ANTHROPIC_MODEL") or None,
+        )
+
+        texts: List[str] = []
+        try:
+            async with asyncio.timeout(self.timeout):
+                async for message in query(prompt=prompt, options=options):
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                texts.append(block.text)
+        except asyncio.TimeoutError as e:
+            raise SkillError(f"LLM 调用超时(>{self.timeout}秒)") from e
+        except Exception as e:
+            raise SkillError(f"LLM 调用出错: {e}") from e
+
+        result = "".join(texts).strip()
+        if not result:
+            raise SkillError("LLM 返回空响应")
+        return result
+
     def _build_prompt(self, skill_name: str, *args) -> str:
         """构建 Skill 调用提示词
 
