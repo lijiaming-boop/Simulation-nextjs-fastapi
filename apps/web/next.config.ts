@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   output: undefined,
   // 代理（rewrites）转发时的请求体上限，默认 10MB，调高以支持大调研表上传
   experimental: {
-    proxyClientMaxBodySize: "50mb",
+    proxyClientMaxBodySize: "100mb",
   },
 };
 
