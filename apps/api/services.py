@@ -1,6 +1,7 @@
 """业务服务层：封装 core 模块，供 FastAPI 路由调用"""
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
