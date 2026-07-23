@@ -11,6 +11,11 @@ from typing import Optional
 from core.skill_caller import SkillCaller, SkillError
 from core.data_filler import DataFiller
 from core.excel_calculator import ExcelCalculator
+
+# 模块加载时缓存 LLM 环境变量（线程内可能读不到）
+_LLM_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+_LLM_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
+_LLM_MODEL = os.getenv("ANTHROPIC_MODEL", "")
 from config import WeatherService
 
 from .deps import PROJECT_ROOT, session_store
@@ -179,7 +184,11 @@ def _run_extract_in_thread(
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🤖 [空压] Step 2: LLM 结构化分析...")
             from core.llm_client import DirectLLMClient
 
-            client = DirectLLMClient()
+            client = DirectLLMClient(
+                api_key=_LLM_API_KEY or None,
+                base_url=_LLM_BASE_URL or None,
+                model=_LLM_MODEL or None,
+            )
             system_prompt = _build_air_compressor_extract_prompt()
             user_prompt = (
                 f"以下是空压机调研表的文本内容，请按照系统指令提取结构化数据并以 JSON 格式输出。\n\n"
@@ -581,11 +590,13 @@ def _run_suggest_in_thread(
         if use_llm:
             emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
             try:
-                import os as _os
-                emit("log", f"[DEBUG] ANTHROPIC_API_KEY={'set' if _os.getenv('ANTHROPIC_API_KEY') else 'NOT SET'}, BASE_URL={_os.getenv('ANTHROPIC_BASE_URL', 'default')}")
                 from core.llm_client import DirectLLMClient
 
-                client = DirectLLMClient()
+                client = DirectLLMClient(
+                    api_key=_LLM_API_KEY or None,
+                    base_url=_LLM_BASE_URL or None,
+                    model=_LLM_MODEL or None,
+                )
                 if module_type == "air_compressor":
                     prompt = (
                         "你是一位空压机节能测算顾问。下面是某空压机项目的提取数据、质量报告以及基于规则生成的填充建议。\n"
