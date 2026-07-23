@@ -581,6 +581,8 @@ def _run_suggest_in_thread(
         if use_llm:
             emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
             try:
+                import os as _os
+                emit("log", f"[DEBUG] ANTHROPIC_API_KEY={'set' if _os.getenv('ANTHROPIC_API_KEY') else 'NOT SET'}, BASE_URL={_os.getenv('ANTHROPIC_BASE_URL', 'default')}")
                 from core.llm_client import DirectLLMClient
 
                 client = DirectLLMClient()
