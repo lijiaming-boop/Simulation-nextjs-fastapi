@@ -10,6 +10,7 @@ import {
   fetchSuggest,
   startCalculate,
   fetchResult,
+  resultDownloadUrl,
   type StreamEvent,
   type ResultResponse,
   type SuggestResult,
@@ -322,7 +323,7 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
         </button>
 
         {result?.result && (
-          <ResultPanel r={result.result} />
+          <ResultPanel r={result.result} sessionId={sessionId} />
         )}
       </section>
 
@@ -432,9 +433,13 @@ function SuggestPanel({ suggestions: s }: { suggestions: SuggestResult }) {
 
 function ResultPanel({
   r,
+  sessionId,
 }: {
   r: NonNullable<ResultResponse["result"]>;
+  sessionId: string;
 }) {
+  const isRange = r.chiller_saving_min != null;
+
   const rows: Array<[string, string, string | number | undefined]> = [
     ["节能率范围", "", r.energy_saving_rate_range],
     ["综合节能率", "%", r.energy_saving_rate != null ? (r.energy_saving_rate * 100).toFixed(2) : undefined],
@@ -446,11 +451,12 @@ function ResultPanel({
     ["塔节电", "万kW·h", r.tower_saving?.toFixed(2)],
     ["数据完整率", "", r.completeness != null ? `${(r.completeness * 100).toFixed(1)}%` : undefined],
   ];
+
   return (
-    <div className="mt-4 rounded border border-green-200 bg-green-50 p-4">
-      <h3 className="font-medium text-green-900 mb-2">
-        📊 节能测算结果
-      </h3>
+    <div className="mt-4 rounded border border-green-200 bg-green-50 p-4 space-y-5">
+      <h3 className="font-medium text-green-900">📊 节能测算结果</h3>
+
+      {/* 核心指标 */}
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
         {rows.map(([label, unit, value], i) => (
           <div key={i} className="flex justify-between py-1 border-b border-green-100">
@@ -461,6 +467,281 @@ function ResultPanel({
           </div>
         ))}
       </dl>
+
+      {/* 分项节能明细表 + 柱状图 */}
+      <SavingsBreakdown r={r} isRange={isRange} />
+
+      {/* 置信度说明 */}
+      <ConfidenceNote r={r} />
+
+      {/* 下载区 */}
+      <DownloadSection sessionId={sessionId} />
+    </div>
+  );
+}
+
+/** 分项节能明细：表格 + 手写 SVG 柱状图（无第三方依赖） */
+function SavingsBreakdown({
+  r,
+  isRange,
+}: {
+  r: NonNullable<ResultResponse["result"]>;
+  isRange: boolean;
+}) {
+  const devices = [
+    { key: "chiller", label: "冷机" },
+    { key: "pump", label: "水泵" },
+    { key: "tower", label: "冷却塔" },
+  ] as const;
+
+  const num = (v: unknown) => (typeof v === "number" ? v : 0);
+
+  if (isRange) {
+    const bars = devices.map((d) => ({
+      label: d.label,
+      min: num(r[`${d.key}_saving_min`]),
+      max: num(r[`${d.key}_saving_max`]),
+    }));
+    const total = {
+      min: num(r.total_saving_min),
+      max: num(r.total_saving_max),
+    };
+    const peak = Math.max(1, ...bars.map((b) => b.max));
+
+    return (
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium text-green-900">📊 分项节能明细（范围）</h4>
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-green-100 text-gray-700">
+              <th className="border border-green-200 px-2 py-1 text-left">设备类型</th>
+              <th className="border border-green-200 px-2 py-1 text-right">节能量范围 (万kW·h)</th>
+              <th className="border border-green-200 px-2 py-1 text-right">下限</th>
+              <th className="border border-green-200 px-2 py-1 text-right">上限</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bars.map((b) => (
+              <tr key={b.label}>
+                <td className="border border-green-200 px-2 py-1">{b.label}</td>
+                <td className="border border-green-200 px-2 py-1 text-right">{b.min.toFixed(1)} - {b.max.toFixed(1)}</td>
+                <td className="border border-green-200 px-2 py-1 text-right">{b.min.toFixed(1)}</td>
+                <td className="border border-green-200 px-2 py-1 text-right">{b.max.toFixed(1)}</td>
+              </tr>
+            ))}
+            <tr className="font-semibold bg-green-50">
+              <td className="border border-green-200 px-2 py-1">合计</td>
+              <td className="border border-green-200 px-2 py-1 text-right">{total.min.toFixed(1)} - {total.max.toFixed(1)}</td>
+              <td className="border border-green-200 px-2 py-1 text-right">{total.min.toFixed(1)}</td>
+              <td className="border border-green-200 px-2 py-1 text-right">{total.max.toFixed(1)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <BarChart
+          title="分项节能量范围分布"
+          groups={bars.map((b) => ({ label: b.label, values: [b.min, b.max] }))}
+          seriesLabels={["下限（保守）", "上限（理想）"]}
+          seriesColors={["#86efac", "#16a34a"]}
+          peak={peak}
+        />
+      </div>
+    );
+  }
+
+  // 单值版
+  const total = num(r.total_saving);
+  const bars = devices.map((d) => ({ label: d.label, value: num(r[`${d.key}_saving`]) }));
+  const peak = Math.max(1, ...bars.map((b) => b.value));
+
+  return (
+    <div className="space-y-3">
+      <h4 className="text-sm font-medium text-green-900">📊 分项节能明细</h4>
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-green-100 text-gray-700">
+            <th className="border border-green-200 px-2 py-1 text-left">设备类型</th>
+            <th className="border border-green-200 px-2 py-1 text-right">节能量 (万kW·h)</th>
+            <th className="border border-green-200 px-2 py-1 text-right">占比</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bars.map((b) => (
+            <tr key={b.label}>
+              <td className="border border-green-200 px-2 py-1">{b.label}</td>
+              <td className="border border-green-200 px-2 py-1 text-right">{b.value.toFixed(2)}</td>
+              <td className="border border-green-200 px-2 py-1 text-right">{total > 0 ? `${((b.value / total) * 100).toFixed(1)}%` : "-"}</td>
+            </tr>
+          ))}
+          <tr className="font-semibold bg-green-50">
+            <td className="border border-green-200 px-2 py-1">合计</td>
+            <td className="border border-green-200 px-2 py-1 text-right">{total.toFixed(2)}</td>
+            <td className="border border-green-200 px-2 py-1 text-right">100%</td>
+          </tr>
+        </tbody>
+      </table>
+      <BarChart
+        title="分项节能量分布"
+        groups={bars.map((b) => ({ label: b.label, values: [b.value] }))}
+        seriesLabels={["节能量"]}
+        seriesColors={["#16a34a"]}
+        peak={peak}
+      />
+    </div>
+  );
+}
+
+/** 纯 SVG/HTML 分组柱状图（无外部依赖） */
+function BarChart({
+  title,
+  groups,
+  seriesLabels,
+  seriesColors,
+  peak,
+}: {
+  title: string;
+  groups: Array<{ label: string; values: number[] }>;
+  seriesLabels: string[];
+  seriesColors: string[];
+  peak: number;
+}) {
+  const chartHeight = 140;
+  return (
+    <div className="rounded border border-green-100 bg-white p-3">
+      <div className="text-xs font-medium text-gray-700 mb-2">{title}</div>
+      <div className="flex items-end justify-around gap-4" style={{ height: chartHeight + 24 }}>
+        {groups.map((g) => (
+          <div key={g.label} className="flex flex-col items-center gap-1 flex-1">
+            <div className="flex items-end justify-center gap-1" style={{ height: chartHeight }}>
+              {g.values.map((v, i) => (
+                <div key={i} className="flex flex-col items-center justify-end">
+                  <span className="text-[10px] text-gray-500">{v.toFixed(1)}</span>
+                  <div
+                    className="w-6 rounded-t"
+                    style={{
+                      height: Math.max(2, (v / peak) * chartHeight),
+                      backgroundColor: seriesColors[i] ?? "#16a34a",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="text-[11px] text-gray-600">{g.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-center gap-4 mt-2">
+        {seriesLabels.map((l, i) => (
+          <span key={i} className="flex items-center gap-1 text-[11px] text-gray-600">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: seriesColors[i] ?? "#16a34a" }} />
+            {l}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 置信度提示 */
+function ConfidenceNote({ r }: { r: NonNullable<ResultResponse["result"]> }) {
+  const c = r.completeness ?? 0;
+  let msg: string;
+  let cls: string;
+  if (c >= 0.9) {
+    msg = "🟢 高置信度 - 数据完整，结果可靠";
+    cls = "border-green-200 bg-green-50 text-green-800";
+  } else if (c >= 0.7) {
+    msg = "🟡 中等置信度 - 部分数据通过智能填充，建议谨慎使用";
+    cls = "border-yellow-200 bg-yellow-50 text-yellow-800";
+  } else {
+    msg = "🔴 低置信度 - 较多数据缺失，结果仅供参考";
+    cls = "border-red-200 bg-red-50 text-red-800";
+  }
+  return (
+    <div className="space-y-2">
+      {r.mock && (
+        <div className="rounded border border-yellow-200 bg-yellow-50 text-yellow-800 p-2 text-xs">
+          ⚠️ 注意：此结果为模拟数据（formulas 库不可用）
+        </div>
+      )}
+      <div className={`rounded border p-2 text-xs ${cls}`}>{msg}</div>
+    </div>
+  );
+}
+
+/** 下载区：简化版直接下载 + 完整版密码门槛 */
+function DownloadSection({ sessionId }: { sessionId: string }) {
+  const [password, setPassword] = useState<string>("");
+  const [pwError, setPwError] = useState<string>("");
+  const [verified, setVerified] = useState<boolean>(false);
+
+  const verify = useCallback(async () => {
+    setPwError("");
+    try {
+      // 用 HEAD 校验密码：命中 200 视为通过
+      const res = await fetch(resultDownloadUrl(sessionId, "calculation_result.xlsx", password), {
+        method: "HEAD",
+      });
+      if (res.ok) {
+        setVerified(true);
+      } else if (res.status === 403) {
+        setPwError("密码错误，请联系管理员");
+      } else {
+        setPwError(`校验失败：${res.status}`);
+      }
+    } catch (e) {
+      setPwError((e as Error).message);
+    }
+  }, [sessionId, password]);
+
+  return (
+    <div className="space-y-3 border-t border-green-200 pt-4">
+      <h4 className="text-sm font-medium text-green-900">📥 下载计算结果</h4>
+
+      {/* 简化版：直接下载 */}
+      <div className="flex items-center gap-3 text-sm">
+        <a
+          href={resultDownloadUrl(sessionId, "simplified_result.xlsx")}
+          className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+          download
+        >
+          下载简化版 Excel
+        </a>
+        <span className="text-xs text-gray-500">只含原始电量和节能量核心结果</span>
+      </div>
+
+      {/* 完整版：密码门槛 */}
+      <div className="rounded border border-green-100 bg-white p-3 space-y-2">
+        <div className="text-xs text-gray-600">
+          完整计算表格包含详细计算过程和中间数据，需管理员密码下载
+        </div>
+        {verified ? (
+          <a
+            href={resultDownloadUrl(sessionId, "calculation_result.xlsx", password)}
+            className="inline-block px-3 py-2 rounded bg-purple-600 text-white text-sm hover:bg-purple-700"
+            download
+          >
+            下载完整计算表格
+          </a>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="请输入管理员密码"
+              className="px-2 py-1 border border-gray-300 rounded text-sm"
+            />
+            <button
+              onClick={verify}
+              disabled={!password}
+              className="px-3 py-1 rounded bg-gray-700 text-white text-sm hover:bg-gray-800 disabled:bg-gray-300"
+            >
+              验证
+            </button>
+          </div>
+        )}
+        {pwError && <div className="text-xs text-red-600">❌ {pwError}</div>}
+      </div>
     </div>
   );
 }

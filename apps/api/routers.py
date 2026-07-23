@@ -14,6 +14,7 @@
 """
 import asyncio
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -455,6 +456,38 @@ def get_result(session_id: str):
         "formatted_result": s.get("formatted_result"),
         "filling_suggestions": s.get("filling_suggestions"),
     }
+
+
+# 允许下载的结果文件白名单
+_RESULT_DOWNLOAD_WHITELIST = {"simplified_result.xlsx", "calculation_result.xlsx"}
+# 完整计算表格需管理员密码（可用环境变量覆盖）
+_ADMIN_DOWNLOAD_PASSWORD = os.getenv("ADMIN_DOWNLOAD_PASSWORD", "admin123")
+
+
+@router.get("/download/{session_id}/{filename}", tags=["calculate"])
+def download_result(
+    session_id: str,
+    filename: str,
+    password: Optional[str] = Query(default=None),
+):
+    """下载计算结果 Excel 文件
+
+    - simplified_result.xlsx：简化版，直接下载
+    - calculation_result.xlsx：完整版，需 password 校验
+    """
+    from fastapi.responses import FileResponse
+
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if filename not in _RESULT_DOWNLOAD_WHITELIST:
+        raise HTTPException(status_code=404, detail=f"不允许下载的文件: {filename}")
+    if filename == "calculation_result.xlsx" and password != _ADMIN_DOWNLOAD_PASSWORD:
+        raise HTTPException(status_code=403, detail="密码错误或缺失")
+    fpath = s["session_dir"] / filename
+    if not fpath.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
+    return FileResponse(str(fpath), filename=filename)
 
 
 # ==================== /suggest（规则 + LLM 增强填充建议） ====================

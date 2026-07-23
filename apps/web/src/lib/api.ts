@@ -56,11 +56,21 @@ export interface ResultResponse {
     energy_saving_rate_min?: number;
     energy_saving_rate_max?: number;
     total_saving?: number;
+    total_saving_min?: number;
+    total_saving_max?: number;
     chiller_saving?: number;
+    chiller_saving_min?: number;
+    chiller_saving_max?: number;
     pump_saving?: number;
+    pump_saving_min?: number;
+    pump_saving_max?: number;
     tower_saving?: number;
+    tower_saving_min?: number;
+    tower_saving_max?: number;
     completeness?: number;
     filled_count?: number;
+    calculation_method?: string;
+    mock?: boolean;
     [key: string]: unknown;
   };
   formatted_result?: unknown;
@@ -413,4 +423,18 @@ export async function fetchSimResult(sessionId: string): Promise<SimResult | nul
   if (res.status === 404 || res.status === 409) return null;
   if (!res.ok) throw new Error(`获取仿真结果失败: ${res.status}`);
   return res.json();
+}
+
+/** 构造计算结果 Excel 下载 URL
+ *
+ * - simplified_result.xlsx：简化版，直接下载
+ * - calculation_result.xlsx：完整版，需传 password 校验
+ */
+export function resultDownloadUrl(
+  sessionId: string,
+  filename: string,
+  password?: string
+): string {
+  const q = password ? `?password=${encodeURIComponent(password)}` : "";
+  return `${API_BASE}/download/${sessionId}/${filename}${q}`;
 }
