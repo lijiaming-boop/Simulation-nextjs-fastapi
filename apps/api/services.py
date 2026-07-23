@@ -95,117 +95,36 @@ def _run_extract_in_thread(
             loop.call_soon_threadsafe(q.put_nowait, event)
 
     try:
-        # === 空调场景：直接 subprocess 调脚本 ===
-        # 绕过 Claude Agent SDK（SDK 的认证与自定义代理端点不兼容）
-        # 脚本 extract_and_check_data.py 是纯 Python + openpyxl，无需 LLM
+        # === 空调场景：Claude Agent SDK 调技能（脚本为纯 Python，无需 LLM） ===
         if module_type == "air_conditioner":
-            script = PROJECT_ROOT / ".claude" / "skills" / "extract-and-check-data" / "scripts" / "extract_and_check_data.py"
-            cmd = [sys.executable, str(script), str(input_path), str(output_json_path), original_filename]
+            ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 开始提取数据（Claude Agent SDK）...")
 
-            ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 开始提取数据（subprocess 直调脚本）...")
-
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller.call_skill(
+                "extract-and-check-data",
+                str(input_path),
+                str(output_json_path),
+                original_filename,
+                callback=ai_callback,
             )
-
-            # 流式读取 stdout，推送到 SSE
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                if line:
-                    ai_callback(datetime.now().strftime("%H:%M:%S"), line)
-
-            proc.wait()
-
-            if proc.returncode != 0:
-                stderr = proc.stderr.read() if proc.stderr else ""
-                raise SkillError(f"脚本退出码 {proc.returncode}: {stderr[:500]}")
 
             if not output_json_path.exists():
-                raise SkillError(f"脚本执行完成但未生成输出: {output_json_path}")
+                raise SkillError(f"技能执行完成但未生成输出: {output_json_path}")
         else:
-            # === 空压场景：subprocess 文本提取 + SkillCaller(SDK) 结构化分析 ===
-            session_dir = session_store.get(session_id)["session_dir"]
-            text_json_path = session_dir / "extracted_air_compressor_text.json"
+            # === 空压场景：Claude Agent SDK 一次完成文本提取 + 结构化 ===
+            ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 [空压] 提取结构化数据（Claude Agent SDK）...")
 
-            ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 [空压] Step 1: 文本提取（subprocess）...")
-            text_script = (
-                PROJECT_ROOT
-                / ".claude"
-                / "skills"
-                / "extract-air-compressor-data-llm"
-                / "scripts"
-                / "extract_air_compressor_data_llm.py"
-            )
-            cmd = [
-                sys.executable,
-                str(text_script),
+            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller.call_skill(
+                "extract-air-compressor-data-llm",
                 str(input_path),
-                str(text_json_path),
+                str(output_json_path),
                 original_filename,
-            ]
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                if line:
-                    ai_callback(datetime.now().strftime("%H:%M:%S"), line)
-            proc.wait()
-            if proc.returncode != 0:
-                stderr = proc.stderr.read() if proc.stderr else ""
-                raise SkillError(f"文本提取脚本退出码 {proc.returncode}: {stderr[:500]}")
-            if not text_json_path.exists():
-                raise SkillError("文本提取脚本执行完成但未生成输出")
-
-            # 读取提取的文本
-            with open(text_json_path, "r", encoding="utf-8") as f:
-                text_data = json.load(f)
-            text_content = text_data.get("text_content", "")
-            ai_callback(
-                datetime.now().strftime("%H:%M:%S"),
-                f"✅ 文本提取完成（{len(text_content)} 字符）",
+                callback=ai_callback,
             )
 
-            # Step 2: LLM 结构化分析（走 Claude Agent SDK）
-            ai_callback(datetime.now().strftime("%H:%M:%S"), "🤖 [空压] Step 2: LLM 结构化分析...")
-
-            client = SkillCaller(timeout=180, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
-            system_prompt = _build_air_compressor_extract_prompt()
-            user_prompt = (
-                f"以下是空压机调研表的文本内容，请按照系统指令提取结构化数据并以 JSON 格式输出。\n\n"
-                f"原始文件名: {original_filename}\n\n"
-                f"【文本内容】\n{text_content[:6000]}"
-            )
-            llm_text = client.create_message(
-                user_prompt,
-                system=system_prompt,
-                max_tokens=2000,
-            )
-            ai_callback(
-                datetime.now().strftime("%H:%M:%S"),
-                f"✅ LLM 分析完成（{len(llm_text)} 字符）",
-            )
-
-            # 解析 LLM 输出为 JSON
-            extracted_json = _parse_llm_json_output(llm_text)
-            with open(output_json_path, "w", encoding="utf-8") as f:
-                json.dump(extracted_json, f, ensure_ascii=False, indent=2)
-            ai_callback(
-                datetime.now().strftime("%H:%M:%S"),
-                "✅ 结构化数据已写入 " + output_json_path.name,
-            )
+            if not output_json_path.exists():
+                raise SkillError(f"技能执行完成但未生成输出: {output_json_path}")
 
         # 读取输出 JSON
         with open(output_json_path, "r", encoding="utf-8") as f:
@@ -263,7 +182,7 @@ def start_extract(
     if module_type == "air_conditioner":
         output_json_path = session_store.get(session_id)["session_dir"] / "extracted_data.json"
     else:
-        output_json_path = session_store.get(session_id)["session_dir"] / "extracted_air_compressor_text.json"
+        output_json_path = session_store.get(session_id)["session_dir"] / "extracted_air_compressor_data.json"
 
     # 注入主事件循环（线程内 put_nowait 需要用）
     session_store._main_loop = main_loop
@@ -663,143 +582,6 @@ def start_suggest(
     )
     t.start()
     _suggest_tasks[session_id] = t
-
-
-# ==================== 空压机辅助函数 ====================
-
-def _build_air_compressor_extract_prompt() -> str:
-    """构建空压机数据提取的 LLM 系统提示词
-
-    内容基于 .claude/skills/extract-air-compressor-data-llm/SKILL.md
-    """
-    return """你是空压机调研表数据提取专家。请从用户提供的文本内容中提取结构化数据。
-
-## 输出格式
-严格按以下 JSON 格式输出：
-{
-  "rawData": {
-    "projectLevel": {
-      "companyName": "企业名称",
-      "companyShortName": "企业简称",
-      "projectName": "项目名称",
-      "projectLocation": "项目所在地",
-      "industryType": "行业类型",
-      "totalAnnualEnergyConsumption": 数值,
-      "electricityPrice": 数值,
-      "alarmPressureLowerLimit": 数值,
-      "averagePressure": 数值,
-      "dailyRunningHours": 数值,
-      "annualRunningDays": 数值
-    },
-    "equipmentLevel": [
-      {
-        "stationId": "站房编码",
-        "equipmentId": "设备编码",
-        "equipmentType": "螺杆|离心",
-        "brand": "品牌",
-        "model": "型号",
-        "manufactureYear": 数值,
-        "runningStatus": "运行|备用|故障|停用",
-        "ratedPower": 数值(kW),
-        "ratedFlow": 数值(m³/min)
-      }
-    ]
-  },
-  "rejectionCheck": {
-    "shouldReject": false,
-    "criticalIssues": [],
-    "highSeverityIssues": []
-  },
-  "quality_report": {
-    "completeness": 0.85,
-    "confidence": "high|medium|low",
-    "issues": []
-  }
-}
-
-## 提取规则
-1. 数值字段只提取纯数字，缺失设null
-2. industryType 必须为: 电池|整车及电子|钢铁有色|其他
-3. 设备runningStatus: 运行|备用|故障|停用
-4. equipmentType: 螺杆|离心
-
-## 行业归类
-- 电池/锂电/储能 → 电池
-- 整车/汽车/电子制造 → 整车及电子
-- 钢铁/冶金/有色 → 钢铁有色
-- 其他所有 → 其他
-
-## 打回条件（shouldReject=true）
-1. alarmPressureLowerLimit 空或≤0
-2. averagePressure 空或≤0
-3. totalAnnualEnergyConsumption 空或≤0
-4. 无运行/备用设备
-5. stationId 为空
-6. equipmentId 重复或空
-
-## 电价参考（元/kWh）
-广东0.69 江苏0.70 浙江0.73 上海0.75 山东0.74
-四川0.52 重庆0.70 福建0.63 湖北0.64 湖南0.65
-
-## 功率因子查表
-三星/国产/复盛 机龄>10年: 0.32
-寿力/韩华: 0.34
-阿特拉斯/英格索兰 5-10年: 0.35, <5年: 0.36
-默认: 0.35
-
-## 比功率计算
-specificPower = (ratedPower × 1.1) / ratedFlow
-
-## 置信度
-从100%起扣: 压力数据<14天-5%, 行业缺失-15%, 电价缺失-10%, 每天开机时间缺失-5%, 年运行天数缺失-5%
-≥80%=high, 60-79%=medium, <60%=low
-
-只输出 JSON，不要其他文字。"""
-
-
-def _parse_llm_json_output(llm_text: str) -> dict:
-    """从 LLM 输出中解析 JSON，支持代码块包裹"""
-    import re
-
-    text = llm_text.strip()
-
-    # 尝试直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 尝试从 ```json ... ``` 中提取
-    m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # 尝试找到第一个 { 和最后一个 }
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    # 兆底：返回空结构
-    return {
-        "rawData": {"projectLevel": {}, "equipmentLevel": []},
-        "rejectionCheck": {
-            "shouldReject": True,
-            "criticalIssues": ["LLM 输出无法解析为 JSON"],
-            "highSeverityIssues": [],
-        },
-        "quality_report": {
-            "completeness": 0,
-            "confidence": "low",
-            "issues": [{"field": "system", "severity": "critical", "description": "LLM 输出解析失败"}],
-        },
-    }
 
 
 # ==================== 仿真模块服务函数 ====================

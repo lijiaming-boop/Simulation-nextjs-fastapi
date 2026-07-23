@@ -368,6 +368,28 @@ class SkillCaller:
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 
+        elif skill_name == "extract-air-compressor-data-llm":
+            if len(args) < 2:
+                raise SkillError(
+                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
+                )
+            original = args[2] if len(args) >= 3 else Path(args[0]).name
+            text_tmp = str(Path(args[1]).with_suffix(".text.json"))
+            return (
+                f"请使用 extract-air-compressor-data-llm skill 从空压机调研表中提取结构化数据并做质量检查。\n\n"
+                f"## 步骤\n"
+                f"1. 用 Bash 执行文本提取脚本（纯 Python，无需 LLM）：\n"
+                f"   python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py "
+                f'"{args[0]}" "{text_tmp}" "{original}"\n'
+                f"2. 用 Read 读取 {text_tmp} 中的 text_content 字段\n"
+                f"3. 严格按 SKILL.md 定义的 JSON 格式，从文本中提取 rawData、rejectionCheck 和 quality_report\n"
+                f"4. 用 Write 工具把最终结构化 JSON 写入：{args[1]}\n\n"
+                f"## 要求\n"
+                f"- 必须使用 Write 工具把完整 JSON 写入 {args[1]}，不要只输出 JSON 文本\n"
+                f"- 数值字段只保留纯数字（去除单位），缺失设为 null\n"
+                f"- 原始文件名: {original}"
+            )
+
         elif skill_name == "plant-simulation":
             if len(args) < 3:
                 raise SkillError(
