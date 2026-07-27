@@ -35,8 +35,8 @@ export default function Workflow({
 }: {
   moduleType: "air_conditioner" | "air_compressor";
   title: string;
-  /** 空调计算完成后点击"进入仿真"的回调（传入节能率） */
-  onEnterSimulation?: (savingRate: number) => void;
+  /** 空调计算完成后点击"进入仿真"的回调（传入节能率 + 当前 sessionId） */
+  onEnterSimulation?: (savingRate: number, sourceSessionId: string) => void;
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string>("");
@@ -479,7 +479,7 @@ function ResultPanel({
   r: NonNullable<ResultResponse["result"]>;
   sessionId: string;
   moduleType: "air_conditioner" | "air_compressor";
-  onEnterSimulation?: (savingRate: number) => void;
+  onEnterSimulation?: (savingRate: number, sourceSessionId: string) => void;
 }) {
   if (moduleType === "air_compressor") {
     return <CompressorResultPanel r={r} sessionId={sessionId} />;
@@ -495,7 +495,7 @@ function AcResultPanel({
 }: {
   r: NonNullable<ResultResponse["result"]>;
   sessionId: string;
-  onEnterSimulation?: (savingRate: number) => void;
+  onEnterSimulation?: (savingRate: number, sourceSessionId: string) => void;
 }) {
   const isRange = r.chiller_saving_min != null;
 
@@ -540,7 +540,7 @@ function AcResultPanel({
       {onEnterSimulation && r.energy_saving_rate != null && (
         <div className="pt-3 border-t border-green-200">
           <button
-            onClick={() => onEnterSimulation(r.energy_saving_rate!)}
+            onClick={() => onEnterSimulation(r.energy_saving_rate!, sessionId)}
             className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
           >
             🔬 进入冷站仿真（节能率 {(r.energy_saving_rate * 100).toFixed(1)}%）

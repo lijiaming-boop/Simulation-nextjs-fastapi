@@ -341,12 +341,13 @@ export interface SimComparison {
 
 /** 初始化仿真 session */
 export async function initSimSession(
-  simMode: "new_station" | "old_station" = "new_station"
-): Promise<{ session_id: string; sim_mode: string; sim_stage: string }> {
+  simMode: "new_station" | "old_station" = "new_station",
+  sourceSessionId?: string
+): Promise<{ session_id: string; sim_mode: string; sim_stage: string; status?: string; stream_url?: string }> {
   const res = await fetch(`${API_BASE}/sim/init`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sim_mode: simMode }),
+    body: JSON.stringify({ sim_mode: simMode, source_session_id: sourceSessionId ?? null }),
   });
   if (!res.ok) throw new Error(`初始化仿真失败: ${res.status} ${await res.text()}`);
   return res.json();

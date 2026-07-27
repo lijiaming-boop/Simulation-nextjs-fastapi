@@ -594,6 +594,7 @@ def get_suggest(session_id: str):
 
 class SimInitRequest(BaseModel):
     sim_mode: str = Field(default="new_station", description="new_station | old_station")
+    source_session_id: Optional[str] = Field(default=None, description="关联的空调 session，自动复制调研表")
 
 
 class SimTopologyParseRequest(BaseModel):
@@ -606,12 +607,40 @@ class SimOperatingRequest(BaseModel):
 
 
 @router.post("/sim/init", tags=["simulation"])
-def sim_init(body: SimInitRequest, user: dict = Depends(get_current_user)):
-    """创建仿真专用 session（无需上传调研表）"""
+async def sim_init(body: SimInitRequest, user: dict = Depends(get_current_user)):
+    """创建仿真专用 session（无需上传调研表）
+
+    如果传入 source_session_id，自动从空调 session 复制调研表并触发拓扑识别。
+    """
     session_id = session_store.init_sim_session(
         user_id=user.get("sub") or user.get("id"),
         sim_mode=body.sim_mode,
     )
+
+    # 如果有关联的空调 session，自动复制调研表并触发拓扑提取
+    if body.source_session_id:
+        src = session_store.get(body.source_session_id)
+        if src:
+            src_dir: Path = src["session_dir"]
+            dst_dir: Path = session_store.get(session_id)["session_dir"]
+            # 查找源 session 中的调研表文件
+            survey_candidates = list(src_dir.glob("*.xlsx")) + list(src_dir.glob("*.xls"))
+            if survey_candidates:
+                import shutil
+                src_file = survey_candidates[0]
+                dst_file = dst_dir / "upload_survey.xlsx"
+                shutil.copy2(str(src_file), str(dst_file))
+                # 自动触发拓扑提取
+                main_loop = asyncio.get_running_loop()
+                start_sim_topology_extract(session_id, dst_file, main_loop)
+                return {
+                    "session_id": session_id,
+                    "sim_mode": body.sim_mode,
+                    "sim_stage": "topology",
+                    "status": "extracting_topology",
+                    "stream_url": f"/api/extract/{session_id}/stream",
+                }
+
     return {
         "session_id": session_id,
         "sim_mode": body.sim_mode,

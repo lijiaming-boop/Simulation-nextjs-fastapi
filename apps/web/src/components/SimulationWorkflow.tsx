@@ -29,11 +29,13 @@ interface SimulationWorkflowProps {
   initialMode?: "new_station" | "old_station";
   /** 从空调模块传递的节能率 */
   initialSavingRate?: number;
+  /** 关联的空调 session ID，用于自动复制调研表 */
+  sourceSessionId?: string;
   /** 清除初始参数的回调 */
   onClearInitial?: () => void;
 }
 
-export function SimulationWorkflow({ initialMode, initialSavingRate, onClearInitial }: SimulationWorkflowProps) {
+export function SimulationWorkflow({ initialMode, initialSavingRate, sourceSessionId, onClearInitial }: SimulationWorkflowProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [simState, setSimState] = useState<SimState | null>(null);
   const [aiLogs, setAiLogs] = useState<string[]>([]);
@@ -46,8 +48,35 @@ export function SimulationWorkflow({ initialMode, initialSavingRate, onClearInit
     setLoading(true);
     setError(null);
     try {
-      const res = await initSimSession(simMode);
+      const res = await initSimSession(simMode, sourceSessionId);
       setSessionId(res.session_id);
+      // 如果后端自动触发了拓扑提取，订阅日志流
+      if (res.status === "extracting_topology") {
+        setAiLogs([]);
+        const unsub = subscribeExtractStream(res.session_id, (ev) => {
+          if (ev.type === "log" && ev.message) {
+            setAiLogs((prev) => [...prev, `[${ev.timestamp}] ${ev.message}`]);
+          }
+          if (ev.type === "done" || ev.type === "error") {
+            setTimeout(() => {
+              fetchSimState(res.session_id).then(setSimState).catch(() => {});
+            }, 500);
+          }
+        });
+        // 同时轮询状态
+        const interval = setInterval(async () => {
+          try {
+            const state = await fetchSimState(res.session_id);
+            setSimState(state);
+            if (state.sim_stage !== "topology" || !state.is_running) {
+              clearInterval(interval);
+              unsub();
+            }
+          } catch {
+            // ignore
+          }
+        }, 3000);
+      }
       const state = await fetchSimState(res.session_id);
       setSimState(state);
     } catch (e) {

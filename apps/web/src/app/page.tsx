@@ -9,6 +9,7 @@ type Module = "home" | "ac" | "compressor" | "simulation";
 export default function Home() {
   const [module, setModule] = useState<Module>("home");
   const [simSavingRate, setSimSavingRate] = useState<number | undefined>(undefined);
+  const [simSourceSessionId, setSimSourceSessionId] = useState<string | undefined>(undefined);
 
   if (module === "ac" || module === "compressor") {
     const title = module === "ac" ? "空调节能率计算" : "空压机节能率计算";
@@ -23,8 +24,9 @@ export default function Home() {
         <Workflow
           moduleType={moduleType}
           title={title}
-          onEnterSimulation={module === "ac" ? (rate) => {
+          onEnterSimulation={module === "ac" ? (rate, srcId) => {
             setSimSavingRate(rate);
+            setSimSourceSessionId(srcId);
             setModule("simulation");
           } : undefined}
         />
@@ -43,7 +45,8 @@ export default function Home() {
         <SimulationWorkflow
           initialMode={simSavingRate != null ? "old_station" : undefined}
           initialSavingRate={simSavingRate}
-          onClearInitial={() => setSimSavingRate(undefined)}
+          sourceSessionId={simSourceSessionId}
+          onClearInitial={() => { setSimSavingRate(undefined); setSimSourceSessionId(undefined); }}
         />
       </div>
     );
