@@ -8,6 +8,7 @@ type Module = "home" | "ac" | "compressor" | "simulation";
 
 export default function Home() {
   const [module, setModule] = useState<Module>("home");
+  const [simSavingRate, setSimSavingRate] = useState<number | undefined>(undefined);
 
   if (module === "ac" || module === "compressor") {
     const title = module === "ac" ? "空调节能率计算" : "空压机节能率计算";
@@ -19,7 +20,14 @@ export default function Home() {
             ← 返回首页
           </button>
         </nav>
-        <Workflow moduleType={moduleType} title={title} />
+        <Workflow
+          moduleType={moduleType}
+          title={title}
+          onEnterSimulation={module === "ac" ? (rate) => {
+            setSimSavingRate(rate);
+            setModule("simulation");
+          } : undefined}
+        />
       </div>
     );
   }
@@ -32,7 +40,11 @@ export default function Home() {
             ← 返回首页
           </button>
         </nav>
-        <SimulationWorkflow />
+        <SimulationWorkflow
+          initialMode={simSavingRate != null ? "old_station" : undefined}
+          initialSavingRate={simSavingRate}
+          onClearInitial={() => setSimSavingRate(undefined)}
+        />
       </div>
     );
   }

@@ -28,7 +28,16 @@ type Stage =
   | "done"
   | "error";
 
-export default function Workflow({ moduleType, title }: { moduleType: "air_conditioner" | "air_compressor"; title: string }) {
+export default function Workflow({
+  moduleType,
+  title,
+  onEnterSimulation,
+}: {
+  moduleType: "air_conditioner" | "air_compressor";
+  title: string;
+  /** 空调计算完成后点击"进入仿真"的回调（传入节能率） */
+  onEnterSimulation?: (savingRate: number) => void;
+}) {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>("");
@@ -348,7 +357,12 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
         </button>
 
         {result?.result && (
-          <ResultPanel r={result.result} sessionId={sessionId} moduleType={moduleType} />
+          <ResultPanel
+            r={result.result}
+            sessionId={sessionId}
+            moduleType={moduleType}
+            onEnterSimulation={onEnterSimulation}
+          />
         )}
       </section>
 
@@ -460,24 +474,28 @@ function ResultPanel({
   r,
   sessionId,
   moduleType,
+  onEnterSimulation,
 }: {
   r: NonNullable<ResultResponse["result"]>;
   sessionId: string;
   moduleType: "air_conditioner" | "air_compressor";
+  onEnterSimulation?: (savingRate: number) => void;
 }) {
   if (moduleType === "air_compressor") {
     return <CompressorResultPanel r={r} sessionId={sessionId} />;
   }
-  return <AcResultPanel r={r} sessionId={sessionId} />;
+  return <AcResultPanel r={r} sessionId={sessionId} onEnterSimulation={onEnterSimulation} />;
 }
 
 /** 空调节能结果：指标 + 冷机/水泵/冷却塔分项明细 + 下载 */
 function AcResultPanel({
   r,
   sessionId,
+  onEnterSimulation,
 }: {
   r: NonNullable<ResultResponse["result"]>;
   sessionId: string;
+  onEnterSimulation?: (savingRate: number) => void;
 }) {
   const isRange = r.chiller_saving_min != null;
 
@@ -517,6 +535,21 @@ function AcResultPanel({
 
       {/* 下载区 */}
       <DownloadSection sessionId={sessionId} />
+
+      {/* 进入仿真 */}
+      {onEnterSimulation && r.energy_saving_rate != null && (
+        <div className="pt-3 border-t border-green-200">
+          <button
+            onClick={() => onEnterSimulation(r.energy_saving_rate!)}
+            className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+          >
+            🔬 进入冷站仿真（节能率 {(r.energy_saving_rate * 100).toFixed(1)}%）
+          </button>
+          <p className="text-xs text-gray-500 mt-1">
+            基于本次计算结果，进入旧站房仿真模式进行 8760h 全年仿真对比
+          </p>
+        </div>
+      )}
     </div>
   );
 }

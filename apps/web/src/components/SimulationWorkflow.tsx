@@ -24,13 +24,22 @@ const STAGES: { key: SimStageKey; label: string }[] = [
 
 const STAGE_ORDER: SimStageKey[] = ["topology", "cop_curves", "operating", "simulate", "done"];
 
-export function SimulationWorkflow() {
+interface SimulationWorkflowProps {
+  /** 从空调模块跳转时预设的模式（old_station） */
+  initialMode?: "new_station" | "old_station";
+  /** 从空调模块传递的节能率 */
+  initialSavingRate?: number;
+  /** 清除初始参数的回调 */
+  onClearInitial?: () => void;
+}
+
+export function SimulationWorkflow({ initialMode, initialSavingRate, onClearInitial }: SimulationWorkflowProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [simState, setSimState] = useState<SimState | null>(null);
   const [aiLogs, setAiLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [simMode, setSimMode] = useState<"new_station" | "old_station">("new_station");
+  const [simMode, setSimMode] = useState<"new_station" | "old_station">(initialMode || "new_station");
 
   // 初始化 session
   const handleInit = useCallback(async () => {
@@ -90,12 +99,19 @@ export function SimulationWorkflow() {
 
   // 初始状态：选择模式
   if (!sessionId) {
+    const fromAC = initialSavingRate != null;
     return (
       <div className="max-w-2xl mx-auto p-8">
         <h2 className="text-xl font-bold mb-4">冷站性能仿真</h2>
         <p className="text-sm text-gray-600 mb-6">
           选择仿真模式后开始，系统将引导你完成拓扑收集 → 性能曲线 → 工况需求 → 仿真执行四步流程。
         </p>
+        {fromAC && (
+          <div className="mb-4 p-3 rounded bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm">
+            ✅ 已从空调模块带入节能率 <strong>{(initialSavingRate * 100).toFixed(1)}%</strong>，
+            将自动选择旧站房仿真模式。
+          </div>
+        )}
         <div className="flex gap-4 mb-4">
           <label className="flex items-center gap-2">
             <input
@@ -116,7 +132,10 @@ export function SimulationWorkflow() {
         </div>
         {error && <div className="text-red-600 text-sm mb-4">{error}</div>}
         <button
-          onClick={handleInit}
+          onClick={() => {
+            if (fromAC) onClearInitial?.();
+            handleInit();
+          }}
           disabled={loading}
           className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
         >
