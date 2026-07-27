@@ -1,6 +1,7 @@
 """空压机节能率计算器"""
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 from openpyxl import load_workbook
@@ -17,8 +18,9 @@ class AirCompressorCalculator:
         self.template_dir = project_root / "00_sample" / "模板测算表"
         self.scheme_template_path = self.template_dir / "空压系统数智化升级方案模板.docx"
         self.quotation_template_path = self.template_dir / "2026年空压云智控报价模板.xlsx"
-        # 报价单固定输出文件名（供下载白名单匹配）
+        # 固定输出文件名（供下载白名单匹配）
         self.quotation_filename = "air_compressor_quotation.xlsx"
+        self.scheme_filename = "air_compressor_scheme.docx"
     
     def calculate(self, filled_data_path: str, result_path: str) -> str:
         """执行空压机节能率计算
@@ -188,16 +190,123 @@ class AirCompressorCalculator:
     
     def _generate_scheme_document(self, filled_data: dict, result: dict):
         """生成空压系统数智化升级方案文档
-        
+
+        基于 docx 模板将正文段落中的【】占位符替换为实际项目数据，
+        固定输出到会话目录，供前端下载。为避免破坏附录中的
+        「模板变量与数据字段对照表」，只替换正文段落，不动表格。
+
         Args:
             filled_data: 填充后的数据
             result: 计算结果
         """
-        # 这里需要实现文档生成逻辑
-        # 可以使用 python-docx 库来处理 Word 文档
-        # 由于模板处理较为复杂，此处仅做示例
-        print("正在生成空压系统数智化升级方案文档...")
-        
+        if not self.scheme_template_path.exists():
+            print(f"方案模板不存在: {self.scheme_template_path}")
+            return None
+
+        session_dir = Path(filled_data.get("session_dir", "."))
+        scheme_path = session_dir / self.scheme_filename
+
+        try:
+            from docx import Document
+        except ImportError:
+            print("生成方案文档需要 python-docx，已跳过")
+            return None
+
+        try:
+            mapping = self._build_scheme_mapping(filled_data, result)
+            document = Document(self.scheme_template_path)
+            # 仅替换正文段落（跳过附录的变量对照表格）
+            for paragraph in document.paragraphs:
+                self._fill_paragraph(paragraph, mapping)
+            document.save(scheme_path)
+            print(f"方案文档已生成: {scheme_path}")
+            return str(scheme_path)
+        except Exception as e:
+            print(f"生成方案文档失败: {str(e)}")
+            return None
+
+    @staticmethod
+    def _fill_paragraph(paragraph, mapping: dict):
+        """将段落中的【】占位符替换为实际值。
+
+        占位符可能被拆分到多个 run，因此先合并整段文本再重写，
+        保留首个 run 的格式。
+        """
+        text = paragraph.text
+        if "【" not in text:
+            return
+        for key, value in mapping.items():
+            text = text.replace(key, value)
+        runs = paragraph.runs
+        if runs:
+            runs[0].text = text
+            for run in runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(text)
+
+    def _build_scheme_mapping(self, filled_data: dict, result: dict) -> dict:
+        """构造方案文档占位符到实际值的映射表"""
+        info = filled_data.get("system_info", {})
+        equipment_list = filled_data.get("equipment_list", [])
+        compressors = [
+            eq for eq in equipment_list
+            if eq.get("equipmentType") in ("螺杆式", "离心式")
+        ]
+
+        company = info.get("customer_name") or info.get("project_name") or "客户"
+        centrifugal_count = sum(1 for eq in compressors if eq.get("equipmentType") == "离心式")
+        screw_count = sum(1 for eq in compressors if eq.get("equipmentType") == "螺杆式")
+        vfd_count = sum(
+            1 for eq in compressors
+            if eq.get("isVariableFrequency") or eq.get("isVFD")
+            or "变频" in str(eq.get("model", ""))
+        )
+        station_ids = {
+            eq.get("stationId") for eq in compressors if eq.get("stationId") is not None
+        }
+        station_count = len(station_ids) if station_ids else 1
+
+        # 能耗与节能（result 中为 kWh 原始值，转为万 kWh）
+        annual_energy_wan = result.get("current_total_energy", 0) / 10000
+        saving_wan = result.get("energy_saving", 0) / 10000
+        rate_pct = result.get("energy_saving_rate", 0) * 100
+
+        # 电价：优先用填充后的值，否则默认 0.6 元/kWh
+        try:
+            price = float(filled_data.get("electricityPrice") or 0.6)
+        except (TypeError, ValueError):
+            price = 0.6
+        annual_cost_wan = annual_energy_wan * price
+        saving_cost_wan = saving_wan * price
+
+        # 系统平均压力：优先用填充后的值
+        try:
+            avg_pressure = float(filled_data.get("averagePressure") or 0)
+        except (TypeError, ValueError):
+            avg_pressure = 0
+        avg_pressure_str = f"{avg_pressure:.1f}" if avg_pressure > 0 else "7.0"
+
+        return {
+            "【企业名称】": str(company),
+            "【站房数量】": str(station_count),
+            "【空压机总台数】": str(len(compressors)),
+            "【离心机台数】": str(centrifugal_count),
+            "【螺杆机台数】": str(screw_count),
+            "【变频机台数】": str(vfd_count),
+            "【数据时间段】": f"{datetime.now().year}年",
+            "【年耗电量(万kWh)】": f"{annual_energy_wan:.1f}",
+            "【电价(元/kWh)】": f"{price:.3f}",
+            "【年电费(万元)】": f"{annual_cost_wan:.1f}",
+            "【节电量(万kWh)】": f"{saving_wan:.1f}",
+            "【节能率(%)】": f"{rate_pct:.1f}",
+            "【年节能费用(万元)】": f"{saving_cost_wan:.1f}",
+            "【螺杆机组压力范围(bar)】": "7.0-7.5",
+            "【离心机压力设定(bar)】": "7.0",
+            "【系统平均压力(bar)】": avg_pressure_str,
+            "【螺杆机平均加载率(%)】": "75",
+        }
+
     def _generate_quotation(self, filled_data: dict, result: dict):
         """生成报价单
 
