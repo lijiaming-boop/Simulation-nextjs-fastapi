@@ -234,7 +234,20 @@ export interface SimState {
   sim_operating_conditions: SimOperating | null;
   sim_result: SimResult | null;
   sim_project_name: string;
+  /** 基准工况年耗电量（单位 kWh，仅 old_station） */
+  sim_baseline_power_kwh?: number | null;
+  /** 优化方案列表（仅 old_station） */
+  sim_schemes?: SimScheme[];
   is_running: boolean;
+}
+
+/** 优化方案定义 */
+export interface SimScheme {
+  id: string; // "A" / "B" / "C" ...
+  name: string; // 方案中文名
+  description: string; // 改造措施描述
+  target_saving_rate_pct: number; // 期望节能率（%）
+  intervention_tags?: string[]; // 控制策略标签提示
 }
 
 export interface SimTopology {
@@ -302,6 +315,26 @@ export interface SimResult {
     annual_saving_yuan?: number;
     [key: string]: unknown;
   };
+  /** 多方案对比汇总（仅 old_station + baseline+schemes 模式） */
+  comparison?: SimComparison;
+}
+
+/** 多方案对比汇总结构 */
+export interface SimPlanSummary {
+  label: string;
+  annual_total_power_kwh: number;
+  annual_chiller_power_kwh?: number;
+  annual_chw_pump_power_kwh?: number;
+  annual_cw_pump_power_kwh?: number;
+  annual_tower_power_kwh?: number;
+  annual_weighted_system_cop?: number;
+  [key: string]: unknown;
+}
+
+export interface SimComparison {
+  baseline: SimPlanSummary;
+  /** plan_A, plan_B, ... 动态 key（SimPlanSummary）；其他为数字或 tuning_log */
+  [planKey: string]: SimPlanSummary | number | Record<string, unknown> | undefined;
 }
 
 /** 初始化仿真 session */
@@ -417,6 +450,34 @@ export async function saveOperating(sessionId: string, data: SimOperating): Prom
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`保存工况失败: ${res.status}`);
+  return res.json();
+}
+
+/** 保存基准工况耗电量（仅 old_station） */
+export async function saveBaseline(
+  sessionId: string,
+  baselinePowerKwh: number
+): Promise<{ status: string; baseline_power_kwh: number }> {
+  const res = await fetch(`${API_BASE}/sim/baseline/${sessionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ baseline_power_kwh: baselinePowerKwh }),
+  });
+  if (!res.ok) throw new Error(`保存基准耗电量失败: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+/** 保存优化方案列表（仅 old_station） */
+export async function saveSchemes(
+  sessionId: string,
+  schemes: SimScheme[]
+): Promise<{ status: string; count: number }> {
+  const res = await fetch(`${API_BASE}/sim/schemes/${sessionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ schemes }),
+  });
+  if (!res.ok) throw new Error(`保存优化方案失败: ${res.status} ${await res.text()}`);
   return res.json();
 }
 

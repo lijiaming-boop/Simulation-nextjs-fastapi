@@ -55,6 +55,9 @@ class SessionStore:
             "sim_operating_conditions": None,
             "sim_result": None,
             "sim_project_name": "",
+            # === 多方案对比（仅 old_station） ===
+            "sim_baseline_power_kwh": None,
+            "sim_schemes": [],
         }
         return session_id
 
@@ -85,6 +88,8 @@ class SessionStore:
             "sim_operating_conditions": None,
             "sim_result": None,
             "sim_project_name": "",
+            "sim_baseline_power_kwh": None,
+            "sim_schemes": [],
         }
         return session_id
 

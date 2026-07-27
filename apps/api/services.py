@@ -805,6 +805,21 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
             "operating_conditions": s.get("sim_operating_conditions"),
         }
 
+        # old_station 多方案对比：追加基线耗电量 + 方案列表
+        if sim_mode == "old_station":
+            baseline = s.get("sim_baseline_power_kwh")
+            schemes = s.get("sim_schemes") or []
+            if baseline is None or baseline <= 0:
+                raise ValueError("old_station 模式缺少基准工况耗电量（sim_baseline_power_kwh）")
+            if not schemes:
+                raise ValueError("old_station 模式缺少优化方案（sim_schemes 不能为空）")
+            sim_input["baseline_power_kwh"] = baseline
+            sim_input["schemes"] = schemes
+            cb(
+                datetime.now().strftime("%H:%M:%S"),
+                f"📊 多方案对比模式：基准 {baseline/10000:.2f}万 kWh + {len(schemes)} 个优化方案",
+            )
+
         input_path = session_dir / "sim_input_all.json"
         with open(input_path, "w", encoding="utf-8") as f:
             json.dump(sim_input, f, ensure_ascii=False, indent=2)
@@ -838,12 +853,58 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
             with open(summary_files[0], "r", encoding="utf-8") as f:
                 result["summary"] = json.load(f)
 
+        # 多方案对比汇总（优先）
+        comparison_files = list(output_dir.glob("*comparison_summary*.json"))
+        if comparison_files:
+            with open(comparison_files[0], "r", encoding="utf-8") as f:
+                result["comparison"] = json.load(f)
+
         s["sim_result"] = result
         s["sim_stage"] = "done"
         cb(datetime.now().strftime("%H:%M:%S"), "✅ 仿真完成")
         _sim_done(session_id, loop)
     except Exception as e:
         _sim_done(session_id, loop, f"仿真执行失败: {e}")
+
+
+# --- 仿真基线/方案保存 ---
+
+def save_sim_baseline(session_id: str, baseline_power_kwh: float) -> dict:
+    """保存 old_station 基准工况年耗电量（单位 kWh）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise KeyError(f"session {session_id!r} 不存在")
+    if s.get("sim_mode") != "old_station":
+        raise ValueError("仅 old_station 模式允许设置基准耗电量")
+    if baseline_power_kwh is None or baseline_power_kwh <= 0:
+        raise ValueError("基准耗电量必须 > 0")
+    s["sim_baseline_power_kwh"] = float(baseline_power_kwh)
+    return s
+
+
+def save_sim_schemes(session_id: str, schemes: list) -> dict:
+    """保存 old_station 优化方案列表"""
+    s = session_store.get(session_id)
+    if not s:
+        raise KeyError(f"session {session_id!r} 不存在")
+    if s.get("sim_mode") != "old_station":
+        raise ValueError("仅 old_station 模式允许设置优化方案")
+    if not isinstance(schemes, list):
+        raise ValueError("schemes 必须是数组")
+    # 字段校验
+    required = {"id", "name", "description", "target_saving_rate_pct"}
+    seen_ids = set()
+    for idx, sch in enumerate(schemes):
+        missing = required - set(sch.keys())
+        if missing:
+            raise ValueError(f"方案[{idx}] 缺少字段: {missing}")
+        if not (0 < sch["target_saving_rate_pct"] < 100):
+            raise ValueError(f"方案[{idx}] target_saving_rate_pct 必须在 (0, 100) 之间")
+        if sch["id"] in seen_ids:
+            raise ValueError(f"方案 id 重复: {sch['id']}")
+        seen_ids.add(sch["id"])
+    s["sim_schemes"] = schemes
+    return s
 
 
 # --- 启动仿真任务的入口函数 ---

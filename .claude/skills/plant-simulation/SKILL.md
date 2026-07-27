@@ -99,6 +99,23 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
     "electricity_price": 0.65
   },
   "target_energy_saving_rate": 0.065,
+  "baseline_power_kwh": 11277100,
+  "schemes": [
+    {
+      "id": "A",
+      "name": "方案A",
+      "description": "冷却泵不改变频（仅软件策略：冷冻泵温差+夏季减泵+冷却塔液位控制上限43.5Hz）",
+      "target_saving_rate_pct": 5.1,
+      "intervention_tags": ["chw_pump_delta_t", "summer_less_pump", "tower_level_cap"]
+    },
+    {
+      "id": "B",
+      "name": "方案B",
+      "description": "冷却泵全变频改造",
+      "target_saving_rate_pct": 7.1,
+      "intervention_tags": ["chw_pump_delta_t", "summer_less_pump", "tower_level_cap", "cw_pump_all_vfd"]
+    }
+  ],
   "project_name": "XX工厂中央空调冷站"
 }
 ```
@@ -161,6 +178,97 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 - **优化仿真**: 应用控制策略（温差控制、变频联动、群控优化）
 - **节能率计算**: (基准能耗 - 优化能耗) / 基准能耗 × 100%
 - **关键约束**: 节能率需与空调节能率模块计算结果误差 < 1%
+
+### 旧站房多方案对比仿真（重要）
+
+当 `sim_mode == "old_station"` 且输入 JSON 中存在 `baseline_power_kwh` 与 `schemes` 数组时，必须生成**多方案横向对比**的仿真（参考 `D:\code\conditioner_simulate\零跑\generate_report_newcondition_v3.py` 的风格）。
+
+#### 输入字段
+
+- **`baseline_power_kwh`** (必填, float): 用户提供的基准工况年总耗电量，单位 kWh（前端以"万 kWh"输入后已乘 10000）。这是**对齐目标**，AI 生成的 baseline 仿真脚本应让年总耗电尽量贴近该值。
+  - 对齐方法：按 topology 装机功率 × 默认负载率 × 年运行小时反算各设备耗电占比，然后用 `scale_factor = baseline_power_kwh / 原始总耗电` 统一缩放各设备逐时功率，使 baseline 年总耗电严格等于该值。
+- **`schemes`** (必填, list): 至少 1 个优化方案，每个方案含：
+  - `id`: 字母标识（"A"/"B"/"C"...），用于文件命名和图表标签
+  - `name`: 方案中文名称（如 "方案A"）
+  - `description`: 改造措施文字描述
+  - `target_saving_rate_pct`: 期望节能率（百分数，5.1 表示 5.1%）
+  - `intervention_tags` (可选): 干预标签数组，提示 AI 启用哪些控制策略
+
+#### `intervention_tags` 枚举提示
+
+| tag | 含义 |
+|-----|------|
+| `chw_pump_delta_t` | 冷冻泵恒压 + 温差控制 |
+| `summer_less_pump` | 夏季冷冻泵比冷机少开 1 台 |
+| `tower_level_cap` | 冷却塔液位控制 + 上限频率（默认 43.5Hz） |
+| `cw_pump_all_vfd` | 冷却泵全变频改造 |
+| `cw_pump_partial_vfd` | 冷却泵部分变频（保留工频） |
+| `supply_temp_reset` | 供水温度重设 |
+| `chiller_group_control` | 冷机群控加减机 |
+
+未提供 `intervention_tags` 时，AI 按 SKILL.md 默认策略生成（群控 + 温差变频 + 供水温度重设）。
+
+#### 严格对齐期望节能率（必须）
+
+每个方案的目标节电量 = `baseline_power_kwh × target_saving_rate_pct / 100`。
+
+**AI 脚本必须实现反馈调参函数** `_tune_saving_rate(plan_id, target_kwh, max_iters=5, tol=0.005)`：
+1. 第 1 轮按默认控制参数运行仿真，得到实际节电量 `actual_kwh`
+2. 计算偏差 `delta = (actual_kwh - target_kwh) / target_kwh`
+3. 若 `abs(delta) > tol`，按偏差方向微调参数：
+   - 偏小（节能不够）→ 降低最低频率 (如 30Hz → 28Hz)、提高目标温差 (5°C → 5.5°C)、降低冷却塔上限频率 (43.5Hz → 42Hz)
+   - 偏大（过度节能）→ 反向微调
+4. 最多 `max_iters` 轮；若仍 `abs(delta) > 0.01`，在报告中明确标注：`期望 X.X%，仿真 Y.Y%，偏差 Z.Z%（原因：...）`
+
+#### 输出文件规范
+
+- `{project}_baseline_8760h.csv` — 基线 8760h 逐时
+- `{project}_plan_{id}_8760h.csv` — 每个方案各一份 8760h
+- `{project}_comparison_summary.json` — 汇总：
+  ```json
+  {
+    "baseline": {
+      "label": "基线(恒压+工频)",
+      "annual_total_power_kwh": 11277100,
+      "annual_chiller_power_kwh": ...,
+      "annual_chw_pump_power_kwh": ...,
+      "annual_cw_pump_power_kwh": ...,
+      "annual_tower_power_kwh": ...,
+      "annual_weighted_system_cop": ...
+    },
+    "plan_A": { "label": "方案A(...)" , ...同上字段... },
+    "plan_B": { "label": "方案B(...)" , ...同上字段... },
+    "saving_rate_a_pct": 5.1,
+    "saving_rate_b_pct": 7.1,
+    "saving_kwh_a": ...,
+    "saving_kwh_b": ...,
+    "tuning_log": {
+      "A": [{"iter": 1, "actual_pct": 4.2, "delta": -0.009}, ...],
+      "B": [{"iter": 1, "actual_pct": 6.8, "delta": -0.003}, ...]
+    }
+  }
+  ```
+- 图表（多方案并列）：
+  - `{project}_monthly_cop.png` — 月度 COP 多方案分组柱状图
+  - `{project}_energy_breakdown.png` — 1×N 饼图（baseline + 各方案）
+  - `{project}_saving_waterfall.png` — 节能量分解瀑布图（从 baseline 逐方案叠加节省）
+
+#### 报告章节结构（必须）
+
+- **一、项目概况**（项目名、地址、系统类型、仿真时长）
+- **二、基线工况**
+  - baseline_power_kwh 来源（用户输入）
+  - 设备现状控制策略表
+  - baseline 仿真年总耗电（应 ≈ baseline_power_kwh）
+- **三、优化方案定义**（逐方案列表：id、名称、措施、期望节能率）
+- **四、仿真结果**
+  - 年度核心指标横向对比表（baseline / plan_A / plan_B ...）
+  - 分项能耗对比表（冷机/冷冻泵/冷却泵/冷却塔 × 各方案）
+  - 月度 COP 多方案并列表
+- **五、节能来源分析**（每个方案分解到具体措施的节电贡献）
+- **六、方案对比与建议**（投入产出、优先级、硬件改造评估）
+
+若 old_station 模式下缺少 `baseline_power_kwh` 或 `schemes`，按原有单方案逻辑执行（向后兼容）。
 
 ### 优化控制策略（旧站房）
 

@@ -39,6 +39,8 @@ from .services import (
     start_sim_cop_parse,
     start_sim_operating_generate,
     start_sim_execute,
+    save_sim_baseline,
+    save_sim_schemes,
     _generate_default_cop_table,
 )
 
@@ -749,6 +751,46 @@ def sim_save_operating(session_id: str, body: dict):
     return {"status": "ok"}
 
 
+class BaselineBody(BaseModel):
+    baseline_power_kwh: float = Field(..., gt=0, description="基准工况年总耗电量，单位 kWh")
+
+
+@router.put("/sim/baseline/{session_id}", tags=["simulation"])
+def sim_save_baseline(session_id: str, body: BaselineBody):
+    """保存基准工况年耗电量（仅 old_station 模式）"""
+    try:
+        save_sim_baseline(session_id, body.baseline_power_kwh)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "ok", "baseline_power_kwh": body.baseline_power_kwh}
+
+
+class SchemeItem(BaseModel):
+    id: str = Field(..., min_length=1, max_length=4, description="字母标识 A/B/C...")
+    name: str = Field(..., min_length=1, max_length=100, description="方案中文名称")
+    description: str = Field("", description="改造措施描述")
+    target_saving_rate_pct: float = Field(..., gt=0, lt=100, description="期望节能率（%）")
+    intervention_tags: list[str] = Field(default_factory=list)
+
+
+class SchemesBody(BaseModel):
+    schemes: list[SchemeItem]
+
+
+@router.put("/sim/schemes/{session_id}", tags=["simulation"])
+def sim_save_schemes(session_id: str, body: SchemesBody):
+    """保存优化方案列表（仅 old_station 模式）"""
+    try:
+        save_sim_schemes(session_id, [s.model_dump() for s in body.schemes])
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "ok", "count": len(body.schemes)}
+
+
 @router.post("/sim/execute/{session_id}", tags=["simulation"])
 async def sim_execute(session_id: str):
     """执行仿真"""
@@ -760,6 +802,15 @@ async def sim_execute(session_id: str):
 
     if not all([s.get("sim_topology"), s.get("sim_cop_data"), s.get("sim_operating_conditions")]):
         raise HTTPException(status_code=400, detail="前置数据不完整")
+
+    # old_station 多方案模式：严格要求 baseline + schemes
+    if s.get("sim_mode") == "old_station":
+        baseline = s.get("sim_baseline_power_kwh")
+        schemes = s.get("sim_schemes") or []
+        if not baseline or baseline <= 0:
+            raise HTTPException(status_code=400, detail="old_station 模式必须先设置基准工况耗电量")
+        if not schemes:
+            raise HTTPException(status_code=400, detail="old_station 模式必须先定义至少一个优化方案")
 
     main_loop = asyncio.get_running_loop()
     start_sim_execute(session_id, main_loop)
