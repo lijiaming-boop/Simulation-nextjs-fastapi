@@ -396,6 +396,15 @@ async def calculate(session_id: str, body: dict = None):
             detail="缺少 extracted_data：请先调用 /extract 或在请求体中提供",
         )
 
+    # 拦截不支持的站房类型
+    station_type = (extracted_data.get("station_type") or "").lower()
+    if station_type == "unsupported":
+        reason = extracted_data.get("station_type_reason", "该站房类型不在自动评估范围内")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的站房类型：{reason}",
+        )
+
     filling_suggestions = (body or {}).get("filling_suggestions")
     main_loop = asyncio.get_running_loop()
 

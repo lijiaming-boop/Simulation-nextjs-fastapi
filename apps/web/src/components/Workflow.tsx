@@ -37,6 +37,7 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
   const [result, setResult] = useState<ResultResponse | null>(null);
   const [useLlm, setUseLlm] = useState<boolean>(true);
   const [suggestions, setSuggestions] = useState<SuggestResult | null>(null);
+  const [unsupportedReason, setUnsupportedReason] = useState<string>("");
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const extractedDataRef = useRef<Record<string, unknown> | null>(null);
@@ -97,12 +98,22 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
       try {
         const res = await fetch(`${API_BASE}/session/${sessionId}/extracted`);
         if (res.ok) {
-          extractedDataRef.current = await res.json();
+          const data = await res.json();
+          extractedDataRef.current = data;
+          // 检测不支持的站房类型
+          const st = (data?.station_type || "").toString().toLowerCase();
+          if (st === "unsupported") {
+            setUnsupportedReason(data?.station_type_reason || "该站房类型不在自动评估范围内");
+          } else {
+            setUnsupportedReason("");
+          }
         } else {
           extractedDataRef.current = null;
+          setUnsupportedReason("");
         }
       } catch {
         extractedDataRef.current = null;
+        setUnsupportedReason("");
       }
     })();
   }, [stage, sessionId]);
@@ -186,6 +197,7 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
     setResult(null);
     setSuggestions(null);
     setError("");
+    setUnsupportedReason("");
     extractedDataRef.current = null;
   };
 
@@ -321,9 +333,15 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
       {/* 计算 + 结果 */}
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="font-medium mb-3">④ 公式计算 + 结果</h2>
+        {unsupportedReason ? (
+          <div className="mb-3 p-3 rounded bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+            <strong>⚠️ 不支持的站房类型：</strong>{unsupportedReason}
+            <div className="mt-1 text-xs text-amber-600">该调研表无法进入自动节能测算流程。</div>
+          </div>
+        ) : null}
         <button
           onClick={doCalculate}
-          disabled={stage !== "extracted" && stage !== "suggested"}
+          disabled={(stage !== "extracted" && stage !== "suggested") || !!unsupportedReason}
           className="px-4 py-2 rounded text-white text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
           {stage === "calculating" ? "计算中..." : "开始计算"}
