@@ -50,6 +50,8 @@ export interface ResultResponse {
   session_id: string;
   stage: string;
   module_type: string;
+  /** 计算失败时的错误信息（仅 stage="error" 时存在） */
+  error?: string;
   result?: {
     energy_saving_rate_range?: string;
     energy_saving_rate?: number;

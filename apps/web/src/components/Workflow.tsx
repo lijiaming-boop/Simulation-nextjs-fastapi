@@ -152,6 +152,8 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
         for (let i = 0; i < 60; i++) {
           const r = await fetchResult(sessionId);
           if (r && r.stage === "result") return r;
+          // 后端计算失败，提前终止轮询
+          if (r && r.stage === "error") return r;
           await new Promise((res) => setTimeout(res, 1000));
         }
         return null;
@@ -159,6 +161,11 @@ export default function Workflow({ moduleType, title }: { moduleType: "air_condi
       const r = await poll();
       if (!r) {
         setError("计算超时 60s");
+        setStage("error");
+        return;
+      }
+      if (r.stage === "error") {
+        setError(r.error || "计算过程发生未知错误");
         setStage("error");
         return;
       }

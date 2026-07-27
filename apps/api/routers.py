@@ -428,10 +428,11 @@ def get_result(session_id: str):
     返回结构：
     {
       "session_id": "...",
-      "stage": "result",
+      "stage": "result" | "error",
       "result": {...},             # ExcelCalculator 的原始结果
       "formatted_result": {...},   # 格式化后的报告
-      "filling_suggestions": {...}
+      "filling_suggestions": {...},
+      "error": "..."               # 仅 stage=error 时存在
     }
     """
     s = session_store.get(session_id)
@@ -443,6 +444,18 @@ def get_result(session_id: str):
             status_code=status.HTTP_409_CONFLICT,
             detail="计算任务仍在运行，请稍后再查询",
         )
+
+    # 计算失败：返回错误详情（200，让前端能读到错误信息）
+    if s.get("stage") == "error":
+        return {
+            "session_id": session_id,
+            "stage": "error",
+            "module_type": s.get("module_type"),
+            "error": s.get("calc_error", "计算过程发生未知错误"),
+            "result": None,
+            "formatted_result": None,
+            "filling_suggestions": None,
+        }
 
     if s.get("result") is None:
         raise HTTPException(

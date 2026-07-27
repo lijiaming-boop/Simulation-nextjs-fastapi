@@ -381,6 +381,10 @@ def _run_calculate_in_thread(
                 q.put_nowait,
                 {"type": "error", "timestamp": err_ts, "message": err_msg},
             )
+        # 将错误信息存入 session，供 /api/result 返回
+        s_err = session_store.get(session_id)
+        if s_err is not None:
+            s_err["calc_error"] = f"{type(e).__name__}: {e}"
         session_store.update_stage(session_id, "error")
 
 
