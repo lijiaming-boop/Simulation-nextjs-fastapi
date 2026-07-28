@@ -399,12 +399,21 @@ class SkillCaller:
             task_type = args[2]
 
             if task_type == "extract_topology":
+                text_dump_hint = ""
+                if len(args) >= 4:
+                    text_dump_hint = (
+                        f"\n\n已预先读取调研表全部内容，文本转储文件: {args[3]}\n"
+                        f"请先用 Read 工具读取 {args[3]} 查看完整内容，"
+                        f"从中识别设备规格表（包含类型、品牌、型号、台数、制冷量、功率、COP等列），"
+                        f"提取真实的设备数据行，按 SKILL.md 规范输出结构化 JSON。"
+                    )
                 return (
                     f"请使用 plant-simulation skill 从调研表中提取冷站设备拓扑信息。\n"
                     f"调研表路径: {args[0]}\n"
                     f"输出JSON路径: {args[1]}\n"
                     f"请读取Excel文件，识别冷水主机、冷却泵、冷冻泵、冷却塔和特殊结构信息，"
                     f"按型号汇总台数，输出结构化JSON。"
+                    f"{text_dump_hint}"
                 )
             elif task_type == "parse_topology":
                 return (

@@ -640,14 +640,33 @@ def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.Ab
         _sim_callback(session_id, loop, ts, msg)
 
     try:
+        # 先将 Excel 全部内容读为文本，确保 AI 能看到完整数据
+        excel_text_path = session_dir / "survey_text_dump.txt"
+        try:
+            import pandas as pd
+            cb(datetime.now().strftime("%H:%M:%S"), "📄 预读调研表内容...")
+            xls = pd.ExcelFile(upload_path)
+            lines = []
+            for sheet_name in xls.sheet_names:
+                df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+                lines.append(f"\n=== Sheet: {sheet_name} ({df.shape[0]} rows x {df.shape[1]} cols) ===")
+                lines.append(df.to_string(index=False, na_rep=""))
+            excel_text_path.write_text("\n".join(lines), encoding="utf-8")
+            cb(datetime.now().strftime("%H:%M:%S"), f"📄 已读取 {len(xls.sheet_names)} 个 sheet")
+        except Exception as e:
+            cb(datetime.now().strftime("%H:%M:%S"), f"⚠️ 预读Excel失败: {e}，将由AI直接读取")
+            excel_text_path = None
+
         caller = SkillCaller(timeout=300)
         cb(datetime.now().strftime("%H:%M:%S"), "🚀 开始从调研表提取设备拓扑...")
 
+        args = [str(upload_path), str(output_path), "extract_topology"]
+        if excel_text_path:
+            args.append(str(excel_text_path))
+
         skill_result = caller.call_skill(
             "plant-simulation",
-            str(upload_path),
-            str(output_path),
-            "extract_topology",
+            *args,
             callback=cb,
         )
 
