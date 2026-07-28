@@ -30,15 +30,19 @@ def update_streaming_container(container, texts: list):
 
 
 def init_simulation_state():
-    """初始化仿真模块 session state"""
-    if 'sim_stage' not in st.session_state:
-        st.session_state.sim_stage = 'topology'
-        st.session_state.sim_mode = 'new_station'  # new_station / old_station
-        st.session_state.sim_topology = None
-        st.session_state.sim_cop_data = {}
-        st.session_state.sim_operating_conditions = None
-        st.session_state.sim_result = None
-        st.session_state.sim_project_name = ''
+    """初始化仿真模块 session state（逐字段初始化，避免跨模块跳转时部分字段缺失）"""
+    defaults = {
+        'sim_stage': 'topology',
+        'sim_mode': 'new_station',  # new_station / old_station
+        'sim_topology': None,
+        'sim_cop_data': {},
+        'sim_operating_conditions': None,
+        'sim_result': None,
+        'sim_project_name': '',
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def reset_simulation():
