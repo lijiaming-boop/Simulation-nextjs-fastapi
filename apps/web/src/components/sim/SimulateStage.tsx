@@ -42,8 +42,8 @@ export function SimulateStage({ sessionId, simState, onSimComplete }: Props) {
       setTimeout(() => {
         clearInterval(poll);
         setRunning(false);
-        setError("仿真超时（10分钟）");
-      }, 600000);
+        setError("仿真超时（15分钟）");
+      }, 900000);
     } catch (e) {
       setRunning(false);
       setError(String(e));
@@ -71,7 +71,7 @@ export function SimulateStage({ sessionId, simState, onSimComplete }: Props) {
           <div>项目名称: {simState.sim_project_name || "未知"}</div>
           <div>模式: {isOldStation ? "旧站房（基准+多方案对比）" : "新站房"}</div>
           <div>冷水主机: {simState.sim_topology?.chillers?.length ?? 0} 种型号</div>
-          <div>COP 数据: {Object.keys(simState.sim_cop_data).length} 组</div>
+          <div>COP 数据: {Object.keys(simState.sim_cop_data ?? {}).length} 组</div>
           <div>工况数据: {simState.sim_operating_conditions ? "已就绪" : "缺失"}</div>
           {isOldStation && (
             <>
@@ -106,8 +106,26 @@ export function SimulateStage({ sessionId, simState, onSimComplete }: Props) {
 
       {error && <div className="text-red-600 text-sm mt-4">{error}</div>}
       {running && (
-        <div className="text-sm text-gray-500 mt-4">
-          AI 正在生成仿真脚本并执行，请查看上方日志面板了解进度...
+        <div className="mt-4 flex items-center gap-3">
+          <style>{`
+            @keyframes sim-spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            .sim-spinner {
+              width: 20px;
+              height: 20px;
+              border: 3px solid #e0e0e0;
+              border-top-color: #4f46e5;
+              border-radius: 50%;
+              animation: sim-spin 0.8s linear infinite;
+              display: inline-block;
+            }
+          `}</style>
+          <span className="sim-spinner" />
+          <span className="text-sm text-gray-600">
+            AI 正在生成仿真脚本并执行，请查看上方日志面板了解进度...
+          </span>
         </div>
       )}
     </div>
@@ -129,12 +147,37 @@ function SimResultDisplay({ result, sessionId }: { result: SimResult; sessionId:
       {/* 单方案核心指标（new_station 或 fallback） */}
       {!comparison && summary && (
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <MetricCard label="全年加权COP" value={summary.annual_cop?.toFixed(2) ?? "-"} />
-          <MetricCard label="年总耗电量" value={`${(summary.annual_power_mwh ?? 0).toFixed(0)} MWh`} />
-          <MetricCard label="年总供冷量" value={`${(summary.annual_cooling_mwh ?? 0).toFixed(0)} MWh`} />
+          <MetricCard
+            label="全年加权COP"
+            value={summary.annual_cop?.toFixed(2) ?? "-"}
+          />
+          <MetricCard
+            label="年总耗电量"
+            value={
+              summary.optimized_power_kwh_simulated != null
+                ? `${(summary.optimized_power_kwh_simulated / 10000).toFixed(1)} 万kWh`
+                : summary.annual_power_mwh != null
+                ? `${summary.annual_power_mwh.toFixed(0)} MWh`
+                : "-"
+            }
+          />
+          <MetricCard
+            label="基准年耗电量"
+            value={
+              summary.baseline_power_kwh_simulated != null
+                ? `${(summary.baseline_power_kwh_simulated / 10000).toFixed(1)} 万kWh`
+                : "-"
+            }
+          />
           <MetricCard
             label="节能率"
-            value={summary.energy_saving_rate != null ? `${(summary.energy_saving_rate * 100).toFixed(1)}%` : "-"}
+            value={
+              summary.actual_energy_saving_rate != null
+                ? `${(summary.actual_energy_saving_rate * 100).toFixed(1)}%`
+                : summary.energy_saving_rate != null
+                ? `${(summary.energy_saving_rate * 100).toFixed(1)}%`
+                : "-"
+            }
           />
         </div>
       )}

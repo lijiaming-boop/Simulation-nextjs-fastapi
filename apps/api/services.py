@@ -630,11 +630,52 @@ def _sim_done(session_id: str, loop: asyncio.AbstractEventLoop, error: str = Non
 
 # --- 拓扑提取 ---
 
+def _extract_project_name_from_survey(excel_path) -> str:
+    """从调研表 Excel 中提取项目名称（纯 Python，不依赖 AI）"""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(str(excel_path), read_only=True, data_only=True)
+    except Exception:
+        return ""
+    labels = ["项目名称", "站房名称", "工程名称", "项目名", "站房名",
+              "Project", "project", "Site", "site"]
+    try:
+        for sheet_name in list(wb.sheetnames[:3]):
+            ws = wb[sheet_name]
+            for row in ws.iter_rows(min_row=1, max_row=20, max_col=15, values_only=False):
+                cells = list(row)
+                for i, cell in enumerate(cells):
+                    val = cell.value
+                    if val and isinstance(val, str):
+                        val_stripped = val.strip()
+                        for label in labels:
+                            if val_stripped == label:
+                                if i + 1 < len(cells):
+                                    right_val = cells[i + 1].value
+                                    if right_val and isinstance(right_val, str) and right_val.strip():
+                                        wb.close()
+                                        return right_val.strip()
+                        for label in labels:
+                            if label in val_stripped and len(val_stripped) > len(label):
+                                for sep in ["：", ":", "="]:
+                                    if sep in val_stripped:
+                                        name = val_stripped.split(sep, 1)[1].strip()
+                                        if name and name not in labels:
+                                            wb.close()
+                                            return name
+        wb.close()
+    except Exception:
+        pass
+    return ""
+
+
 def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.AbstractEventLoop) -> None:
     """后台线程：从调研表提取拓扑"""
     s = session_store.get(session_id)
     session_dir = s["session_dir"]
     output_path = session_dir / "sim_topology.json"
+    # 保存用户已编辑的项目名称（AI 提取不应覆盖用户输入）
+    user_project_name = (s.get("sim_project_name") or "").strip()
 
     def cb(ts, msg):
         _sim_callback(session_id, loop, ts, msg)
@@ -668,14 +709,32 @@ def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.Ab
             "plant-simulation",
             *args,
             callback=cb,
+            max_retries=2,
         )
 
         if output_path.exists():
             with open(output_path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
             topology = _normalize_topology(raw)
+
+            # 项目名称优先级: 用户已编辑 > AI提取 > 调研表扫描 > 默认
+            placeholder_names = {'', '未知项目', '项目名称', 'XXXX', 'xxx', 'xxxx',
+                                 'project_name', 'Project Name', 'XX工厂'}
+            ai_name = (topology.get("project_name") or "").strip()
+            user_is_placeholder = user_project_name in placeholder_names or len(user_project_name) <= 2
+            ai_is_placeholder = ai_name in placeholder_names or len(ai_name) <= 2
+
+            if not user_is_placeholder:
+                topology["project_name"] = user_project_name
+            elif ai_is_placeholder:
+                survey_name = _extract_project_name_from_survey(upload_path)
+                if survey_name and survey_name not in placeholder_names:
+                    topology["project_name"] = survey_name
+                else:
+                    topology["project_name"] = "未知项目"
+
             s["sim_topology"] = topology
-            s["sim_project_name"] = topology.get("project_name", "未知项目")
+            s["sim_project_name"] = topology["project_name"]
             s["sim_stage"] = "cop_curves"
             cb(datetime.now().strftime("%H:%M:%S"), f"✅ 拓扑识别完成：{len(topology.get('chillers',[]))} 台主机")
             _sim_done(session_id, loop)
@@ -706,6 +765,7 @@ def _run_topology_parse(session_id: str, text_input: str, project_name: str, loo
             str(output_path),
             "parse_topology",
             callback=cb,
+            max_retries=2,
         )
 
         if output_path.exists():
@@ -798,7 +858,7 @@ def _run_operating_generate(session_id: str, text_input: str, loop: asyncio.Abst
             with open(output_path, "r", encoding="utf-8") as f:
                 operating = json.load(f)
             s["sim_operating_conditions"] = operating
-            s["sim_stage"] = "simulate"
+            s["sim_stage"] = "operating"
             cb(datetime.now().strftime("%H:%M:%S"), "✅ 工况数据已生成")
             _sim_done(session_id, loop)
         else:
@@ -850,17 +910,26 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
         output_dir = session_dir / "sim_output"
         output_dir.mkdir(exist_ok=True)
 
-        caller = SkillCaller(timeout=600)
+        caller = SkillCaller(timeout=900)
         cb(datetime.now().strftime("%H:%M:%S"), f"🚀 开始仿真（{sim_mode}）...")
 
-        caller.call_skill(
-            "plant-simulation",
-            str(input_path),
-            str(output_dir),
-            sim_mode,
-            callback=cb,
-            max_retries=2,
-        )
+        try:
+            caller.call_skill(
+                "plant-simulation",
+                str(input_path),
+                str(output_dir),
+                sim_mode,
+                callback=cb,
+                max_retries=2,
+            )
+        except Exception as timeout_e:
+            # 超时容错：检查输出文件是否已生成
+            csv_files = list(output_dir.glob("*.csv"))
+            xlsx_files = list(output_dir.glob("*.xlsx"))
+            if csv_files or xlsx_files:
+                cb(datetime.now().strftime("%H:%M:%S"), "⚠️ 仿真执行超时，但已检测到输出文件，尝试读取结果...")
+            else:
+                raise
 
         # 收集结果
         result = {"success": True, "output_dir": str(output_dir), "files": []}
@@ -868,13 +937,42 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
             result["files"].append(f.name)
 
         report_files = list(output_dir.glob("*报告*.md")) + list(output_dir.glob("*report*.md"))
+        report_text = ""
         if report_files:
-            result["report"] = report_files[0].read_text(encoding="utf-8")
+            report_text = report_files[0].read_text(encoding="utf-8")
+            result["report"] = report_text
 
         summary_files = list(output_dir.glob("*汇总*.json")) + list(output_dir.glob("*summary*.json"))
         if summary_files:
             with open(summary_files[0], "r", encoding="utf-8") as f:
                 result["summary"] = json.load(f)
+        elif report_text:
+            # summary.json 缺失时从报告 Markdown 解析指标
+            import re
+            summary = {}
+            m = re.search(r"基准年耗电量[：:]\s*([\d,.]+)\s*(万)?kWh", report_text)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if m.group(2):
+                    val *= 10000
+                summary["baseline_power_kwh_simulated"] = val
+            m = re.search(r"优化年耗电量[：:]\s*([\d,.]+)\s*(万)?kWh", report_text)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if m.group(2):
+                    val *= 10000
+                summary["optimized_power_kwh_simulated"] = val
+            m = re.search(r"年节能率[：:]\s*([\d.]+)\s*%", report_text)
+            if m:
+                summary["actual_energy_saving_rate"] = float(m.group(1)) / 100
+            m = re.search(r"年节电量[：:]\s*([\d,.]+)\s*(万)?kWh", report_text)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if m.group(2):
+                    val *= 10000
+                summary["energy_saving_kwh"] = val
+            if summary:
+                result["summary"] = summary
 
         # 多方案对比汇总（优先）
         comparison_files = list(output_dir.glob("*comparison_summary*.json"))
@@ -1106,6 +1204,16 @@ def _normalize_topology(raw: dict) -> dict:
     special = raw.get("special") or raw.get("特殊结构") or {"type": "none"}
     if isinstance(special, dict):
         sp_type = special.get("type", "none")
+        # 中文类型 → 英文标准键映射
+        cn_type_map = {
+            "水蓄冷": "storage", "蓄冷": "storage", "水蓄能": "storage",
+            "冰蓄冷": "ice", "蓄冰": "ice", "冰蓄能": "ice",
+            "热回收": "heat_recovery", "热回收+蓄冷": "storage_and_heat_recovery",
+            "无": "none", "none": "none", "None": "none",
+        }
+        if isinstance(sp_type, str) and sp_type in cn_type_map:
+            sp_type = cn_type_map[sp_type]
+        # 清理 type 字段：如果包含垃圾文本，尝试关键词匹配
         if isinstance(sp_type, str) and len(sp_type) > 20:
             detected = []
             if "热回收" in sp_type:

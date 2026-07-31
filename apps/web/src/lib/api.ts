@@ -310,11 +310,24 @@ export interface SimResult {
   files: string[];
   report?: string;
   summary?: {
+    // Legacy fields (backward compat)
     annual_cop?: number;
     annual_power_mwh?: number;
     annual_cooling_mwh?: number;
     energy_saving_rate?: number;
     annual_saving_yuan?: number;
+    // New summary.json schema fields
+    project_name?: string;
+    sim_mode?: string;
+    baseline_power_kwh_input?: number;
+    baseline_power_kwh_simulated?: number;
+    optimized_power_kwh_simulated?: number;
+    target_energy_saving_rate?: number;
+    actual_energy_saving_rate?: number;
+    energy_saving_kwh?: number;
+    raw_baseline_total_kwh?: number;
+    raw_optimized_total_kwh?: number;
+    report_file?: string;
     [key: string]: unknown;
   };
   /** 多方案对比汇总（仅 old_station + baseline+schemes 模式） */
@@ -357,6 +370,16 @@ export async function initSimSession(
 export async function fetchSimState(sessionId: string): Promise<SimState> {
   const res = await fetch(`${API_BASE}/sim/state/${sessionId}`);
   if (!res.ok) throw new Error(`获取仿真状态失败: ${res.status}`);
+  return res.json();
+}
+
+/** 手动推进仿真阶段 */
+export async function setSimStage(
+  sessionId: string,
+  stage: "topology" | "cop_curves" | "operating" | "simulate" | "done"
+): Promise<{ status: string; sim_stage: string }> {
+  const res = await fetch(`${API_BASE}/sim/stage/${sessionId}?stage=${stage}`, { method: "PUT" });
+  if (!res.ok) throw new Error(`设置阶段失败: ${res.status}`);
   return res.json();
 }
 

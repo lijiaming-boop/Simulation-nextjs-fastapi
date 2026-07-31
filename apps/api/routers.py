@@ -663,8 +663,23 @@ def sim_state(session_id: str):
         "sim_operating_conditions": s.get("sim_operating_conditions"),
         "sim_result": s.get("sim_result"),
         "sim_project_name": s.get("sim_project_name", ""),
+        "sim_baseline_power_kwh": s.get("sim_baseline_power_kwh"),
+        "sim_schemes": s.get("sim_schemes"),
         "is_running": is_sim_running(session_id),
     }
+
+
+@router.put("/sim/stage/{session_id}", tags=["simulation"])
+def sim_set_stage(session_id: str, stage: str):
+    """手动推进仿真阶段（如 COP确认 → operating, 工况确认 → simulate）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    valid_stages = {"topology", "cop_curves", "operating", "simulate", "done"}
+    if stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"无效阶段: {stage}")
+    s["sim_stage"] = stage
+    return {"status": "ok", "sim_stage": stage}
 
 
 @router.post("/sim/topology/extract/{session_id}", tags=["simulation"])

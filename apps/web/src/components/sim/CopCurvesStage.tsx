@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { parseCopCurve, useDefaultCop, type SimState } from "@/lib/api";
+import { parseCopCurve, useDefaultCop, setSimStage, type SimState } from "@/lib/api";
 
 interface Props {
   sessionId: string;
@@ -11,9 +11,10 @@ interface Props {
 
 export function CopCurvesStage({ sessionId, simState, onCopUpdated }: Props) {
   const topology = simState.sim_topology;
-  const copData = simState.sim_cop_data;
+  const copData = simState.sim_cop_data ?? {};
   const [loading, setLoading] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState(false);
   const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   if (!topology?.chillers?.length) {
@@ -118,10 +119,21 @@ export function CopCurvesStage({ sessionId, simState, onCopUpdated }: Props) {
 
       <div className="mt-6">
         <button
-          disabled={!allHaveCop}
+          disabled={!allHaveCop || advancing}
+          onClick={async () => {
+            setAdvancing(true);
+            try {
+              await setSimStage(sessionId, "operating");
+              onCopUpdated();
+            } catch (e) {
+              setError(String(e));
+            } finally {
+              setAdvancing(false);
+            }
+          }}
           className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {allHaveCop ? "确认，进入工况收集" : "请为所有主机提供 COP 数据"}
+          {advancing ? "跳转中..." : allHaveCop ? "确认，进入工况收集" : "请为所有主机提供 COP 数据"}
         </button>
       </div>
     </div>

@@ -37,6 +37,7 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 ```
 - capacity_kw/power_kw/rated_cop/fan_power_kw 必须是数字，不能是 null
 - 不要包含调研表的问题文本和说明性文字
+- **special.type 只能取以下 5 个值之一**: `none`(无)、`storage`(水蓄冷)、`ice`(冰蓄冷)、`heat_recovery`(热回收)、`storage_and_heat_recovery`(蓄冷+热回收)。严禁使用其他值（如 water_thermal_storage、水蓄冷 等均不允许）
 
 ### 2. parse_topology - 解析用户文本输入
 - 输入: 用户输入文本文件路径, 输出JSON路径
@@ -78,7 +79,7 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
     "cooling_pumps": [{"brand": "南方泵业", "model": "CDMF32-4", "power_kw": 90, "count": 4, "vfd": true, "flow_rate_m3h": 200, "head_m": 32}],
     "chilled_pumps": [{"brand": "南方泵业", "model": "CDMF25-3", "power_kw": 75, "count": 3, "vfd": true, "flow_rate_m3h": 150, "head_m": 25}],
     "towers": [{"brand": "元亨", "fan_power_kw": 45, "count": 12, "vfd": true, "type": "闭式", "flow_rate_m3h": 300}],
-    "special": {"type": "none|storage|ice|heat_recovery", "capacity": 0}
+    "special": {"type": "none|storage|ice|heat_recovery|storage_and_heat_recovery", "capacity": 0}
   },
   "cop_data": {
     "约克 YZ-3000RT (中温变频)": {
@@ -99,23 +100,7 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
     "electricity_price": 0.65
   },
   "target_energy_saving_rate": 0.065,
-  "baseline_power_kwh": 11277100,
-  "schemes": [
-    {
-      "id": "A",
-      "name": "方案A",
-      "description": "冷却泵不改变频（仅软件策略：冷冻泵温差+夏季减泵+冷却塔液位控制上限43.5Hz）",
-      "target_saving_rate_pct": 5.1,
-      "intervention_tags": ["chw_pump_delta_t", "summer_less_pump", "tower_level_cap"]
-    },
-    {
-      "id": "B",
-      "name": "方案B",
-      "description": "冷却泵全变频改造",
-      "target_saving_rate_pct": 7.1,
-      "intervention_tags": ["chw_pump_delta_t", "summer_less_pump", "tower_level_cap", "cw_pump_all_vfd"]
-    }
-  ],
+  "baseline_power_kwh": 4835800,
   "project_name": "XX工厂中央空调冷站"
 }
 ```
@@ -159,7 +144,10 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 ### 物理约束（必须遵守）
 
 1. **COP卡诺极限**: COP ≤ T_cold / (T_hot - T_cold)，其中温度为绝对温标(K)
-2. **变频泵三次方律**: P_actual = P_rated × (freq/50)^3，最低频率限制25Hz
+2. **变频泵三次方律**: P_actual = P_rated × (freq/50)^3，最低频率限制30Hz（水泵和冷却塔均适用）
+   - **优先取调研表频率范围**: 若 monthly_data 中有 `cooling_pump_freq`/`freezing_pump_freq` 字段，取其最小值作为对应水泵的频率下限（而非硬编码30Hz）
+   - 例: 调研表冷冻泵频率范围为35~49Hz → 频率下限=35Hz，上限=50Hz
+   - 若调研表无频率数据或为新站房，频率下限默认30Hz
 3. **冷却塔逼近度**: 冷却水出水温度 ≥ 湿球温度 + 3°C
 4. **负荷率范围**: 离心机最低负荷率20%，低于则停机
 5. **能量守恒**: 供冷量 = 主机功耗 × COP
@@ -179,105 +167,14 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 - **节能率计算**: (基准能耗 - 优化能耗) / 基准能耗 × 100%
 - **关键约束**: 节能率需与空调节能率模块计算结果误差 < 1%
 
-### 旧站房多方案对比仿真（重要）
-
-当 `sim_mode == "old_station"` 且输入 JSON 中存在 `baseline_power_kwh` 与 `schemes` 数组时，必须生成**多方案横向对比**的仿真（参考 `D:\code\conditioner_simulate\零跑\generate_report_newcondition_v3.py` 的风格）。
-
-#### 输入字段
-
-- **`baseline_power_kwh`** (必填, float): 用户提供的基准工况年总耗电量，单位 kWh（前端以"万 kWh"输入后已乘 10000）。这是**对齐目标**，AI 生成的 baseline 仿真脚本应让年总耗电尽量贴近该值。
-  - 对齐方法：按 topology 装机功率 × 默认负载率 × 年运行小时反算各设备耗电占比，然后用 `scale_factor = baseline_power_kwh / 原始总耗电` 统一缩放各设备逐时功率，使 baseline 年总耗电严格等于该值。
-- **`schemes`** (必填, list): 至少 1 个优化方案，每个方案含：
-  - `id`: 字母标识（"A"/"B"/"C"...），用于文件命名和图表标签
-  - `name`: 方案中文名称（如 "方案A"）
-  - `description`: 改造措施文字描述
-  - `target_saving_rate_pct`: 期望节能率（百分数，5.1 表示 5.1%）
-  - `intervention_tags` (可选): 干预标签数组，提示 AI 启用哪些控制策略
-
-#### `intervention_tags` 枚举提示
-
-| tag | 含义 |
-|-----|------|
-| `chw_pump_delta_t` | 冷冻泵恒压 + 温差控制 |
-| `summer_less_pump` | 夏季冷冻泵比冷机少开 1 台 |
-| `tower_level_cap` | 冷却塔液位控制 + 上限频率（默认 43.5Hz） |
-| `cw_pump_all_vfd` | 冷却泵全变频改造 |
-| `cw_pump_partial_vfd` | 冷却泵部分变频（保留工频） |
-| `supply_temp_reset` | 供水温度重设 |
-| `chiller_group_control` | 冷机群控加减机 |
-
-未提供 `intervention_tags` 时，AI 按 SKILL.md 默认策略生成（群控 + 温差变频 + 供水温度重设）。
-
-#### 严格对齐期望节能率（必须）
-
-每个方案的目标节电量 = `baseline_power_kwh × target_saving_rate_pct / 100`。
-
-**AI 脚本必须实现反馈调参函数** `_tune_saving_rate(plan_id, target_kwh, max_iters=5, tol=0.005)`：
-1. 第 1 轮按默认控制参数运行仿真，得到实际节电量 `actual_kwh`
-2. 计算偏差 `delta = (actual_kwh - target_kwh) / target_kwh`
-3. 若 `abs(delta) > tol`，按偏差方向微调参数：
-   - 偏小（节能不够）→ 降低最低频率 (如 30Hz → 28Hz)、提高目标温差 (5°C → 5.5°C)、降低冷却塔上限频率 (43.5Hz → 42Hz)
-   - 偏大（过度节能）→ 反向微调
-4. 最多 `max_iters` 轮；若仍 `abs(delta) > 0.01`，在报告中明确标注：`期望 X.X%，仿真 Y.Y%，偏差 Z.Z%（原因：...）`
-
-#### 输出文件规范
-
-- `{project}_baseline_8760h.csv` — 基线 8760h 逐时
-- `{project}_plan_{id}_8760h.csv` — 每个方案各一份 8760h
-- `{project}_comparison_summary.json` — 汇总：
-  ```json
-  {
-    "baseline": {
-      "label": "基线(恒压+工频)",
-      "annual_total_power_kwh": 11277100,
-      "annual_chiller_power_kwh": ...,
-      "annual_chw_pump_power_kwh": ...,
-      "annual_cw_pump_power_kwh": ...,
-      "annual_tower_power_kwh": ...,
-      "annual_weighted_system_cop": ...
-    },
-    "plan_A": { "label": "方案A(...)" , ...同上字段... },
-    "plan_B": { "label": "方案B(...)" , ...同上字段... },
-    "saving_rate_a_pct": 5.1,
-    "saving_rate_b_pct": 7.1,
-    "saving_kwh_a": ...,
-    "saving_kwh_b": ...,
-    "tuning_log": {
-      "A": [{"iter": 1, "actual_pct": 4.2, "delta": -0.009}, ...],
-      "B": [{"iter": 1, "actual_pct": 6.8, "delta": -0.003}, ...]
-    }
-  }
-  ```
-- 图表（多方案并列）：
-  - `{project}_monthly_cop.png` — 月度 COP 多方案分组柱状图
-  - `{project}_energy_breakdown.png` — 1×N 饼图（baseline + 各方案）
-  - `{project}_saving_waterfall.png` — 节能量分解瀑布图（从 baseline 逐方案叠加节省）
-
-#### 报告章节结构（必须）
-
-- **一、项目概况**（项目名、地址、系统类型、仿真时长）
-- **二、基线工况**
-  - baseline_power_kwh 来源（用户输入）
-  - 设备现状控制策略表
-  - baseline 仿真年总耗电（应 ≈ baseline_power_kwh）
-- **三、优化方案定义**（逐方案列表：id、名称、措施、期望节能率）
-- **四、仿真结果**
-  - 年度核心指标横向对比表（baseline / plan_A / plan_B ...）
-  - 分项能耗对比表（冷机/冷冻泵/冷却泵/冷却塔 × 各方案）
-  - 月度 COP 多方案并列表
-- **五、节能来源分析**（每个方案分解到具体措施的节电贡献）
-- **六、方案对比与建议**（投入产出、优先级、硬件改造评估）
-
-若 old_station 模式下缺少 `baseline_power_kwh` 或 `schemes`，按原有单方案逻辑执行（向后兼容）。
-
 ### 优化控制策略（旧站房）
 
 | 设备 | 基准控制 | 优化策略 | 控制逻辑 |
 |------|---------|---------|----------|
 | 冷机 | 人工启停 | **群控加减机** | 根据负载率自动加/减机，保持每台机在最佳负荷区(60-80%) |
 | 冷冻泵 | 固定频率 | **温差变频控制** | 供回水温差PID控制，目标温差5°C，最低频率30Hz |
-| 冷却泵 | 固定频率 | **压差+变频** | 供回水压差控制或温差控制，工频泵不可调 |
-| 冷却塔 | 固定频率 | **逼近度控制** | 出水温度逼近湿球温度控制，冬季降频 |
+| 冷却泵 | 固定频率 | **压差+变频** | 供回水压差控制或温差控制，最低频率30Hz |
+| 冷却塔 | 固定频率 | **逼近度控制** | 出水温度逼近湿球温度控制，冬季降频，最低频率30Hz |
 | 冷冻出水温度 | 固定设定 | **供水温度重设** | 根据环境温度动态调整供水温度设定值 |
 
 ### 策略详细逻辑
@@ -335,18 +232,32 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
 ```
 目标: 根据实际冷量和温差调节水泵频率，减少泵耗
 
+★ 频率范围确定规则（优先调研表）:
+  - 若 monthly_data 中有 freezing_pump_freq → 冷冻泵频率下限 = min(freezing_pump_freq)，上限 = max(freezing_pump_freq) 或 50Hz
+  - 若 monthly_data 中有 cooling_pump_freq → 冷却泵频率下限 = min(cooling_pump_freq)，上限 = max(cooling_pump_freq) 或 50Hz
+  - 冷却塔风机: 若调研表无风机频率数据，频率下限默认30Hz
+  - 若调研表无频率数据或新站房，所有设备频率下限默认30Hz
+
 冷冻泵控制:
   目标温差 = 5°C
   所需流量(kg/s) = 当前冷量(kW) / (4.186 × 目标温差)
   泵频率(Hz) = 所需流量 / 额定流量 × 50
   
-  频率下限 = 30Hz (60%，保证最低安全流量)
+  频率下限 = 调研表min(freezing_pump_freq) 或 30Hz
   频率上限 = 50Hz
   实际功率 = 理论功率 × (频率/50)^3 / 0.92 (变频器效率)
 
 冷却泵控制 (仅变频泵):
   目标温差 = 5°C (或根据冷却塔散热能力调整)
-  控制逻辑同冷冻泵，但需保证冷却塔最低流量
+  控制逻辑同冷冻泵，频率下限 = 调研表min(cooling_pump_freq) 或 30Hz
+  需保证冷却塔最低流量
+
+冷却塔控制 (仅变频风机):
+  目标: 出水温度逼近湿球温度 + 3°C
+  风机频率根据逼近度PID调节
+  频率下限 = 调研表风机频率min 或 30Hz
+  频率上限 = 50Hz
+  冬季低温时可降至频率下限运行
 
 变频器效率损失: 约8% (含变频器自身损耗+管网特性偏差)
 
@@ -385,37 +296,58 @@ description: 冷站性能仿真技能。根据收集到的站房拓扑、COP性�
    - `{project}_overall_performance.png`: Energy structure, seasonal comparison
 
 4. **Markdown报告**: `{project_name}_COP性能仿真分析报告.md`
+   - **报告语言: 必须全部使用中文（正文、表格内容、章节标题全部中文，图表除外）**
    - **标题格式**: `# {项目名称}中央空调冷站 控制策略优化仿真报告`
    - **报告结构**（必须包含以下章节）：
      - 一、项目概况（表格：项目名称、地址、系统类型、总装机制冷量、仿真时长）
      - 二、设备现状（设备配置表、调研表实际月度运行参数表、关键问题识别）
      - 三、优化控制策略（可优化设备表、冷冻泵温差控制逻辑、冷却塔优化逻辑）
      - 四、仿真结果（年度核心指标对比表、分项能耗对比表、月度详细对比表）
-     - 五、节能分析（节能贡献分解表、经济效益表、仿真保守因素说明）
-     - 六、实施建议（分阶段措施、注意事项）
+     - 五、节能分析（节能贡献分解表、仿真保守因素说明；不要包含节能收益/经济效益测算）
+   - **报告不要包含节能收益（电费节省金额等经济测算）和实施建议章节**
    - **报告由 AI 根据仿真数据动态生成**，不要使用硬编码文本
 
-### 节能率校验（旧站房必须遵守）
+### 节能率与基准耗电量校验（旧站房必须遵守）
 
 - 输入 JSON 中 `target_energy_saving_rate` 字段为空调节能率模块的计算结果
 - 仿真计算出的节能率必须与 target 误差 < 1%
 - 若仿真节能率偏差过大，调整优化参数（如冷冻泵最低频率、目标温差）直到对齐
 - 在报告中标注：`仿真节能率 X.X%，评估模块节能率 Y.Y%，误差 Z.Z%`
+- **基准年耗电对齐**：若输入 JSON 存在 `baseline_power_kwh`（来自调研表逐月电量求和或用户修正，单位 **kWh**）：
+  - 基准仿真的年总耗电量必须与该值对齐（误差 < 2%）
+  - 对齐方法：先按 topology + operating_conditions 正常仿真得到原始基准年耗电，再用 `scale_factor = baseline_power_kwh / 原始基准年耗电(kWh)` 统一缩放基准与优化工况的逐时功率（保持节能率不变）
+  - 在报告中标注：`基准年耗电（用户/调研表）X kWh，仿真基准年耗电 Y kWh，缩放系数 Z`
+- 若未提供 `baseline_power_kwh`，基准耗电由仿真自行计算，不做缩放
 
-5. **汇总JSON**: `{project}_summary.json`
+5. **汇总JSON（必须生成）**: `{project}_summary.json`
+   > **⚠️ 重要：此文件必须生成！若缺失，前端结果页将无法显示节能率和耗电量指标。**
    ```json
    {
-     "annual_cop": 5.5,
-     "annual_power_mwh": 1000,
-     "annual_cooling_mwh": 5500,
-     "energy_saving_rate": 0.12,
-     "annual_saving_yuan": 500000
+     "project_name": "项目名称",
+     "sim_mode": "old_station",
+     "baseline_power_kwh_input": 11271700,
+     "baseline_power_kwh_simulated": 11271700,
+     "optimized_power_kwh_simulated": 10630313,
+     "target_energy_saving_rate": 0.0569,
+     "actual_energy_saving_rate": 0.0569,
+     "energy_saving_kwh": 641387,
+     "raw_baseline_total_kwh": 27252532,
+     "raw_optimized_total_kwh": 20509916,
+     "baseline_scale_factor": 0.4136,
+     "hours": 8760,
+     "csv_file": "8760h_results.csv",
+     "excel_file": "monthly_summary.xlsx",
+     "plot_files": ["monthly_energy_comparison.png", "monthly_saving_rate.png", "operating_conditions_overview.png"],
+     "report_file": "COP性能仿真分析报告.md"
    }
    ```
+   **必填字段**: `baseline_power_kwh_simulated`, `optimized_power_kwh_simulated`, `actual_energy_saving_rate`, `energy_saving_kwh`
 
 ### 图表规范
 
-- 使用 matplotlib，**全部使用英文标签**（避免中文字体缺失导致方块）
+- 使用 matplotlib，**图表标题、坐标轴、图例必须全部使用英文标签**
+- **⚠️ 严禁在图表中使用任何中文！服务器未安装中文字体，会导致乱码方块或崩溃**
+- **注意: 只有图表用英文，报告正文/表格/标题必须用中文**
 - 分辨率: dpi=150, figsize=(14, 8)
 - 配色: 使用专业配色方案 (如 plt.cm.Set2 或 tab10)
 - 必须包含: 标题、坐标轴标签、图例、网格线

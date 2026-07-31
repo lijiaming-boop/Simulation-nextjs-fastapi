@@ -52,6 +52,7 @@ export function TopologyStage({ sessionId, simState, onTopologyUpdated }: Props)
     setError(null);
     try {
       await extractTopology(sessionId, file);
+      onTopologyUpdated();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -65,6 +66,7 @@ export function TopologyStage({ sessionId, simState, onTopologyUpdated }: Props)
     setError(null);
     try {
       await parseTopology(sessionId, textInput, projectName);
+      onTopologyUpdated();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -107,8 +109,19 @@ export function TopologyStage({ sessionId, simState, onTopologyUpdated }: Props)
         <div>
           <details className="mb-4">
             <summary className="text-sm text-indigo-600 cursor-pointer">查看填写示例</summary>
-            <pre className="bg-gray-100 p-3 rounded text-xs mt-2 whitespace-pre-wrap">{TOPOLOGY_EXAMPLE}</pre>
+            <div className="bg-gray-100 p-3 rounded text-xs mt-2 whitespace-pre-wrap select-text">
+              {TOPOLOGY_EXAMPLE}
+            </div>
           </details>
+          <button
+            onClick={() => {
+              setProjectName("XX工厂中央空调冷站");
+              setTextInput(TOPOLOGY_EXAMPLE);
+            }}
+            className="mb-2 px-3 py-1 border border-indigo-400 text-indigo-600 rounded text-xs hover:bg-indigo-50"
+          >
+            一键填入示例
+          </button>
           <input
             type="text"
             placeholder="项目名称"
@@ -210,6 +223,22 @@ function TopologyEditor({
             <div key={i} className="text-xs text-gray-600">{t.brand} {t.fan_power_kw}kW ×{t.count}</div>
           ))}
         </div>
+      </div>
+
+      {/* 特殊结构类型 */}
+      <div className="mt-4">
+        <h4 className="font-bold text-sm mb-2">特殊结构类型</h4>
+        <select
+          value={local.special?.type ?? "none"}
+          onChange={(e) => setLocal({ ...local, special: { type: e.target.value } })}
+          className="border rounded px-3 py-2 text-sm"
+        >
+          <option value="none">无</option>
+          <option value="storage">水蓄冷</option>
+          <option value="ice">冰蓄冷</option>
+          <option value="heat_recovery">热回收</option>
+          <option value="storage_and_heat_recovery">蓄冷+热回收</option>
+        </select>
       </div>
 
       <div className="mt-6">

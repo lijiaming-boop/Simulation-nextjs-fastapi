@@ -6,6 +6,7 @@ import {
   saveOperating,
   saveBaseline,
   saveSchemes,
+  setSimStage,
   type SimState,
   type SimScheme,
 } from "@/lib/api";
@@ -78,6 +79,7 @@ export function OperatingStage({ sessionId, simState, onOperatingUpdated }: Prop
   );
   const [schemesSaving, setSchemesSaving] = useState(false);
   const [schemesMsg, setSchemesMsg] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState(false);
 
   // 同步来自后端的旧值
   useEffect(() => {
@@ -174,10 +176,16 @@ export function OperatingStage({ sessionId, simState, onOperatingUpdated }: Prop
 
         <details className="mb-4">
           <summary className="text-sm text-indigo-600 cursor-pointer">查看填写示例</summary>
-          <pre className="bg-gray-100 p-3 rounded text-xs mt-2 whitespace-pre-wrap">
+          <div className="bg-gray-100 p-3 rounded text-xs mt-2 whitespace-pre-wrap select-text">
             {OPERATING_EXAMPLE}
-          </pre>
+          </div>
         </details>
+        <button
+          onClick={() => setTextInput(OPERATING_EXAMPLE)}
+          className="mb-2 px-3 py-1 border border-indigo-400 text-indigo-600 rounded text-xs hover:bg-indigo-50"
+        >
+          一键填入示例
+        </button>
 
         <textarea
           placeholder="请描述各季节运行模式..."
@@ -363,8 +371,23 @@ export function OperatingStage({ sessionId, simState, onOperatingUpdated }: Prop
         </div>
       )}
 
-      <button className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-        确认工况，进入仿真执行
+      {error && <div className="text-red-600 text-sm mt-4">{error}</div>}
+      <button
+        disabled={advancing}
+        onClick={async () => {
+          setAdvancing(true);
+          try {
+            await setSimStage(sessionId, "simulate");
+            onOperatingUpdated();
+          } catch (e) {
+            setError(String(e));
+          } finally {
+            setAdvancing(false);
+          }
+        }}
+        className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {advancing ? "跳转中..." : "确认工况，进入仿真执行"}
       </button>
     </div>
   );
