@@ -4,6 +4,7 @@
 """
 import json
 import shutil
+from copy import copy
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional

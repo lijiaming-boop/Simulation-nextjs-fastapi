@@ -63,7 +63,8 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True,
-        callback: Optional[Callable[[str, str], None]] = None
+        callback: Optional[Callable[[str, str], None]] = None,
+        max_retries: int = 0
     ) -> Dict[str, Any]:
         """调用 Claude Skill(同步包装器)
 
@@ -72,6 +73,7 @@ class SkillCaller:
             *args: Skill 参数(文件路径等)
             check_output: 是否检查输出文件
             callback: 回调函数 callback(timestamp, message)，每次 AI 回复时调用
+            max_retries: 最大重试次数，用于代码生成类任务(如仿真)，失败后自动修复重试
 
         Returns:
             包含执行结果的字典，结构如下：
@@ -93,7 +95,7 @@ class SkillCaller:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(
-            self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback)
+            self._call_skill_async(skill_name, *args, check_output=check_output, callback=callback, max_retries=max_retries)
         )
 
     async def _call_skill_async(
@@ -101,7 +103,8 @@ class SkillCaller:
         skill_name: str,
         *args,
         check_output: bool = True,
-        callback: Optional[Callable[[str, str], None]] = None
+        callback: Optional[Callable[[str, str], None]] = None,
+        max_retries: int = 0
     ) -> Dict[str, Any]:
         """调用 Claude Skill(异步实现)
 
@@ -110,6 +113,7 @@ class SkillCaller:
             *args: Skill 参数
             check_output: 是否检查输出文件
             callback: 回调函数，每次收到 AI 回复时调用
+            max_retries: 最大重试次数(用于仿真代码生成失败后自动修复)
 
         Returns:
             包含执行结果的字典
@@ -118,183 +122,192 @@ class SkillCaller:
             SkillError: Skill 调用失败
         """
         # 检查 Skill 是否存在
-        print(f"🔍 [SkillCaller] 查找技能: {skill_name}")
         skill_path = self.skills_dir / skill_name
         skill_md = skill_path / "SKILL.md"
-        print(f"📁 [SkillCaller] 技能路径: {skill_path}")
 
         # 兼容旧版单文件格式
         if not skill_md.exists():
             skill_md_old = self.skills_dir / f"{skill_name}.md"
             if not skill_md_old.exists():
-                print(f"❌ [SkillCaller] 技能未找到: {skill_name}")
                 raise SkillError(f"Skill not found: {skill_name}")
-            print(f"📄 [SkillCaller] 使用旧版技能文件: {skill_md_old}")
-        else:
-            print(f"📄 [SkillCaller] 使用新版技能文件: {skill_md}")
-
-        # 构建提示词
-        print(f"📝 [SkillCaller] 构建提示词，参数数量: {len(args)}")
-        prompt = self._build_prompt(skill_name, *args)
-        print(f"📏 [SkillCaller] 提示词长度: {len(prompt)} 字符")
-        
-        # 检查提示词长度，如果过长则优化
-        if len(prompt) > 4000:  # 降低阈值，更早触发优化
-            print(f"⚠️  [SkillCaller] 提示词过长，进行优化...")
-            prompt = self._optimize_prompt(prompt, skill_name, *args)
-            print(f"📏 [SkillCaller] 优化后提示词长度: {len(prompt)} 字符")
 
         # 配置 Agent SDK
         # 注意: API key 通过环境变量 ANTHROPIC_API_KEY 传递
-        print(f"⚙️  [SkillCaller] 配置Agent SDK")
-        print(f"   - 工作目录: {self.project_root}")
-        print(f"   - 超时时间: {self.timeout}秒")
-        print(f"   - API端点: {os.getenv('ANTHROPIC_BASE_URL', '默认')}")
-        print(f"   - 模型: {os.getenv('ANTHROPIC_MODEL', '默认')}")
-        
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
             setting_sources=["user", "project"],
             allowed_tools=["Skill", "Read", "Write", "Bash"]
         )
 
-        # 调用 Agent SDK（添加超时控制）
-        print(f"🚀 [SkillCaller] 开始调用Claude Agent SDK...")
-        all_messages = []
-        ai_responses = []
-        try:
-            async with asyncio.timeout(self.timeout):  # 添加超时控制
-                async for message in query(prompt=prompt, options=options):
-                    # 收集所有消息的字符串表示
-                    all_messages.append(str(message))
+        # 重试循环：支持 Agent 多轮修复代码
+        last_error = None
+        for attempt in range(max_retries + 1):
+            all_messages = []
+            ai_responses = []
+            
+            # 构建 prompt（首次用原始 prompt，重试用修正 prompt）
+            if attempt == 0:
+                prompt = self._build_prompt(skill_name, *args)
+            else:
+                prompt = self._build_retry_prompt(skill_name, args, last_error, attempt)
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"🔄 第 {attempt} 次重试修复...")
 
-                    # 只提取 AssistantMessage 的文本内容
+            try:
+                async with asyncio.timeout(self.timeout):
+                    async for message in query(prompt=prompt, options=options):
+                        all_messages.append(str(message))
+                        if isinstance(message, AssistantMessage):
+                            for block in message.content:
+                                if isinstance(block, TextBlock):
+                                    print(f"[AI Response] {block.text}")
+                                    ai_responses.append(block.text)
+                                    if callback:
+                                        timestamp = datetime.now().strftime("%H:%M:%S")
+                                        callback(timestamp, block.text)
+                                    await asyncio.sleep(0.01)
+            except asyncio.TimeoutError as e:
+                last_error = f"执行超时(>{self.timeout}秒)"
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"❌ {last_error}")
+                if attempt < max_retries:
+                    continue
+                raise SkillError(f"Skill '{skill_name}' {last_error}") from e
+            except Exception as e:
+                last_error = str(e)
+                if callback:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    callback(timestamp, f"❌ 执行出错: {last_error}")
+                if attempt < max_retries:
+                    continue
+                raise SkillError(f"Skill '{skill_name}' 执行出错: {last_error}") from e
+
+            # 检查输出文件（如果需要）
+            output_file = None
+            if check_output and len(args) >= 2:
+                if skill_name == "suggest-data-filling":
+                    if len(args) < 3:
+                        raise SkillError(f"Skill '{skill_name}' 需要3个参数")
+                    output_file = Path(args[2])
+                else:
+                    output_file = Path(args[1])
+
+                if output_file and not output_file.exists():
+                    # 检查是否是仿真脚本执行失败（需要查找错误信息）
+                    last_error = self._extract_execution_error(all_messages, output_file)
+                    if attempt < max_retries:
+                        if callback:
+                            timestamp = datetime.now().strftime("%H:%M:%S")
+                            callback(timestamp, f"⚠️ 输出不完整: {last_error[:200]}...")
+                        continue
+                    raise SkillError(
+                        f"Skill 执行完成，但未生成预期的输出文件: {output_file}"
+                    )
+                
+                # 仿真任务特殊检查：args[1] 是目录，检查内部是否有实际输出文件
+                if skill_name == "plant-simulation" and len(args) >= 3:
+                    task_type = args[2]
+                    if task_type in ("new_station", "old_station"):
+                        output_dir = Path(args[1])
+                        # 检查是否有实际仿真输出文件
+                        csv_files = list(output_dir.glob("*.csv"))
+                        xlsx_files = list(output_dir.glob("*.xlsx"))
+                        if not csv_files and not xlsx_files:
+                            # 目录存在但没有输出文件 -> 仿真脚本执行失败
+                            last_error = self._extract_execution_error(all_messages, output_dir)
+                            if attempt < max_retries:
+                                if callback:
+                                    timestamp = datetime.now().strftime("%H:%M:%S")
+                                    callback(timestamp, f"⚠️ 仿真输出文件缺失，触发重试: {last_error[:200]}...")
+                                continue
+                            raise SkillError(
+                                f"仿真执行失败，输出目录 {output_dir} 中没有生成 CSV/Excel 文件"
+                            )
+
+            # 成功！返回结果
+            result_text = "\n".join(all_messages)
+            return {
+                "success": True,
+                "ai_responses": ai_responses,
+                "all_messages": all_messages,
+                "result_text": result_text,
+                "attempts": attempt + 1
+            }
+
+        # 不应到达这里
+        raise SkillError(f"Skill '{skill_name}' 重试 {max_retries} 次后仍然失败")
+
+    def create_message(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        max_tokens: int = 4096,
+        model: Optional[str] = None,
+    ) -> str:
+        """使用 Claude Agent SDK 做一次纯文本 LLM 调用（同步包装器）
+
+        禁用工具与技能加载，只要 AssistantMessage 的文本输出。
+        接口与 DirectLLMClient.create_message 兼容：prompt -> 文本。
+
+        Args:
+            prompt: 用户提示词
+            system: 系统提示词（可选）
+            max_tokens: 保留参数（SDK 不直接使用，仅为接口兼容）
+            model: 模型名（可选，默认读 ANTHROPIC_MODEL 环境变量）
+
+        Returns:
+            LLM 返回的文本
+
+        Raises:
+            SkillError: 调用失败或返回空响应
+        """
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self._create_message_async(prompt, system=system, model=model)
+        )
+
+    async def _create_message_async(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> str:
+        """纯文本 LLM 调用的异步实现"""
+        options = ClaudeAgentOptions(
+            cwd=str(self.project_root),
+            setting_sources=[],          # 不加载项目/用户技能设置，纯对话
+            allowed_tools=[],            # 禁用工具，只要文本回复
+            max_turns=1,                 # 单轮
+            system_prompt=system,
+            model=model or os.getenv("ANTHROPIC_MODEL") or None,
+        )
+
+        texts: List[str] = []
+        try:
+            async with asyncio.timeout(self.timeout):
+                async for message in query(prompt=prompt, options=options):
                     if isinstance(message, AssistantMessage):
                         for block in message.content:
                             if isinstance(block, TextBlock):
-                                # 打印AI响应内容到console（方便调试）
-                                print(f"🤖 [AI Response] {block.text}")
-                                ai_responses.append(block.text)
-
-                                # 调用回调函数（新增）
-                                if callback:
-                                    timestamp = datetime.now().strftime("%H:%M:%S")
-                                    callback(timestamp, block.text)
-
-                                # 等待一小段时间让 Streamlit 有机会重绘
-                                await asyncio.sleep(0.01)
-                    else:
-                        # 记录其他类型的消息
-                        print(f"📨 [Other Message] {type(message).__name__}: {str(message)[:100]}...")
-
+                                texts.append(block.text)
         except asyncio.TimeoutError as e:
-            # 错误时也调用回调
-            if callback:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                callback(timestamp, f"❌ 执行超时（>{self.timeout}秒）")
-            raise SkillError(
-                f"Skill '{skill_name}' 执行超时(>{self.timeout}秒)"
-            ) from e
+            raise SkillError(f"LLM 调用超时(>{self.timeout}秒)") from e
         except Exception as e:
-            # 错误时也调用回调
-            if callback:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                callback(timestamp, f"❌ 执行出错: {str(type(e).__name__)}: {str(e)}")
-                import traceback
-                callback(timestamp, f"详细错误信息: {traceback.format_exc()}")
-            # 添加更多调试信息
-            import traceback
-            print(f"调用 Skill '{skill_name}' 时发生错误:")
-            print(f"错误类型: {type(e).__name__}")
-            print(f"错误信息: {str(e)}")
-            print(f"详细堆栈: {traceback.format_exc()}")
-            raise SkillError(f"Skill '{skill_name}' 执行出错: {str(e)}") from e
+            raise SkillError(f"LLM 调用出错: {e}") from e
 
-        # 合并结果文本
-        result_text = "\n".join(all_messages)
-        print(f"✅ [SkillCaller] 技能执行完成")
-        print(f"   - 收到消息数: {len(all_messages)}")
-        print(f"   - AI回复数: {len(ai_responses)}")
-        print(f"   - 总文本长度: {len(result_text)} 字符")
-
-        # 检查输出文件(如果需要)
-        if check_output and len(args) >= 2:
-            print(f"🔍 [SkillCaller] 检查输出文件...")
-            # 根据不同的skill确定输出文件的位置
-            if skill_name == "suggest-data-filling":
-                # suggest-data-filling: args[0]=输入, args[1]=输入, args[2]=输出
-                if len(args) < 3:
-                    raise SkillError(
-                        f"Skill '{skill_name}' 需要3个参数"
-                    )
-                output_file = Path(args[2])
-            else:
-                # 其他skill: args[0]=输入, args[1]=输出
-                output_file = Path(args[1])
-            
-            if not output_file.exists():
-                raise SkillError(
-                    f"Skill 执行完成,但未生成预期的输出文件: {output_file}"
-                )
-
-        # 返回详细结果
-        return {
-            "success": True,
-            "ai_responses": ai_responses,
-            "all_messages": all_messages,
-            "result_text": result_text
-        }
-
-    def _optimize_prompt(self, prompt: str, skill_name: str, *args) -> str:
-        """优化过长的提示词"""
-        # 对于LLM版本的空压机技能，不进行过度简化，保留核心指令
-        if skill_name == "extract-air-compressor-data-llm":
-            if len(args) < 2:
-                raise SkillError(
-                    "extract-air-compressor-data-llm 需要至少2个参数"
-                )
-            cmd = f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
-            if len(args) >= 3:
-                cmd += f" '{args[2]}'"
-            
-            # 构建保留核心指令的提示词
-            optimized_prompt = f"""请使用 extract-air-compressor-data-llm skill 完成以下任务：
-
-1. 首先执行以下命令提取文本内容：
-{cmd}
-
-2. 读取提取的文本内容，按照SKILL.md中的指令进行智能分析：
-   - 从文本中提取项目级数据（企业名称、行业类型、压力、能耗等）
-   - 从文本中提取设备级数据（设备列表、运行状态、铭牌参数等）
-   - 执行打回条件检查（检查是否有运行或备用设备）
-   - 生成质量报告
-
-3. 生成最终的结构化数据，保存到 extracted_data.json，格式如下：
-{{
-  "rawData": {{
-    "projectLevel": {{...}},
-    "equipmentLevel": [...]
-  }},
-  "rejectionCheck": {{
-    "shouldReject": false,
-    "criticalIssues": [],
-    "highSeverityIssues": []
-  }},
-  "quality_report": {{...}}
-}}
-
-注意：
-- runningStatus必须识别为“运行”、“备用”或“停用”
-- 如果没有找到运行或备用设备，shouldReject设为true
-- 数值字段必须是数字类型，不要字符串
-"""
-            return optimized_prompt
-        
-        # 对于其他技能，截断过长的内容
-        if len(prompt) > 8000:
-            return prompt[:7500] + "\n...(内容已截断，请执行相应的脚本)"
-        
-        return prompt
+        result = "".join(texts).strip()
+        if not result:
+            raise SkillError("LLM 返回空响应")
+        return result
 
     def _build_prompt(self, skill_name: str, *args) -> str:
         """构建 Skill 调用提示词
@@ -355,58 +368,125 @@ class SkillCaller:
                 f"请基于季节模式和插值法提供智能填充建议。"
             )
 
-        elif skill_name == "suggest-air-compressor-data-filling":
-            if len(args) < 3:
-                raise SkillError(
-                    "suggest-air-compressor-data-filling 需要3个参数: "
-                    "提取数据路径, 质量报告路径, 输出建议路径"
-                )
-            return (
-                f"请使用 suggest-air-compressor-data-filling skill 生成空压机数据填充建议。\n"
-                f"请使用以下命令执行脚本：\n"
-                f"python .claude/skills/suggest-air-compressor-data-filling/scripts/suggest_air_compressor_data_filling.py {args[0]} {args[1]} {args[2]}\n"
-                f"请基于行业标准和附表查询提供智能填充建议。"
-            )
-
         elif skill_name == "extract-air-compressor-data-llm":
             if len(args) < 2:
                 raise SkillError(
-                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出文本路径, [原始文件名]"
+                    "extract-air-compressor-data-llm 需要至少2个参数: 输入文件路径, 输出JSON路径, [原始文件名]"
                 )
-            prompt = (
-                f"请使用 extract-air-compressor-data-llm skill 从空压机调研表中提取结构化数据。\n\n"
-                f"第一步：执行以下命令提取文本内容：\n"
-                f"python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py {args[0]} {args[1]}"
-            )
-            if len(args) >= 3:
-                prompt += f" '{args[2]}'"
-            
-            prompt += (
-                f"\n\n第二步：读取提取的文本内容，按照SKILL.md中的指令进行智能分析：\n"
-                f"- 从文本中提取项目级数据（企业名称、行业类型、压力、能耗等）\n"
-                f"- 从文本中提取设备级数据（设备列表、运行状态、铭牌参数等）\n"
-                f"- 执行打回条件检查（检查是否有运行或备用设备）\n"
-                f"- 生成质量报告\n\n"
-                f"第三步：生成最终的结构化数据，保存到 extracted_data.json，格式如下：\n"
-                f'{{\n  "rawData": {{\n    "projectLevel": {{...}},\n    "equipmentLevel": [...]\n  }},\n  "rejectionCheck": {{\n    "shouldReject": false,\n    "criticalIssues": [],\n    "highSeverityIssues": []\n  }},\n  "quality_report": {{...}}\n}}\n\n'
-                f"注意：\n"
-                f"- runningStatus必须识别为“运行”、“备用”或“停用”\n"
-                f"- 如果没有找到运行或备用设备，shouldReject设为true\n"
-                f"- 数值字段必须是数字类型，不要字符串"
-            )
-            return prompt
-
-        elif skill_name == "calculate-air-compressor-energy-saving":
-            if len(args) < 2:
-                raise SkillError(
-                    "calculate-air-compressor-energy-saving 需要2个参数: 填充数据路径, 输出结果路径"
-                )
+            original = args[2] if len(args) >= 3 else Path(args[0]).name
+            text_tmp = str(Path(args[1]).with_suffix(".text.json"))
             return (
-                f"请使用 calculate-air-compressor-energy-saving skill 计算空压机节能率。\n"
-                f"请使用以下命令执行脚本：\n"
-                f"python .claude/skills/calculate-air-compressor-energy-saving/scripts/calculate_air_compressor_energy_saving.py {args[0]} {args[1]}\n"
-                f"请基于需求文档的标准计算公式进行精确计算。"
+                f"请使用 extract-air-compressor-data-llm skill 从空压机调研表中提取结构化数据并做质量检查。\n\n"
+                f"## 步骤\n"
+                f"1. 用 Bash 执行文本提取脚本（纯 Python，无需 LLM）：\n"
+                f"   python .claude/skills/extract-air-compressor-data-llm/scripts/extract_air_compressor_data_llm.py "
+                f'"{args[0]}" "{text_tmp}" "{original}"\n'
+                f"2. 用 Read 读取 {text_tmp} 中的 text_content 字段\n"
+                f"3. 严格按 SKILL.md 定义的 JSON 格式，从文本中提取 rawData、rejectionCheck 和 quality_report\n"
+                f"4. 用 Write 工具把最终结构化 JSON 写入：{args[1]}\n\n"
+                f"## 要求\n"
+                f"- 必须使用 Write 工具把完整 JSON 写入 {args[1]}，不要只输出 JSON 文本\n"
+                f"- 数值字段只保留纯数字（去除单位），缺失设为 null\n"
+                f"- 原始文件名: {original}"
             )
+
+        elif skill_name == "plant-simulation":
+            if len(args) < 3:
+                raise SkillError(
+                    "plant-simulation 需要3个参数: "
+                    "输入数据路径, 输出路径/目录, 任务类型"
+                )
+            task_type = args[2]
+
+            if task_type == "extract_topology":
+                text_dump_hint = ""
+                if len(args) >= 4:
+                    text_dump_hint = (
+                        f"\n\n已预先读取调研表全部内容，文本转储文件: {args[3]}\n"
+                        f"请先用 Read 工具读取 {args[3]} 查看完整内容，"
+                        f"从中识别设备规格表（包含类型、品牌、型号、台数、制冷量、功率、COP等列），"
+                        f"提取真实的设备数据行，按 SKILL.md 规范输出结构化 JSON。"
+                    )
+                return (
+                    f"请使用 plant-simulation skill 从调研表中提取冷站设备拓扑信息。\n"
+                    f"调研表路径: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请读取Excel文件，识别冷水主机、冷却泵、冷冻泵、冷却塔和特殊结构信息，"
+                    f"按型号汇总台数，输出结构化JSON。"
+                    f"{text_dump_hint}"
+                )
+            elif task_type == "parse_topology":
+                return (
+                    f"请使用 plant-simulation skill 解析用户输入的设备拓扑描述。\n"
+                    f"用户输入文件: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请将自然语言描述解析为结构化设备拓扑JSON。"
+                )
+            elif task_type == "parse_cop_curve":
+                return (
+                    f"请使用 plant-simulation skill 识别性能曲线图片中的COP数据。\n"
+                    f"图片路径: {args[0]}\n"
+                    f"输出JSON路径: {args[1]}\n"
+                    f"请读取图片，提取冷却水温度×负荷率的二维COP查找表。"
+                )
+            elif task_type == "generate_operating":
+                return (
+                    f"请生成月度运行组合表格并写入 JSON 文件。\n\n"
+                    f"## 输入数据\n{args[0]}\n\n"
+                    f"## 输出路径\n{args[1]}\n\n"
+                    f"## 任务\n"
+                    f"1. 根据输入数据中的运行规律描述，整理为 12 个月的运行组合\n"
+                    f"2. 每个月包含：\n"
+                    f"   - 工作日运行: on_units(开机台数), load_ratio(负载率), description(描述)\n"
+                    f"   - 休息日运行: on_units(开机台数), load_ratio(负载率), description(描述)\n"
+                    f"   - 季节: winter/transition/summer\n"
+                    f"   - representative_load_ratio: 代表性负载率\n"
+                    f"3. 必须使用 Write 工具将结果写入 {args[1]}\n\n"
+                    f"## 输出 JSON 格式\n"
+                    f'{{"monthly_table": [{{"month": 1, "season": "winter", '
+                    f'"weekday_operation": {{"on_units": 0, "load_ratio": 0, "description": "不开机"}}, '
+                    f'"weekend_operation": {{"on_units": 0, "load_ratio": 0, "description": "不开机"}}, '
+                    f'"representative_load_ratio": 0, "cooling_demand_kw": 0, "note": "冬季"}}]}}\n\n'
+                    f"## 重要\n"
+                    f"- 必须立即使用 Write 工具写入文件，不要只输出 JSON 文本\n"
+                    f"- cooling_demand_kw 可以填 0（后续由代码自动计算）"
+                )
+            elif task_type in ("new_station", "old_station"):
+                mode_desc = "新站房仿真（需求冷量+COP计算）" if task_type == "new_station" else "旧站房仿真（基准+优化对比节能率）"
+                report_hint = ""
+                if task_type == "old_station":
+                    report_hint = (
+                        f"\n## 旧站房特别要求\n"
+                        f"- 报告标题格式: `# {{项目名称}}中央空调冷站 控制策略优化仿真报告`\n"
+                        f"- 报告文件名: `{{项目名称}}_COP性能仿真分析报告.md`\n"
+                        f"- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
+                        f"- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
+                    )
+                return (
+                    f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"
+                    f"输入数据(汇总JSON): {args[0]}\n"
+                    f"输出目录: {args[1]}\n"
+                    f"仿真模式: {mode_desc}\n\n"
+                    f"请根据 SKILL.md 规范：\n"
+                    f"1. 读取输入JSON中的拓扑、COP数据和工况信息\n"
+                    f"2. 生成完整的Python仿真脚本到输出目录\n"
+                    f"3. **执行前先用 ast.parse 验证脚本语法**\n"
+                    f"4. 语法无误后执行脚本\n"
+                    f"5. 确保输出8760h CSV、月度Excel、3张分析图表和Markdown报告\n\n"
+                    f"## 代码质量要求\n"
+                    f"- 多行文本必须用三引号，禁止在单引号中嵌入未转义的换行\n"
+                    f"- 报告内容用列表拼接 + '\\n'.join(lines) 写入\n"
+                    f"- 生成脚本后先运行: python -c \"import ast; ast.parse(open('{args[1]}/simulate_*.py').read())\"\n"
+                    f"- 语法检查通过后再执行脚本"
+                    f"{report_hint}"
+                )
+            else:
+                return (
+                    f"请使用 plant-simulation skill 完成任务。\n"
+                    f"输入: {args[0]}\n"
+                    f"输出: {args[1]}\n"
+                    f"任务类型: {task_type}"
+                )
 
         else:
             # 通用提示词
@@ -415,3 +495,52 @@ class SkillCaller:
                 f"请使用 {skill_name} skill 完成任务。\n"
                 f"参数: {params_str}"
             )
+
+    def _build_retry_prompt(self, skill_name: str, args: tuple, error_info: str, attempt: int) -> str:
+        """构建重试修正 prompt，让 Agent 根据错误信息修复代码"""
+        output_dir = str(args[1]) if len(args) >= 2 else "未知"
+        
+        # 截断错误信息，避免过长
+        if len(error_info) > 2000:
+            error_info = error_info[:2000] + "\n...(截断)"
+
+        return (
+            f"## ❌ 上次仿真执行失败（第 {attempt} 次重试）\n\n"
+            f"### 错误信息\n```\n{error_info}\n```\n\n"
+            f"### 修复步骤（必须严格执行）\n\n"
+            f"1. **用 Read 工具**读取输出目录中的仿真脚本 (`{output_dir}/simulate_*.py`)\n"
+            f"2. **定位错误位置**（通常是字符串换行、变量未定义、import缺失）\n"
+            f"3. **用 Write 工具直接覆盖修复后的完整脚本**（不要请求权限，直接写入）\n"
+            f"4. 用 Bash 执行: `python -c \"import ast; ast.parse(open('{output_dir}/simulate_*.py').read())\"`\n"
+            f"5. 语法通过后，用 Bash 执行: `python {output_dir}/simulate_*.py`\n"
+            f"6. 确认 {output_dir}/ 目录下生成了 *.csv 和 *.xlsx 文件\n\n"
+            f"### 常见错误修复示例\n"
+            f"- `SyntaxError: unterminated string literal` → 把 `'...'` 改为 `\"...\"` 或 `'''...'''`\n"
+            f"- `NameError` → 检查变量是否在使用前定义\n"
+            f"- `ModuleNotFoundError` → 用 try/except 包裹 import，缺失时降级\n\n"
+            f"### 重要\n"
+            f"- 你有 Write 工具权限，直接修复脚本，不要等待用户授权\n"
+            f"- 报告写入必须用: `Path(path).write_text(chr(10).join(lines), encoding='utf-8')`\n"
+            f"- 输出目录: {output_dir}"
+        )
+
+    def _extract_execution_error(self, all_messages: list, output_file: Path) -> str:
+        """从 Agent 消息中提取执行错误信息"""
+        error_lines = []
+        for msg in all_messages:
+            msg_str = str(msg)
+            # 查找常见错误模式
+            if any(kw in msg_str.lower() for kw in ['error', 'traceback', 'exception', 'failed', 'syntaxerror', 'nameerror', 'typeerror']):
+                error_lines.append(msg_str)
+        
+        if error_lines:
+            return "\n".join(error_lines[-5:])  # 取最后 5 条错误相关消息
+        
+        # 查找输出目录中已生成的脚本文件
+        output_dir = output_file.parent if output_file.is_file() else output_file
+        script_files = list(output_dir.glob("simulate_*.py")) if output_dir.exists() else []
+        
+        if script_files:
+            return f"脚本已生成但未执行成功。脚本文件: {script_files[0].name}\n输出目录: {output_dir}"
+        
+        return f"输出文件不存在: {output_file}"
