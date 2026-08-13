@@ -19,6 +19,7 @@ proxy/*.exe
 
 # Python
 venv/
+.venv/
 *.egg-info/
 dist/
 build/

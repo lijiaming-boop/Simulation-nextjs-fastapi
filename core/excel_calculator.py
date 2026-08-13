@@ -93,74 +93,11 @@ class ExcelCalculator:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
-        # 确保所有公式都被计算并写入
-        self._ensure_formulas_calculated(temp_excel)
-        
         # 生成简化版Excel文件
         self._create_simplified_excel(temp_excel, Path(output_path).parent / "simplified_result.xlsx")
         
         return str(output_path)
     
-    def _ensure_formulas_calculated(self, excel_path: Path):
-        """确保Excel中的所有公式都被计算并写入
-        
-        Args:
-            excel_path: Excel文件路径
-        """
-        import openpyxl
-        
-        # 加载工作簿
-        wb = openpyxl.load_workbook(excel_path)
-        
-        # 遍历所有工作表
-        for sheet_name in wb.sheetnames:
-            sheet = wb[sheet_name]
-            
-            # 遍历所有单元格
-            for row in range(1, sheet.max_row + 1):
-                for col in range(1, sheet.max_column + 1):
-                    cell = sheet.cell(row=row, column=col)
-                    
-                    # 如果是公式，尝试获取计算结果
-                    if cell.data_type == 'f':
-                        # 保存原始格式
-                        old_font = copy(cell.font)
-                        old_border = copy(cell.border)
-                        old_fill = copy(cell.fill)
-                        old_number_format = cell.number_format
-                        old_protection = copy(cell.protection)
-                        old_alignment = copy(cell.alignment)
-                        
-                        # 尝试多种方法获取计算结果
-                        calculated_value = None
-                        
-                        # 方法1: 使用displayed_value
-                        if hasattr(cell, 'displayed_value') and cell.displayed_value is not None:
-                            calculated_value = cell.displayed_value
-                        
-                        # 方法2: 使用internal_value
-                        elif hasattr(cell, 'internal_value') and cell.internal_value is not None:
-                            calculated_value = cell.internal_value
-                        
-                        # 方法3: 使用value（如果是数值类型）
-                        elif isinstance(cell.value, (int, float)):
-                            calculated_value = cell.value
-                        
-                        # 如果获取到计算结果，替换公式
-                        if calculated_value is not None:
-                            cell.value = calculated_value
-                            # 恢复格式
-                            cell.font = old_font
-                            cell.border = old_border
-                            cell.fill = old_fill
-                            cell.number_format = old_number_format
-                            cell.protection = old_protection
-                            cell.alignment = old_alignment
-        
-        # 保存工作簿
-        wb.save(excel_path)
-        wb.close()
-
     def _create_simplified_excel(self, original_excel_path: Path, simplified_excel_path: Path):
         """创建简化版Excel文件，创建新工作表并只复制需要保留的行
         

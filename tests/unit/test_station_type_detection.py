@@ -18,13 +18,22 @@ from extract_and_check_data import detect_station_type
 
 
 def create_mock_workbook(cell_values: list) -> Workbook:
-    """创建包含指定文本的模拟工作簿"""
+    """创建包含指定文本的模拟工作簿
+
+    cell_values 支持两种格式：
+    - 字符串列表：每个字符串放 A 列的一行（简单场景）
+    - 嵌套列表：每个子列表是一行的多列数据（模拟真实调研表）
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "冷站"
 
     for i, value in enumerate(cell_values, start=1):
-        ws[f'A{i}'] = value
+        if isinstance(value, list):
+            for j, cell_val in enumerate(value, start=1):
+                ws.cell(row=i, column=j, value=cell_val)
+        else:
+            ws.cell(row=i, column=1, value=value)
 
     return wb
 
@@ -47,9 +56,9 @@ def test_detect_standard_station():
 def test_detect_secondary_pump_station():
     """测试识别二次泵站房"""
     wb = create_mock_workbook([
-        "站房名称", "北京总部",
-        "一次冷冻泵", "频率", "45Hz",
-        "二次冷冻泵", "频率", "40Hz"
+        ["站房名称", "北京总部", ""],
+        ["一次泵", "45Hz", "30kW"],
+        ["二次泵", "40Hz", "22kW"]
     ])
 
     result = detect_station_type(wb)
@@ -121,7 +130,8 @@ def test_detect_secondary_pump_variant_keywords():
     """测试识别二次泵的多种关键词变体"""
     # 测试 "一次泵" 和 "二次泵"
     wb1 = create_mock_workbook([
-        "一次泵", "二次泵"
+        ["一次泵", "45Hz", "30kW"],
+        ["二次泵", "40Hz", "22kW"]
     ])
     result1 = detect_station_type(wb1)
     wb1.close()
@@ -129,7 +139,8 @@ def test_detect_secondary_pump_variant_keywords():
 
     # 测试 "冷冻一次泵" 和 "冷冻二次泵"
     wb2 = create_mock_workbook([
-        "冷冻一次泵", "冷冻二次泵"
+        ["冷冻一次泵", "45Hz", "30kW"],
+        ["冷冻二次泵", "40Hz", "22kW"]
     ])
     result2 = detect_station_type(wb2)
     wb2.close()
@@ -160,8 +171,9 @@ def test_detect_unsupported_water_storage_variant():
 def test_case_insensitive_matching():
     """测试关键词匹配不区分大小写"""
     wb = create_mock_workbook([
-        "站房名称", "TEST",
-        "一次冷冻泵", "PUMP", "45HZ"
+        ["站房名称", "TEST", ""],
+        ["一次泵", "PUMP", "45HZ"],
+        ["二次泵", "PUMP", "40HZ"]
     ])
 
     result = detect_station_type(wb)

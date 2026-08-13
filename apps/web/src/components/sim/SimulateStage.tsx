@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   executeSimulation,
   fetchSimResult,
+  API_BASE,
   type SimState,
   type SimResult,
   type SimComparison,
@@ -26,12 +27,14 @@ export function SimulateStage({ sessionId, simState, onSimComplete }: Props) {
     setError(null);
     try {
       await executeSimulation(sessionId);
+      let timeoutId: ReturnType<typeof setTimeout>;
       const poll = setInterval(async () => {
         try {
           const r = await fetchSimResult(sessionId);
           if (r) {
             setResult(r);
             clearInterval(poll);
+            clearTimeout(timeoutId);
             setRunning(false);
             onSimComplete();
           }
@@ -39,7 +42,7 @@ export function SimulateStage({ sessionId, simState, onSimComplete }: Props) {
           // still running
         }
       }, 5000);
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         clearInterval(poll);
         setRunning(false);
         setError("仿真超时（15分钟）");
@@ -192,9 +195,7 @@ function SimResultDisplay({ result, sessionId }: { result: SimResult; sessionId:
               .map((f) => (
                 <img
                   key={f}
-                  src={`${
-                    process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api"
-                  }/sim/download/${sessionId}/${f}`}
+                  src={`${API_BASE}/sim/download/${sessionId}/${f}`}
                   alt={f}
                   className="border rounded max-h-64 object-contain"
                 />
@@ -223,9 +224,7 @@ function SimResultDisplay({ result, sessionId }: { result: SimResult; sessionId:
               .map((f) => (
                 <a
                   key={f}
-                  href={`${
-                    process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api"
-                  }/sim/download/${sessionId}/${f}`}
+                  href={`${API_BASE}/sim/download/${sessionId}/${f}`}
                   className="px-3 py-1 border rounded text-sm hover:bg-gray-50"
                   download
                 >

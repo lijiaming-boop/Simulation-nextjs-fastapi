@@ -2,12 +2,14 @@
 from pathlib import Path
 from typing import Dict
 
+_PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
 
 class TemplateConfig:
     """Excel 计算模板配置器"""
 
     # 模板目录
-    TEMPLATE_DIR = Path("00_sample/模板测算表")
+    TEMPLATE_DIR = _PROJECT_ROOT / "00_sample" / "模板测算表"
 
     # 站房类型 -> 模板文件映射
     TEMPLATES: Dict[str, str] = {

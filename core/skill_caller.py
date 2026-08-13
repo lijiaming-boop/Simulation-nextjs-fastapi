@@ -3,10 +3,23 @@
 提供统一的 Skill 调用接口,使用异步方式调用 Claude Agent SDK
 """
 import os
+import sys
 import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
+
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 
@@ -136,7 +149,8 @@ class SkillCaller:
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
             setting_sources=["user", "project"],
-            allowed_tools=["Skill", "Read", "Write", "Bash"]
+            allowed_tools=["Skill", "Read", "Write", "Bash"],
+            permission_mode="bypassPermissions"
         )
 
         # 重试循环：支持 Agent 多轮修复代码
@@ -161,7 +175,10 @@ class SkillCaller:
                         if isinstance(message, AssistantMessage):
                             for block in message.content:
                                 if isinstance(block, TextBlock):
-                                    print(f"[AI Response] {block.text}")
+                                    try:
+                                        print(f"[AI Response] {block.text}", flush=True)
+                                    except UnicodeEncodeError:
+                                        pass
                                     ai_responses.append(block.text)
                                     if callback:
                                         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -176,7 +193,8 @@ class SkillCaller:
                     continue
                 raise SkillError(f"Skill '{skill_name}' {last_error}") from e
             except Exception as e:
-                last_error = str(e)
+                import traceback
+                last_error = f"{e}\n{traceback.format_exc()}"
                 if callback:
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     callback(timestamp, f"❌ 执行出错: {last_error}")

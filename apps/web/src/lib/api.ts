@@ -535,3 +535,181 @@ export function resultDownloadUrl(
   const q = password ? `?password=${encodeURIComponent(password)}` : "";
   return `${API_BASE}/download/${sessionId}/${filename}${q}`;
 }
+
+
+// ==================== 报价模块 API ====================
+
+export interface QuoteUploadResponse {
+  session_id: string;
+  module_type: "quote";
+  original_filename: string;
+  saved_path: string;
+  session_dir: string;
+  created_at: string;
+}
+
+export interface QuoteProjectData {
+  client_name: string;
+  project_name: string;
+  project_location: string;
+  deployment_mode: string;
+  existing_meters: Record<string, number>;
+  new_meters: {
+    electric: Array<{ location: string; quantity: number; ct_current?: number; ct_type?: string }>;
+    water: Array<{ location: string; dn: string; quantity: number }>;
+    flow_meters: Array<{ medium: string; dn: string; quantity: number }>;
+  };
+  third_party_systems: Array<{ name: string; type: string; direction?: string; description?: string }>;
+  optional_modules: {
+    selected_modules: Array<{ name: string; scope: string; quantity_name?: string; customer_request?: string }>;
+    extra_dashboards: number;
+    extra_topology: number;
+    extra_reports: number;
+  };
+  project_notes: {
+    current_status: string;
+    goals: string;
+    problems: string;
+  };
+  logic_gaps: Array<{ section: string; description: string; severity: string }>;
+}
+
+export interface QuoteExtractResult {
+  session_id: string;
+  stage: string;
+  parse_mode: "ai" | "local";
+  project_data: QuoteProjectData;
+  data_warnings: Array<{ section: string; description: string; severity: string }>;
+}
+
+export interface QuoteBottomSheetItem {
+  module?: string;
+  device_name?: string;
+  quantity: number;
+  unit?: string;
+  brand?: string;
+  model?: string;
+  standard_price: number;
+  channel_price: number;
+  status: "AUTO" | "CONFIRM" | "INQUIRY" | "NONSTANDARD" | "BLOCKED";
+  candidates?: Array<{
+    brand?: string;
+    model?: string;
+    name?: string;
+    category?: string;
+    key?: string;
+    aperture?: string;
+    current?: number | string;
+    type?: string;
+    standard_price: number;
+    channel_price: number;
+  }>;
+  confirm_note?: string;
+  description?: string;
+  location?: string;
+}
+
+export interface QuoteBottomSheet {
+  project_info: { client_name: string; project_name: string; project_location: string; deployment_mode: string };
+  software_items: QuoteBottomSheetItem[];
+  hardware_items: QuoteBottomSheetItem[];
+  construction_items: QuoteBottomSheetItem[];
+  totals: Record<string, number>;
+  status_summary: Record<string, number>;
+  tax_breakdown?: Record<string, unknown>;
+}
+
+export interface QuoteCalculateResult {
+  session_id: string;
+  stage: string;
+  bottom_sheet: QuoteBottomSheet;
+  section9_result?: {
+    is_standard: boolean;
+    confidence: string;
+    nonstandard_items: Array<{ keyword: string; context: string }>;
+    explanation: string;
+  };
+  edited_items: Record<string, string>;
+}
+
+export interface QuoteGenerateResult {
+  session_id: string;
+  stage: string;
+  files: string[];
+}
+
+export async function quoteUpload(file: File): Promise<QuoteUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await fetch(`${API_BASE}/quote/upload`, { method: "POST", body: form });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quotePrecheck(sessionId: string): Promise<{
+  session_id: string;
+  detected_issues: Array<{ section?: string; option?: string; description?: string; severity?: string }>;
+  summary: string;
+}> {
+  const r = await fetch(`${API_BASE}/quote/precheck/${sessionId}`, { method: "POST" });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteExtractStart(sessionId: string): Promise<{ session_id: string; status: string; stream_url: string }> {
+  const r = await fetch(`${API_BASE}/quote/extract/${sessionId}`, { method: "POST" });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteExtractResult(sessionId: string): Promise<QuoteExtractResult | null> {
+  const r = await fetch(`${API_BASE}/quote/extract/${sessionId}`);
+  if (r.status === 404 || r.status === 409) return null;
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteCalculateStart(sessionId: string): Promise<{ session_id: string; status: string; stream_url: string }> {
+  const r = await fetch(`${API_BASE}/quote/calculate/${sessionId}`, { method: "POST" });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteCalculateResult(sessionId: string): Promise<QuoteCalculateResult | null> {
+  const r = await fetch(`${API_BASE}/quote/calculate/${sessionId}`);
+  if (r.status === 404 || r.status === 409) return null;
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteAudit(
+  sessionId: string,
+  itemKey: string,
+  action: string,
+  extra?: { candidate_index?: number; standard_price?: number; channel_price?: number }
+): Promise<{ item_key: string; new_status: string; status_summary: Record<string, number>; updated_fields?: Record<string, unknown> }> {
+  const r = await fetch(`${API_BASE}/quote/audit/${sessionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_key: itemKey, action, ...extra }),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteGenerateStart(sessionId: string): Promise<{ session_id: string; status: string; stream_url: string }> {
+  const r = await fetch(`${API_BASE}/quote/generate/${sessionId}`, { method: "POST" });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export async function quoteGenerateResult(sessionId: string): Promise<QuoteGenerateResult | null> {
+  const r = await fetch(`${API_BASE}/quote/generate/${sessionId}`);
+  if (r.status === 404 || r.status === 409) return null;
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+export function quoteDownloadUrl(sessionId: string, filename: string): string {
+  return `${API_BASE}/quote/download/${sessionId}/${filename}`;
+}

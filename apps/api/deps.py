@@ -93,6 +93,47 @@ class SessionStore:
         }
         return session_id
 
+    def init_quote_session(
+        self,
+        user_id: Optional[str],
+    ) -> str:
+        """创建报价专用 session"""
+        session_dir = self._manager.create_session_directory()
+        session_id = session_dir.name
+        self._sessions[session_id] = {
+            "session_id": session_id,
+            "session_dir": session_dir,
+            "original_filename": None,
+            "user_id": user_id,
+            "module_type": "quote",
+            "stage": "upload",
+            "ai_logs": [],
+            "extracted_data": None,
+            "quality_report": None,
+            "filling_suggestions": None,
+            "result": None,
+            "sim_stage": "topology",
+            "sim_mode": "new_station",
+            "sim_topology": None,
+            "sim_cop_data": {},
+            "sim_operating_conditions": None,
+            "sim_result": None,
+            "sim_project_name": "",
+            "sim_baseline_power_kwh": None,
+            "sim_schemes": [],
+            # === 报价模块专用字段 ===
+            "quote_survey_path": None,
+            "quote_project_data": None,
+            "quote_section9_result": None,
+            "quote_bottom_sheet": None,
+            "quote_edited_items": {},
+            "quote_inquiry_prices": {},
+            "quote_data_warnings": [],
+            "quote_generated_files": [],
+            "quote_parse_mode": None,
+        }
+        return session_id
+
     def get(self, session_id: str) -> Optional[dict]:
         return self._sessions.get(session_id)
 

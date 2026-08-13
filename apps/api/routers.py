@@ -31,6 +31,9 @@ from .services import (
     is_calculate_running,
     is_suggest_running,
     is_sim_running,
+    is_quote_extract_running,
+    is_quote_generate_running,
+    is_quote_calculate_running,
     start_extract,
     start_calculate,
     start_suggest,
@@ -42,10 +45,42 @@ from .services import (
     save_sim_baseline,
     save_sim_schemes,
     _generate_default_cop_table,
+    start_quote_extract,
+    start_quote_generate,
+    start_quote_calculate,
 )
 
 
 router = APIRouter()
+
+
+# ==================== 公共工具 ====================
+
+
+def _recover_multipart_filename(raw: str) -> str:
+    """恢复 python-multipart 误按 Latin-1 解码的中文文件名。
+
+    python-multipart 把 multipart header 的 filename 字节流按 Latin-1 解码，
+    导致 UTF-8 或 GBK 编码的中文变成乱码码位（每个码位 <= 0xFF）。
+    逐个尝试 UTF-8（现代浏览器/RFC 5987）、GBK/GB18030（Windows curl），
+    取第一个成功且包含非 ASCII 字符的结果。全部失败则返回原值。
+    """
+    if raw is None:
+        return raw
+    if any(ord(c) > 0xFF for c in raw):
+        return raw
+    try:
+        raw_bytes = raw.encode('latin-1')
+    except UnicodeEncodeError:
+        return raw
+    for enc in ("utf-8", "gb18030", "gbk"):
+        try:
+            decoded = raw_bytes.decode(enc)
+            if any(ord(c) > 0x7F for c in decoded):
+                return decoded
+        except UnicodeDecodeError:
+            continue
+    return raw
 
 
 # ==================== 响应模型 ====================
@@ -138,8 +173,12 @@ def upload_survey(
     # 3. 创建会话目录（复用 core.SessionManager）
     session_dir = session_store.manager.create_session_directory()
 
-    # 4. 流式保存文件到会话目录
-    saved_path = session_dir / file.filename
+    # 4. 流式保存文件到会话目录（修复 python-multipart 的 Latin-1 编码问题）
+    #    python-multipart 0.0.19+ 会把 multipart header 中的 filename 字节
+    #    按 Latin-1 解码为 Python 字符串。实际字节可能是 GBK（Windows curl）
+    #    或 UTF-8（现代浏览器/RFC 5987）。我们逐个尝试恢复原始字符串。
+    filename = _recover_multipart_filename(file.filename)
+    saved_path = session_dir / filename
     try:
         content = file.file.read()
         if not content:
@@ -155,7 +194,7 @@ def upload_survey(
     # 5. 注册会话（内存）
     session_id = session_store.register(
         session_dir=session_dir,
-        original_filename=file.filename,
+        original_filename=filename,
         user_id=user.get("sub") or user.get("id"),
         module_type=module_type,
     )
@@ -163,7 +202,7 @@ def upload_survey(
     return UploadResponse(
         session_id=session_id,
         module_type=module_type,
-        original_filename=file.filename,
+        original_filename=filename,
         saved_path=str(saved_path),
         session_dir=str(session_dir),
         created_at=datetime.now().isoformat(),
@@ -241,7 +280,7 @@ def llm_chat(body: ChatRequest):
         raise HTTPException(status_code=500, detail=f"SkillCaller 初始化失败: {e}")
 
     try:
-        text = caller.direct_call(
+        text = caller.create_message(
             body.prompt, system=body.system, max_tokens=body.max_tokens
         )
     except Exception as e:
@@ -331,21 +370,29 @@ async def extract_stream(session_id: str):
         is_extract_running(session_id)
         or is_calculate_running(session_id)
         or is_suggest_running(session_id)
+        or is_quote_extract_running(session_id)
+        or is_quote_generate_running(session_id)
     )
 
     async def event_generator():
-        # 先回放历史日志
-        for log in list(s.get("ai_logs", [])):
-            yield {
-                "event": "message",
-                "data": json.dumps({"type": "log", **log}, ensure_ascii=False),
-            }
-
         if not any_running:
+            # 排空队列中残留的事件（线程已完成但事件尚未消费）
+            while True:
+                try:
+                    event = queue.get_nowait()
+                    yield {
+                        "event": "message",
+                        "data": json.dumps(event, ensure_ascii=False),
+                    }
+                    if event.get("type") in ("done", "complete", "error"):
+                        return
+                except asyncio.QueueEmpty:
+                    break
+            # 队列已空但没有终止事件，补发一个
             yield {
                 "event": "message",
                 "data": json.dumps(
-                    {"type": "done", "timestamp": datetime.now().strftime("%H:%M:%S")},
+                    {"type": "complete", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "任务已完成"},
                     ensure_ascii=False,
                 ),
             }
@@ -362,7 +409,7 @@ async def extract_stream(session_id: str):
                 "event": "message",
                 "data": json.dumps(event, ensure_ascii=False),
             }
-            if event.get("type") in ("done", "error"):
+            if event.get("type") in ("done", "complete", "error"):
                 return
 
     return EventSourceResponse(event_generator())
@@ -914,3 +961,320 @@ def sim_download(session_id: str, filename: str):
     if not fpath.exists():
         raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
     return FileResponse(str(fpath), filename=filename)
+
+
+# ==================== 报价模块端点 ====================
+
+
+class QuoteAuditRequest(BaseModel):
+    item_key: str = Field(..., description="项目键，如 sw_3, hw_12, ct_0")
+    action: str = Field(..., description="操作类型: approve | reject | nstd | select_candidate | update_price")
+    candidate_index: Optional[int] = Field(default=None, description="候选项索引（select_candidate 时使用）")
+    standard_price: Optional[float] = Field(default=None, description="标准价格（update_price 时使用）")
+    channel_price: Optional[float] = Field(default=None, description="渠道价格（update_price 时使用）")
+
+
+@router.post("/quote/upload", tags=["quote"])
+async def quote_upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """上传报价调研表"""
+    if file.filename is None:
+        raise HTTPException(status_code=400, detail="文件缺少文件名")
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in (".xlsx", ".xls"):
+        raise HTTPException(status_code=400, detail=f"仅支持 .xlsx / .xls，收到 {suffix!r}")
+
+    session_id = session_store.init_quote_session(
+        user_id=user.get("sub") or user.get("id"),
+    )
+
+    s = session_store.get(session_id)
+    session_dir = s["session_dir"]
+
+    filename = _recover_multipart_filename(file.filename)
+    saved_path = session_dir / filename
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+    with open(saved_path, "wb") as f:
+        f.write(content)
+
+    s["original_filename"] = filename
+    s["quote_survey_path"] = str(saved_path)
+    session_store.update_stage(session_id, "uploaded")
+
+    return {
+        "session_id": session_id,
+        "module_type": "quote",
+        "original_filename": filename,
+        "saved_path": str(saved_path),
+        "session_dir": str(session_dir),
+        "created_at": datetime.now().isoformat(),
+    }
+
+
+@router.post("/quote/precheck/{session_id}", tags=["quote"])
+async def quote_precheck(session_id: str):
+    """AI 快速预检调研表质量问题"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="session 不存在")
+    if s.get("module_type") != "quote":
+        raise HTTPException(status_code=400, detail="非报价类型 session")
+    survey_path = s.get("quote_survey_path")
+    if not survey_path:
+        raise HTTPException(status_code=400, detail="未上传调研表")
+
+    from quote_module.ai_client import read_survey_with_ai
+    try:
+        preview_result = await asyncio.to_thread(
+            read_survey_with_ai,
+            str(survey_path), None, True,
+        )
+        detected_issues = preview_result.get("detected_issues", [])
+        summary = preview_result.get("summary", "")
+    except Exception as e:
+        detected_issues = []
+        summary = f"预检跳过: {e}"
+
+    s["quote_precheck_issues"] = detected_issues
+    s["quote_precheck_summary"] = summary
+
+    return {
+        "session_id": session_id,
+        "detected_issues": detected_issues,
+        "summary": summary,
+    }
+
+
+@router.post("/quote/extract/{session_id}", tags=["quote"])
+async def quote_extract_start(session_id: str, user: dict = Depends(get_current_user)):
+    """触发报价调研表 AI 解析"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if s.get("module_type") != "quote":
+        raise HTTPException(status_code=400, detail="非报价类型 session")
+    if is_quote_extract_running(session_id):
+        raise HTTPException(status_code=409, detail="提取任务仍在运行")
+    if not s.get("quote_survey_path"):
+        raise HTTPException(status_code=400, detail="未上传调研表")
+
+    main_loop = asyncio.get_running_loop()
+    start_quote_extract(session_id, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "extracting",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.get("/quote/extract/{session_id}", tags=["quote"])
+def quote_extract_result(session_id: str):
+    """获取报价调研表解析结果"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_quote_extract_running(session_id):
+        raise HTTPException(status_code=409, detail="提取任务仍在运行")
+
+    project_data = s.get("quote_project_data")
+    if not project_data:
+        raise HTTPException(status_code=404, detail="解析结果不存在")
+
+    return {
+        "session_id": session_id,
+        "stage": s.get("stage"),
+        "parse_mode": s.get("quote_parse_mode"),
+        "project_data": project_data,
+        "data_warnings": project_data.get("data_warnings", []),
+    }
+
+
+@router.post("/quote/calculate/{session_id}", tags=["quote"])
+async def quote_calculate_start(session_id: str):
+    """触发报价计算（异步，通过 SSE 推送进度日志）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if s.get("module_type") != "quote":
+        raise HTTPException(status_code=400, detail="非报价类型 session")
+    if is_quote_calculate_running(session_id):
+        raise HTTPException(status_code=409, detail="计算任务仍在运行")
+    if not s.get("quote_project_data"):
+        raise HTTPException(status_code=400, detail="缺少项目数据，请先完成提取")
+
+    main_loop = asyncio.get_running_loop()
+    start_quote_calculate(session_id, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "calculating",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.get("/quote/calculate/{session_id}", tags=["quote"])
+def quote_calculate_result(session_id: str):
+    """获取报价计算结果（含审核台数据）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_quote_calculate_running(session_id):
+        raise HTTPException(status_code=409, detail="计算任务仍在运行")
+
+    bottom_sheet = s.get("quote_bottom_sheet")
+    if not bottom_sheet:
+        raise HTTPException(status_code=404, detail="计算结果不存在")
+
+    return {
+        "session_id": session_id,
+        "stage": s.get("stage"),
+        "bottom_sheet": bottom_sheet,
+        "section9_result": s.get("quote_section9_result"),
+        "edited_items": s.get("quote_edited_items", {}),
+    }
+
+
+@router.put("/quote/audit/{session_id}", tags=["quote"])
+def quote_audit(session_id: str, body: QuoteAuditRequest):
+    """审核操作：批准/驳回/非标/选择候选/更新价格"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    bottom_sheet = s.get("quote_bottom_sheet")
+    if not bottom_sheet:
+        raise HTTPException(status_code=400, detail="缺少计算结果")
+
+    item_key = body.item_key
+    action = body.action
+
+    prefix, idx_str = item_key.rsplit("_", 1)
+    idx = int(idx_str)
+
+    zone_map = {"sw": "software_items", "hw": "hardware_items", "ct": "construction_items"}
+    zone_name = zone_map.get(prefix)
+    if not zone_name:
+        raise HTTPException(status_code=400, detail=f"未知的项目前缀: {prefix}")
+
+    items = bottom_sheet.get(zone_name, [])
+    if idx >= len(items):
+        raise HTTPException(status_code=404, detail=f"项目索引越界: {item_key}")
+
+    item = items[idx]
+
+    if action == "approve":
+        item["status"] = "AUTO"
+    elif action == "reject":
+        item["status"] = "BLOCKED"
+    elif action in ("nstd", "mark_nonstandard"):
+        item["status"] = "NONSTANDARD"
+    elif action == "select_candidate":
+        if body.candidate_index is None:
+            raise HTTPException(status_code=400, detail="缺少 candidate_index")
+        candidates = item.get("candidates", [])
+        if body.candidate_index >= len(candidates):
+            raise HTTPException(status_code=400, detail="候选项索引越界")
+        c = candidates[body.candidate_index]
+        item["brand"] = c.get("brand", item.get("brand"))
+        item["model"] = c.get("model", item.get("model"))
+        item["standard_price"] = c.get("standard_price", item.get("standard_price"))
+        item["channel_price"] = c.get("channel_price", item.get("channel_price"))
+        item["status"] = "AUTO"
+    elif action == "update_price":
+        if body.standard_price is not None:
+            item["standard_price"] = body.standard_price
+        if body.channel_price is not None:
+            item["channel_price"] = body.channel_price
+        item["status"] = "AUTO"
+    else:
+        raise HTTPException(status_code=400, detail=f"未知操作: {action}")
+
+    s["quote_edited_items"][item_key] = item["status"]
+
+    status_summary = {"AUTO": 0, "CONFIRM": 0, "INQUIRY": 0, "NONSTANDARD": 0, "BLOCKED": 0}
+    for z in ["software_items", "hardware_items", "construction_items"]:
+        for it in bottom_sheet.get(z, []):
+            st = it.get("status", "AUTO")
+            if st in status_summary:
+                status_summary[st] += 1
+    bottom_sheet["status_summary"] = status_summary
+
+    bottom_path = s["session_dir"] / f"bottom_sheet_{session_id}.json"
+    with open(bottom_path, "w", encoding="utf-8") as f:
+        json.dump(bottom_sheet, f, ensure_ascii=False, indent=2)
+
+    return {
+        "session_id": session_id,
+        "item_key": item_key,
+        "new_status": item["status"],
+        "status_summary": status_summary,
+        "updated_fields": {
+            "brand": item.get("brand"),
+            "model": item.get("model"),
+            "standard_price": item.get("standard_price"),
+            "channel_price": item.get("channel_price"),
+        },
+    }
+
+
+@router.post("/quote/generate/{session_id}", tags=["quote"])
+async def quote_generate_start(session_id: str):
+    """生成报价表 + 方案文档"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_quote_generate_running(session_id):
+        raise HTTPException(status_code=409, detail="生成任务仍在运行")
+    if not s.get("quote_bottom_sheet"):
+        raise HTTPException(status_code=400, detail="缺少计算结果，请先完成计算")
+
+    main_loop = asyncio.get_running_loop()
+    start_quote_generate(session_id, main_loop)
+
+    return {
+        "session_id": session_id,
+        "status": "generating",
+        "stream_url": f"/api/extract/{session_id}/stream",
+    }
+
+
+@router.get("/quote/generate/{session_id}", tags=["quote"])
+def quote_generate_result(session_id: str):
+    """获取生成结果"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_quote_generate_running(session_id):
+        raise HTTPException(status_code=409, detail="生成任务仍在运行")
+
+    generated_files = s.get("quote_generated_files", [])
+    if not generated_files:
+        error = s.get("quote_error")
+        if error:
+            raise HTTPException(status_code=500, detail=f"生成失败: {error}")
+        raise HTTPException(status_code=404, detail="生成结果不存在")
+
+    file_names = [Path(f).name for f in generated_files]
+    return {
+        "session_id": session_id,
+        "stage": s.get("stage"),
+        "files": file_names,
+    }
+
+
+@router.get("/quote/download/{session_id}/{filename}", tags=["quote"])
+def quote_download(session_id: str, filename: str):
+    """下载报价生成文件"""
+    from fastapi.responses import FileResponse
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    output_dir = s["session_dir"] / f"generated_{session_id}"
+    fpath = output_dir / filename
+    if not fpath.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
+    return FileResponse(str(fpath), filename=filename)
+
