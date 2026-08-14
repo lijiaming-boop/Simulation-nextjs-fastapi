@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # 添加正则表达式导入用于精确匹配
 import re as regex_module
 
@@ -1142,7 +1145,7 @@ def extract_and_check_data(survey_excel_path: str, output_json_path: str, origin
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
-        print(f"✅ 数据提取和质量检查完成: {output_json_path}")
+        print(f" 数据提取和质量检查完成: {output_json_path}")
         print(f"项目地区: {extracted_data.get('project_region')}")
         print(f"站房类型: {extracted_data.get('station_type')} (置信度: {extracted_data.get('station_type_confidence')})")
         print(f"识别依据: {extracted_data.get('station_type_reason')}")
@@ -1158,7 +1161,7 @@ def extract_and_check_data(survey_excel_path: str, output_json_path: str, origin
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(error_result, f, ensure_ascii=False, indent=2)
-        print(f"❌ 执行出错: {str(e)}")
+        print(f" 执行出错: {str(e)}")
         print(traceback.format_exc())
 
 

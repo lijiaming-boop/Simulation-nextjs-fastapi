@@ -121,7 +121,7 @@ def _run_extract_in_thread(
         if module_type == "air_conditioner":
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 开始提取数据（Claude Agent SDK）...")
 
-            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller = SkillCaller(timeout=600, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
             caller.call_skill(
                 "extract-and-check-data",
                 str(input_path),
@@ -136,7 +136,7 @@ def _run_extract_in_thread(
             # === 空压场景：Claude Agent SDK 一次完成文本提取 + 结构化 ===
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 [空压] 提取结构化数据（Claude Agent SDK）...")
 
-            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller = SkillCaller(timeout=600, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
             caller.call_skill(
                 "extract-air-compressor-data-llm",
                 str(input_path),
@@ -379,6 +379,12 @@ def _run_calculate_in_thread(
             with open(formatted_path, "w", encoding="utf-8") as f:
                 json.dump(formatted, f, ensure_ascii=False, indent=2)
 
+            # 5.5 生成报价单和方案文档
+            emit("log", "生成报价单和方案文档...")
+            calculator._generate_quotation(str(session_dir), filled_data, result)
+            calculator._generate_scheme_document(str(session_dir), filled_data, result)
+            emit("log", "报价单生成完成")
+
             # 6. 写回 session_store
             s["filling_suggestions"] = filling_suggestions
             s["result"] = result
@@ -506,6 +512,7 @@ def _run_suggest_in_thread(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
         )
         for line in proc.stdout:
             line = line.rstrip("\n")

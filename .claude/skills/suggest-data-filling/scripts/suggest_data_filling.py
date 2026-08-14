@@ -9,6 +9,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 class DataFillingSuggester:
     """数据填充建议生成器"""
@@ -406,12 +409,12 @@ def main():
         with open(output_json_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
-        print(f'✅ 填充建议已生成: {output_json_path}')
+        print(f' 填充建议已生成: {output_json_path}')
 
         if result['can_proceed']:
             print(f'\n可以继续处理,共生成 {len(result["fillable_suggestions"])} 条填充建议')
         else:
-            print(f'\n⚠️  发现 {len(result["unfillable_fields"])} 个不可填充字段,需要用户补充:')
+            print(f'\n  发现 {len(result["unfillable_fields"])} 个不可填充字段,需要用户补充:')
             for field in result['unfillable_fields']:
                 print(f'  - {field["field"]}: {field["reason"]}')
     except Exception as e:

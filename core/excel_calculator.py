@@ -28,6 +28,13 @@ class ExcelCalculator:
         self.template_config = TemplateConfig()
         self.weather_service = weather_service or WeatherService()
 
+        project_root = Path(__file__).resolve().parent.parent
+        self.template_dir = project_root / "00_sample" / "模板测算表"
+        self.quotation_template_path = self.template_dir / "2026年空调云智控报价模板.xlsx"
+        self.scheme_template_path = self.template_dir / "空调系统数智化升级方案模板.docx"
+        self.quotation_filename = "ac_quotation.xlsx"
+        self.scheme_filename = "ac_scheme.docx"
+
     def calculate(
         self,
         filled_data_path: str,
@@ -420,6 +427,117 @@ class ExcelCalculator:
             formatted_result["monthly_data"].append(formatted_month)
         
         return formatted_result
+
+    def _generate_quotation(self, session_dir: str, filled_data: dict, result: dict):
+        """生成空调报价单
+
+        在产品价目表模板最前面插入「项目节能测算」汇总表，
+        写入项目信息与节能计算结果，另存到会话目录。
+        """
+        if not self.quotation_template_path.exists():
+            print(f"报价模板不存在: {self.quotation_template_path}")
+            return None
+
+        from openpyxl import load_workbook
+
+        quotation_path = Path(session_dir) / self.quotation_filename
+
+        try:
+            wb = load_workbook(self.quotation_template_path)
+
+            ws = wb.create_sheet("项目节能测算", 0)
+            ws.column_dimensions["A"].width = 22
+            ws.column_dimensions["B"].width = 30
+
+            rows = [
+                ("项目区域", filled_data.get("project_region", "")),
+                ("站房类型", filled_data.get("station_type", "")),
+                ("", ""),
+                ("电价 (元/kWh)", filled_data.get("electricity_price", "")),
+                ("数据完整率", f"{result.get('completeness', 0) * 100:.1f}%"),
+                ("", ""),
+                ("总节电量 (万kWh/年)", round(float(result.get("total_saving", 0)), 2)),
+                ("冷机节电 (万kWh/年)", round(float(result.get("chiller_saving", 0)), 2)),
+                ("水泵节电 (万kWh/年)", round(float(result.get("pump_saving", 0)), 2)),
+                ("冷却塔节电 (万kWh/年)", round(float(result.get("tower_saving", 0)), 2)),
+                ("", ""),
+                ("综合节能率", f"{result.get('energy_saving_rate', 0) * 100:.1f}%"),
+                ("节能率范围", result.get("energy_saving_rate_range", "")),
+            ]
+            ws["A1"] = "空调系统节能测算汇总"
+            for idx, (label, value) in enumerate(rows, start=2):
+                ws.cell(row=idx, column=1, value=label)
+                ws.cell(row=idx, column=2, value=value)
+
+            wb.save(quotation_path)
+            print(f"报价单已生成: {quotation_path}")
+            return str(quotation_path)
+
+        except Exception as e:
+            print(f"生成报价单失败: {str(e)}")
+            return None
+
+    def _generate_scheme_document(self, session_dir: str, filled_data: dict, result: dict):
+        """生成空调系统数智化升级方案文档
+
+        基于 docx 模板将正文段落中的【】占位符替换为实际项目数据，
+        固定输出到会话目录，供前端下载。
+        """
+        if not self.scheme_template_path.exists():
+            print(f"方案模板不存在: {self.scheme_template_path}")
+            return None
+
+        scheme_path = Path(session_dir) / self.scheme_filename
+
+        try:
+            from docx import Document
+        except ImportError:
+            print("生成方案文档需要 python-docx，已跳过")
+            return None
+
+        try:
+            mapping = self._build_scheme_mapping(filled_data, result)
+            document = Document(self.scheme_template_path)
+            for paragraph in document.paragraphs:
+                self._fill_paragraph(paragraph, mapping)
+            document.save(scheme_path)
+            print(f"方案文档已生成: {scheme_path}")
+            return str(scheme_path)
+        except Exception as e:
+            print(f"生成方案文档失败: {str(e)}")
+            return None
+
+    @staticmethod
+    def _fill_paragraph(paragraph, mapping: dict):
+        """将段落中的【】占位符替换为实际值"""
+        text = paragraph.text
+        if "【" not in text:
+            return
+        for key, value in mapping.items():
+            text = text.replace(key, str(value))
+        runs = paragraph.runs
+        if runs:
+            runs[0].text = text
+            for run in runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(text)
+
+    def _build_scheme_mapping(self, filled_data: dict, result: dict) -> dict:
+        """构造空调方案文档占位符到实际值的映射表"""
+        return {
+            "【项目区域】": str(filled_data.get("project_region", "")),
+            "【站房类型】": str(filled_data.get("station_type", "")),
+            "【数据时间段】": f"{datetime.now().year}年",
+            "【电价(元/kWh)】": str(filled_data.get("electricity_price", "0.6")),
+            "【数据完整率(%)】": f"{result.get('completeness', 0) * 100:.1f}",
+            "【总节电量(万kWh)】": f"{result.get('total_saving', 0):.1f}",
+            "【冷机节电(万kWh)】": f"{result.get('chiller_saving', 0):.1f}",
+            "【水泵节电(万kWh)】": f"{result.get('pump_saving', 0):.1f}",
+            "【冷却塔节电(万kWh)】": f"{result.get('tower_saving', 0):.1f}",
+            "【综合节能率(%)】": f"{result.get('energy_saving_rate', 0) * 100:.1f}",
+            "【节能率范围】": str(result.get("energy_saving_rate_range", "")),
+        }
 
     def _calculate_single_sheet(
         self,

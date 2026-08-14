@@ -11,6 +11,9 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -71,8 +74,8 @@ class TextExtractor:
         file_ext = file_path.suffix.lower()
         self.file_type = file_ext
         
-        print(f"📄 [文本提取] 开始提取文件: {file_path.name}")
-        print(f"📄 [文本提取] 文件类型: {file_ext}")
+        print(f" [文本提取] 开始提取文件: {file_path.name}")
+        print(f" [文本提取] 文件类型: {file_ext}")
         
         # 根据文件类型选择提取方法
         if file_ext in ['.xlsx', '.xls']:
@@ -85,7 +88,7 @@ class TextExtractor:
             raise ValueError(f"不支持的文件格式: {file_ext}")
         
         self.extracted_text = text
-        print(f"✅ [文本提取] 提取完成，文本长度: {len(text)} 字符")
+        print(f" [文本提取] 提取完成，文本长度: {len(text)} 字符")
         
         return text
     
@@ -114,7 +117,7 @@ class TextExtractor:
                 text_parts.append("")  # 空行分隔
         
         except Exception as e:
-            print(f"⚠️  [文本提取] openpyxl引擎失败，尝试其他引擎: {str(e)}")
+            print(f"  [文本提取] openpyxl引擎失败，尝试其他引擎: {str(e)}")
             
             try:
                 # 尝试xlrd引擎
@@ -134,7 +137,7 @@ class TextExtractor:
                     text_parts.append("")
             
             except Exception as e2:
-                print(f"❌ [文本提取] 所有Excel引擎都失败: {str(e2)}")
+                print(f" [文本提取] 所有Excel引擎都失败: {str(e2)}")
                 raise
         
         return "\n".join(text_parts)
@@ -155,7 +158,7 @@ class TextExtractor:
                         "Windows还需安装antiword并加入PATH"
                     )
 
-                print(f"📄 [文本提取] 检测到老式Word格式，使用textract提取")
+                print(f" [文本提取] 检测到老式Word格式，使用textract提取")
 
                 try:
                     text_bytes = textract.process(str(file_path.absolute()))
@@ -163,7 +166,7 @@ class TextExtractor:
                 except UnicodeDecodeError:
                     text = text_bytes.decode('gbk', errors='ignore')
                 except Exception as e:
-                    print(f"⚠️  [文本提取] textract提取失败: {str(e)}")
+                    print(f"  [文本提取] textract提取失败: {str(e)}")
                     raise
 
                 text = text.strip()
@@ -192,7 +195,7 @@ class TextExtractor:
                 return "\n".join(text_parts)
 
         except Exception as e:
-            print(f"❌ [文本提取] Word文档读取失败: {str(e)}")
+            print(f" [文本提取] Word文档读取失败: {str(e)}")
             raise
 
         return "\n".join(text_parts)
@@ -225,7 +228,7 @@ class TextExtractor:
                 text_parts.append("")
         
         except Exception as e:
-            print(f"❌ [文本提取] PowerPoint文档读取失败: {str(e)}")
+            print(f" [文本提取] PowerPoint文档读取失败: {str(e)}")
             raise
         
         return "\n".join(text_parts)
@@ -253,10 +256,10 @@ def main():
     output_text_path = sys.argv[2]
     original_filename = sys.argv[3] if len(sys.argv) > 3 else Path(input_file_path).name
     
-    print(f"🚀 [文本提取] 开始处理文件")
-    print(f"📁 [文本提取] 输入文件: {input_file_path}")
-    print(f"📁 [文本提取] 输出路径: {output_text_path}")
-    print(f"📁 [文本提取] 原始文件名: {original_filename}")
+    print(f" [文本提取] 开始处理文件")
+    print(f" [文本提取] 输入文件: {input_file_path}")
+    print(f" [文本提取] 输出路径: {output_text_path}")
+    print(f" [文本提取] 原始文件名: {original_filename}")
     
     try:
         # 创建文本提取器
@@ -281,12 +284,12 @@ def main():
         with open(output_text_path, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ [文本提取] 处理完成")
-        print(f"📄 结果已保存到: {output_text_path}")
-        print(f"📊 提取文本长度: {len(cleaned_text)} 字符")
+        print(f" [文本提取] 处理完成")
+        print(f" 结果已保存到: {output_text_path}")
+        print(f" 提取文本长度: {len(cleaned_text)} 字符")
         
     except Exception as e:
-        print(f"❌ [文本提取] 处理失败: {str(e)}")
+        print(f" [文本提取] 处理失败: {str(e)}")
         
         # 保存错误结果
         error_result = {

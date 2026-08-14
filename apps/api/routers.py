@@ -535,6 +535,8 @@ _RESULT_DOWNLOAD_WHITELIST = {
     "calculation_result.xlsx",      # 空调完整版（需密码）
     "air_compressor_quotation.xlsx",  # 空压机报价单
     "air_compressor_scheme.docx",   # 空压机方案文档
+    "ac_quotation.xlsx",            # 空调报价单
+    "ac_scheme.docx",               # 空调方案文档
 }
 # 完整计算表格需管理员密码（可用环境变量覆盖）
 _ADMIN_DOWNLOAD_PASSWORD = os.getenv("ADMIN_DOWNLOAD_PASSWORD", "admin123")

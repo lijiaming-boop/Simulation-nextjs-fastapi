@@ -340,7 +340,7 @@ def main():
 
     # 保存结果
     save_json(suggestions, output_path)
-    print(f"✓ 填充建议已保存到: {output_path}")
+    print(f" 填充建议已保存到: {output_path}")
 
     # 输出统计信息
     total_fields = 0

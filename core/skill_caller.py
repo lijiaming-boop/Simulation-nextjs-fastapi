@@ -177,7 +177,7 @@ class SkillCaller:
                                 if isinstance(block, TextBlock):
                                     try:
                                         print(f"[AI Response] {block.text}", flush=True)
-                                    except UnicodeEncodeError:
+                                    except (UnicodeEncodeError, OSError):
                                         pass
                                     ai_responses.append(block.text)
                                     if callback:
@@ -302,11 +302,12 @@ class SkillCaller:
         """纯文本 LLM 调用的异步实现"""
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
-            setting_sources=[],          # 不加载项目/用户技能设置，纯对话
+            setting_sources=["user"],     # 加载 user 设置（代理 API 需要），不加载项目设置
             allowed_tools=[],            # 禁用工具，只要文本回复
             max_turns=1,                 # 单轮
             system_prompt=system,
             model=model or os.getenv("ANTHROPIC_MODEL") or None,
+            permission_mode="bypassPermissions",
         )
 
         texts: List[str] = []
