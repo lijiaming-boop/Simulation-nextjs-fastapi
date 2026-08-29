@@ -31,7 +31,11 @@ def rate_band_deviation_pp(expected_rate: float, rate_min: Optional[float],
 def judge_case(case, final_status: str, result: Optional[dict],
                extracted_region: Optional[str]) -> dict:
     """汇总单个用例的评测判定"""
-    outcome_correct = final_status == case.expected_outcome
+    if case.expected_outcome == "smoke":
+        # 冒烟用例：合法终态（算完或规范中断）即通过，内部 error 视为失败
+        outcome_correct = final_status in ("completed", "needs_input")
+    else:
+        outcome_correct = final_status == case.expected_outcome
 
     deviation = None
     rate_pass = None

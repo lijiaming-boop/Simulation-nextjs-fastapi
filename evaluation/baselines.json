@@ -29,6 +29,24 @@
     "rate_max": null,
     "actual_outcome": "needs_input"
   },
+  "smoke_yichang_nanbo": {
+    "rate_range": "5.7% - 7.1%",
+    "rate_min": 0.05713675627727757,
+    "rate_max": 0.07082143381467339,
+    "actual_outcome": "completed"
+  },
+  "smoke_shijiazhuang_siyao": {
+    "rate_range": "10.2% - 12.9%",
+    "rate_min": 0.10174784161276983,
+    "rate_max": 0.12906221320029335,
+    "actual_outcome": "completed"
+  },
+  "smoke_aeon_vietnam": {
+    "rate_range": "3.4% - 5.4%",
+    "rate_min": 0.034212835073751904,
+    "rate_max": 0.05388257794625461,
+    "actual_outcome": "completed"
+  },
   "insufficient": {
     "rate_range": null,
     "rate_min": null,

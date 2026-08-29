@@ -64,6 +64,26 @@ CASES = [
         note=("含中温/热回收机组，按系统设计应拦截转人工评估"
               "（readme 标注的 6.5% 为人工测算参考值，对应混合温度工况）"),
     ),
+    # —— M3 扩容：无锚点冒烟用例（真实未标注调研表，验证流程稳健性）——
+    # expected_outcome="smoke"：只要求跑出 completed/needs_input 的合法终态，不崩、不卡死
+    EvalCase(
+        key="smoke_yichang_nanbo",
+        filename="宜昌南玻显示器件有限公司-中央空调节能调研表060527.xlsx",
+        expected_outcome="smoke", expected_rate=None, expected_region=None,
+        note="冒烟：真实项目调研表，无人工锚点",
+    ),
+    EvalCase(
+        key="smoke_shijiazhuang_siyao",
+        filename="石家庄四药202-203车间2自己测试.xlsx",
+        expected_outcome="smoke", expected_rate=None, expected_region=None,
+        note="冒烟：真实项目调研表，无人工锚点",
+    ),
+    EvalCase(
+        key="smoke_aeon_vietnam",
+        filename="260423Chiller Plant - Data Collection Form- Commercial 2026_AEON VIETNUM_BINTANG0514受領0518.xlsx",
+        expected_outcome="smoke", expected_rate=None, expected_region=None,
+        note="冒烟：英文版商业调研表（跨国表单格式）",
+    ),
     EvalCase(
         key="insufficient",
         filename="【数据缺失过多 无法计算节能率】02-中央空调节能调研表（首页含问题指引）-工业板块.xlsx",

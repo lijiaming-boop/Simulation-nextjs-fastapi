@@ -1,8 +1,8 @@
 # Agent 主线回归评测报告
 
-- 运行时间：20260829_132958
+- 运行时间：20260829_141644
 - 决策模式：deterministic（RuleBrain，零 LLM 成本，结果可复现）
-- 评测集：6 份标注样例调研表（00_sample/示例调研表/）
+- 评测集：9 份标注样例调研表（00_sample/示例调研表/）
 
 ## 汇总指标
 
@@ -20,12 +20,15 @@
 
 | 用例 | 预期 | 实际 | 预期节能率 | 计算区间 | 偏差(pp) | 达标 | 地区 | 耗时(s) |
 |---|---|---|---|---|---|---|---|---|
-| complete_huizhou | completed | completed | 15.2% | 8.6% - 13.1% | 2.13 | ⚠️ | ✅ 华南 | 5.3 |
+| complete_huizhou | completed | completed | 15.2% | 8.6% - 13.1% | 2.13 | ⚠️ | ✅ 华南 | 16.2 |
 | missing_winter | completed | completed | 10.4% | 7.4% - 10.1% | 0.34 | ✅ | ✅ 华北 | 4.2 |
-| missing_summer | completed | completed | 12.1% | 17.5% - 21.0% | 5.42 | ⚠️ | ✅ 华东 | 4.4 |
-| patchy | completed | completed | 11.9% | 8.6% - 13.1% | 0.0 | ✅ | — | 4.5 |
+| missing_summer | completed | completed | 12.1% | 17.5% - 21.0% | 5.42 | ⚠️ | ✅ 华东 | 4.5 |
+| patchy | completed | completed | 11.9% | 8.6% - 13.1% | 0.0 | ✅ | — | 4.4 |
 | summer_only | needs_input | needs_input | — | — | — | ✅ | — | 1.3 |
-| insufficient | needs_input | needs_input | — | — | — | ✅ | — | 1.3 |
+| smoke_yichang_nanbo | smoke | completed | — | 5.7% - 7.1% | — | ✅ | — | 4.5 |
+| smoke_shijiazhuang_siyao | smoke | completed | — | 10.2% - 12.9% | — | ✅ | — | 4.4 |
+| smoke_aeon_vietnam | smoke | completed | — | 3.4% - 5.4% | — | ✅ | — | 4.4 |
+| insufficient | needs_input | needs_input | — | — | — | ✅ | — | 1.2 |
 
 ## 未达标用例与已知缺口说明
 

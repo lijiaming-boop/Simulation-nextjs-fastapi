@@ -120,6 +120,23 @@ M1 平台底座能力：
 - **审计**：上传/下载/运行 agent 均记录操作人（`audit_logs` 表）
 - **CI 门禁**：GitHub Actions 跑 lint + 单测 + 回归评测基线比对（零 LLM 成本）
 
+### 平台功能（M2/M3）
+
+- **LLM 网关**（`core/llm_gateway.py`）：所有决策调用统一计量（`llm_calls` 表）、
+  按用户日 token 预算超额拒绝、连续失败熔断、瞬时错误退避重试、双模型路由
+- **Human-in-the-loop 闭环**：数据不达标 → 求助待办；填充占比超阈值 → 审批待办；
+  `GET /api/inbox` 查看待办，`POST /inbox/{id}/approve` 批准后从断点恢复，
+  `POST /agent/{id}/resolve` 上传补充调研表重跑
+- **多业务线统一编排**：`/api/agent/run` 同时支持空调与空压（空压提取为 LLM 型
+  工具经 agent 会话，填充/计算为确定性工具），同一套门禁与轨迹语义
+- **批量测算**：`POST /api/agent/batch` 一次上传多份调研表顺序执行，
+  `GET /api/agent/batch/{id}` 查进度与逐文件结果
+- **历史测算库**：`GET /api/history`（按地区/站型筛选）、
+  `GET /api/history/{id}/similar` 相似案例推荐
+- **通知集成**：`NOTIFY_WEBHOOK_URL` 支持企业微信/钉钉/通用 webhook，
+  测算完成/求助/审批事件自动推送
+- **轨迹回放**：`/agent` 前端页面逐帧回放 agent 的思考-行动-观察与 token 用量
+
 ## 项目结构
 
 ```

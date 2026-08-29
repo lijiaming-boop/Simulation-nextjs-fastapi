@@ -28,9 +28,10 @@ from .deps import (
     audit as audit_action,
     ensure_session_access,
     get_current_user,
+    is_privileged,
     session_store,
 )
-from .agent_service import is_agent_running, start_agent_run
+from .agent_service import is_agent_running, run_agent_sync, start_agent_run
 from .services import (
     ensure_ai_queue,
     get_ai_queue,
@@ -1335,6 +1336,7 @@ class AgentRunResponse(BaseModel):
 async def agent_run(
     session_id: str,
     mode: str = Query(default="auto", description="决策模式：auto（有 Key 用 LLM）| deterministic（零成本规则策略）"),
+    require_approval: bool = Query(default=False, description="填充建议占比超阈值时是否暂停等人工审批"),
     user: dict = Depends(get_current_user),
 ):
     """以 Agent 模式执行完整测算主线（提取→质检→填充→计算→结论）
@@ -1347,10 +1349,10 @@ async def agent_run(
     s = session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
-    if s["module_type"] != "air_conditioner":
+    if s["module_type"] not in ("air_conditioner", "air_compressor"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Agent 模式当前支持 air_conditioner 模块",
+            detail="Agent 模式当前支持 air_conditioner / air_compressor 模块",
         )
     if mode not in ("auto", "deterministic"):
         raise HTTPException(
@@ -1363,7 +1365,8 @@ async def agent_run(
     main_loop = asyncio.get_running_loop()
     try:
         trace_path = start_agent_run(session_id, mode=None if mode == "auto" else mode,
-                                     main_loop=main_loop)
+                                     main_loop=main_loop,
+                                     require_fill_approval=require_approval)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
@@ -1466,7 +1469,8 @@ async def agent_run_resume(
 
     main_loop = asyncio.get_running_loop()
     try:
-        start_agent_run(session_id, main_loop=main_loop, resume=True)
+        from .agent_service import resume_agent_run
+        resume_agent_run(session_id, main_loop=main_loop, approval_granted=True)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     audit_action(user, "agent.resume", session_id,
@@ -1478,3 +1482,268 @@ async def agent_run_resume(
         stream_url=f"/api/agent/{session_id}/stream",
         trace_url=f"/api/agent/{session_id}/trace",
     )
+
+
+# ==================== Human-in-the-loop 收件箱（M2） ====================
+
+
+@router.get("/inbox", tags=["agent"])
+def inbox(user: dict = Depends(get_current_user)):
+    """当前用户的待办：agent 求助（补充数据）与审批请求
+
+    特权角色（admin/sr）可见全部待办。
+    """
+    actions = session_store.list_pending_actions(
+        user_id=user.get("sub"), include_all=is_privileged(user))
+    enriched = []
+    for a in actions:
+        s = session_store.get(a["session_id"])
+        enriched.append({
+            **a,
+            "original_filename": (s or {}).get("original_filename"),
+            "module_type": (s or {}).get("module_type"),
+        })
+    return {"count": len(enriched), "actions": enriched}
+
+
+@router.post("/inbox/{action_id}/approve", tags=["agent"])
+def approve_action(action_id: int, user: dict = Depends(get_current_user)):
+    """批准填充审批：待办关闭，agent 从断点恢复执行填充与计算"""
+    action = session_store.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="待办不存在")
+    if action["status"] != "pending":
+        raise HTTPException(status_code=409, detail=f"待办已处理（{action['status']}）")
+    if action["action_type"] != "approval":
+        raise HTTPException(status_code=400, detail="该待办不是审批类型")
+    if action["user_id"] and action["user_id"] != user.get("sub") and not is_privileged(user):
+        raise HTTPException(status_code=403, detail="无权处理该待办")
+
+    session_store.resolve_action(action_id, status="resolved")
+    audit_action(user, "agent.approve", action["session_id"], {"action_id": action_id})
+    from .agent_service import resume_agent_run
+    try:
+        resume_agent_run(action["session_id"], main_loop=asyncio.get_running_loop(),
+                         approval_granted=True)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"action_id": action_id, "status": "approved", "resumed": True}
+
+
+@router.post("/inbox/{action_id}/dismiss", tags=["agent"])
+def dismiss_action(action_id: int, user: dict = Depends(get_current_user)):
+    """忽略待办"""
+    action = session_store.get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="待办不存在")
+    if action["status"] != "pending":
+        raise HTTPException(status_code=409, detail="待办已处理")
+    if action["user_id"] and action["user_id"] != user.get("sub") and not is_privileged(user):
+        raise HTTPException(status_code=403, detail="无权处理该待办")
+    session_store.resolve_action(action_id, status="dismissed")
+    audit_action(user, "agent.dismiss", action["session_id"], {"action_id": action_id})
+    return {"action_id": action_id, "status": "dismissed"}
+
+
+@router.post("/agent/{session_id}/resolve", tags=["agent"])
+async def resolve_needs_input(
+    session_id: str,
+    file: UploadFile = File(..., description="补充/修正后的调研表"),
+    mode: str = Query(default="deterministic"),
+    user: dict = Depends(get_current_user),
+):
+    """补充数据闭环：上传新调研表 → 关闭求助待办 → 重新发起完整测算"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_agent_running(session_id):
+        raise HTTPException(status_code=409, detail="agent 任务正在运行")
+
+    filename = _recover_multipart_filename(file.filename or "resolved.xlsx")
+    saved = s["session_dir"] / filename
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件为空")
+    with open(saved, "wb") as f:
+        f.write(content)
+    # 更新会话文件指针（写透落库）
+    s["original_filename"] = filename
+
+    # 关闭该会话的求助待办
+    for a in session_store.list_pending_actions(user_id=user.get("sub"),
+                                                include_all=is_privileged(user)):
+        if a["session_id"] == session_id and a["action_type"] == "needs_input":
+            session_store.resolve_action(a["id"], status="resolved")
+    audit_action(user, "agent.resolve", session_id, {"filename": filename})
+
+    from .agent_service import start_agent_run
+    main_loop = asyncio.get_running_loop()
+    try:
+        start_agent_run(session_id, mode=None if mode == "auto" else mode,
+                        main_loop=main_loop)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"session_id": session_id, "status": "running",
+            "survey": filename,
+            "stream_url": f"/api/agent/{session_id}/stream"}
+
+
+# ==================== 批量测算（M3） ====================
+
+
+@router.post("/agent/batch", tags=["agent"])
+async def agent_batch(
+    files: list[UploadFile] = File(..., description="多份调研表"),
+    module_type: str = Query(default="air_conditioner"),
+    mode: str = Query(default="deterministic"),
+    user: dict = Depends(get_current_user),
+):
+    """批量测算：为每份调研表建会话并顺序执行 agent 主线
+
+    后台线程顺序处理（计算引擎为 CPU 密集，串行最稳），
+    用 GET /agent/batch/{batch_id} 轮询进度与逐文件结果。
+    """
+    if module_type not in ("air_conditioner", "air_compressor"):
+        raise HTTPException(status_code=400, detail="module_type 不支持")
+    if not files:
+        raise HTTPException(status_code=400, detail="未上传任何文件")
+
+    batch_id = session_store.create_batch(user.get("sub"), mode, total=len(files))
+    items = []
+    for f in files[:50]:  # 单批上限 50 份
+        filename = _recover_multipart_filename(f.filename or "survey.xlsx")
+        session_dir = session_store.manager.create_session_directory()
+        saved = session_dir / filename
+        with open(saved, "wb") as out:
+            out.write(await f.read())
+        sid = session_store.register(session_dir, filename,
+                                     user.get("sub"), module_type)
+        items.append({"session_id": sid, "filename": filename})
+        f.file.close()
+
+    audit_action(user, "agent.batch", None,
+                 {"batch_id": batch_id, "count": len(items), "mode": mode})
+
+    import threading as _threading
+
+    def batch_worker():
+        completed = failed = 0
+        results = []
+        for item in items:
+            try:
+                final = run_agent_sync(item["session_id"], mode=mode)
+                status = final["status"]
+                ok = status == "completed"
+            except Exception as e:
+                status, ok = "error", False
+                final = {"summary": f"{type(e).__name__}: {e}"}
+            completed += 1 if ok else 0
+            failed += 0 if ok else 1
+            results.append({**item, "status": status,
+                            "summary": (final.get("summary") or "")[:160]})
+            session_store.update_batch(batch_id, status="running",
+                                       completed=completed, failed=failed,
+                                       detail={"results": results})
+        session_store.update_batch(
+            batch_id, status="done", completed=completed, failed=failed,
+            detail={"results": results}, finished_at=datetime.now(),
+        )
+        try:
+            from .notify import notify
+            notify("agent.batch.finished",
+                   f"✅ 批量测算完成（{completed}/{len(items)}）",
+                   {"batch_id": batch_id})
+        except Exception:
+            pass
+
+    _threading.Thread(target=batch_worker, daemon=True,
+                      name=f"batch-{batch_id}").start()
+    return {"batch_id": batch_id, "total": len(items), "status": "running",
+            "items": items,
+            "status_url": f"/api/agent/batch/{batch_id}"}
+
+
+@router.get("/agent/batch/{batch_id}", tags=["agent"])
+def agent_batch_status(batch_id: str, user: dict = Depends(get_current_user)):
+    """批量任务进度与逐文件结果"""
+    batch = session_store.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="批量任务不存在")
+    if (batch.get("user_id") and batch["user_id"] != user.get("sub")
+            and not is_privileged(user)):
+        raise HTTPException(status_code=403, detail="无权访问该批量任务")
+    return batch
+
+
+# ==================== 历史测算库（M3） ==========
+
+
+@router.get("/history", tags=["history"])
+def history(
+    module_type: str = Query(default="air_conditioner"),
+    region: Optional[str] = Query(default=None),
+    station_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """历史测算库：已完成测算的摘要（地区/站型/节能率）"""
+    rows = session_store.list_completed_results(module_type=module_type, limit=limit * 2)
+    if region:
+        rows = [r for r in rows if r.get("region") == region]
+    if station_type:
+        rows = [r for r in rows if r.get("station_type") == station_type]
+    return {"count": len(rows[:limit]), "items": rows[:limit]}
+
+
+@router.get("/history/{session_id}/similar", tags=["history"])
+def similar_cases(session_id: str, limit: int = Query(default=5, le=20),
+                  user: dict = Depends(get_current_user)):
+    """相似案例：同地区同站型的历史测算，按节能率距离排序"""
+    s = session_store.get(session_id)
+    if not s or not s.get("result"):
+        raise HTTPException(status_code=404, detail="会话不存在或尚无结果")
+    extracted = s.get("extracted_data") or {}
+    result = s.get("result") or {}
+    my_region = extracted.get("project_region")
+    my_station = extracted.get("station_type")
+    my_mid = None
+    if result.get("energy_saving_rate_min") is not None and result.get("energy_saving_rate_max") is not None:
+        my_mid = (result["energy_saving_rate_min"] + result["energy_saving_rate_max"]) / 2
+
+    rows = session_store.list_completed_results(module_type=s.get("module_type", "air_conditioner"),
+                                                limit=200)
+    scored = []
+    for r in rows:
+        if r["session_id"] == session_id:
+            continue
+        if my_region and r.get("region") != my_region:
+            continue
+        if my_station and r.get("station_type") != my_station:
+            continue
+        if r.get("rate_min") is not None and r.get("rate_max") is not None and my_mid is not None:
+            mid = (r["rate_min"] + r["rate_max"]) / 2
+            r["rate_distance_pp"] = round(abs(mid - my_mid) * 100, 2)
+        scored.append(r)
+    scored.sort(key=lambda x: x.get("rate_distance_pp", 1e9))
+    return {"count": len(scored[:limit]), "items": scored[:limit]}
+
+
+# ==================== LLM 用量报表（M2 网关） ====================
+
+
+@router.get("/llm/usage", tags=["llm"])
+def llm_usage(days: int = Query(default=30, le=365),
+              user: dict = Depends(get_current_user)):
+    """LLM 用量汇总（按用途分组）。非特权角色仅见自己的用量。"""
+    scope = None if is_privileged(user) else user.get("sub")
+    return session_store.llm_usage_summary(user_id=scope, days=days)
+
+
+@router.get("/llm/budget", tags=["llm"])
+def llm_budget(user: dict = Depends(get_current_user)):
+    """当前用户当日 LLM token 预算使用情况"""
+    import os
+    used = session_store.llm_tokens_used_today(user.get("sub"))
+    budget = int(os.getenv("LLM_DAILY_TOKEN_BUDGET", "500000"))
+    return {"user_id": user.get("sub"), "used_today": used, "daily_budget": budget,
+            "remaining": max(0, budget - used)}

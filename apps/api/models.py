@@ -90,3 +90,53 @@ class AuditLog(Base):
     session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class LLMCall(Base):
+    """LLM 调用计量（M2 网关）：成本核算与预算管控的数据源"""
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str] = mapped_column(String(128), default="")
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class AgentAction(Base):
+    """Human-in-the-loop 待办（M2）：agent 的求助/审批请求与闭环状态"""
+    __tablename__ = "agent_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("sessions.session_id"), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    # needs_input（补充数据）| approval（填充审批）
+    action_type: Mapped[str] = mapped_column(String(32))
+    # pending / resolved / dismissed
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class BatchJob(Base):
+    """批量测算任务（M3）"""
+    __tablename__ = "batch_jobs"
+
+    batch_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    mode: Mapped[str] = mapped_column(String(16), default="deterministic")
+    # pending / running / done
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    completed: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

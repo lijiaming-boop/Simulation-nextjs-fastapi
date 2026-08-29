@@ -36,6 +36,10 @@ _STATE_FILES = {
     "result": "result_data.json",
 }
 
+# 填充建议占比超过该阈值（模板可用字段）时，若启用审批策略，
+# 在执行填充前暂停等待人工确认（Human-in-the-loop）
+APPROVAL_FILL_RATIO = 0.25
+
 
 class AgentOrchestrator:
     """测算主线 agent 编排器"""
@@ -50,6 +54,8 @@ class AgentOrchestrator:
         registry: Optional[ToolRegistry] = None,
         max_steps: int = 10,
         start_step: int = 1,
+        require_fill_approval: bool = False,
+        approval_granted: bool = False,
         on_event: Optional[EventCallback] = None,
         on_step: Optional[StepCallback] = None,
     ) -> None:
@@ -61,6 +67,8 @@ class AgentOrchestrator:
         self.registry = registry or build_default_registry()
         self.max_steps = max_steps
         self.start_step = start_step
+        self.require_fill_approval = require_fill_approval
+        self.approval_granted = approval_granted
         self.on_event = on_event
         self.on_step = on_step
         self.trace = AgentTrace(session_id, mode="agent" if brain is not None else "deterministic")
@@ -149,8 +157,13 @@ class AgentOrchestrator:
                 if decision.tool == "finish":
                     status, summary = "completed", decision.args.get("summary", "测算完成")
                     extra["result"] = self.ctx.get("result")
+                elif decision.tool == "request_approval":
+                    status, summary = "pending_approval", decision.args.get(
+                        "reason", "填充建议等待人工审批")
+                    extra["action_type"] = "approval"
                 else:  # request_user_input
                     status, summary = "needs_input", decision.args.get("reason", "需要用户补充数据")
+                    extra["action_type"] = "needs_input"
                     extra["missing_items"] = decision.args.get("missing_items", [])
                 self.trace.end_step(True, {"status": status})
                 self._emit("tool_end", tool=decision.tool, ok=True, step=step_no,
@@ -215,6 +228,17 @@ class AgentOrchestrator:
                 unfillable = [u.get("field", "") for u in suggestions.get("unfillable_fields", [])]
                 note = f"存在不可填充字段，无法继续计算: {', '.join(unfillable[:5])}"
                 return ["request_user_input"], note
+            # Human-in-the-loop：启用审批策略且填充占比超阈值时，
+            # 先暂停等人工确认（批准后 approval_granted=True 续跑直通）
+            if (self.require_fill_approval and not self.approval_granted):
+                from agent.tools import fill_ratio
+                available = (self.ctx.get("extracted_data") or {}).get("available_fields")
+                ratio = fill_ratio(suggestions, available)
+                if ratio > APPROVAL_FILL_RATIO:
+                    return ["request_approval"], (
+                        f"填充建议占比 {ratio:.0%} 超过审批阈值 {APPROVAL_FILL_RATIO:.0%}，"
+                        "执行填充前需人工确认"
+                    )
             # 有建议可执行；若建议占比过高，允许模型选择转人工
             return ["apply_filling", "request_user_input"], None
 
@@ -238,6 +262,8 @@ class AgentOrchestrator:
         """给决策模型的紧凑状态摘要"""
         view: Dict[str, Any] = {
             "original_filename": self.original_filename or self.survey_path.name,
+            "approval_required": self.require_fill_approval,
+            "approval_granted": self.approval_granted,
             "steps_done": [
                 {"tool": s["tool"], "ok": s["ok"]} for s in self.trace.steps
             ],
@@ -258,6 +284,11 @@ class AgentOrchestrator:
                 "can_proceed": suggestions.get("can_proceed"),
                 "fillable_count": len(suggestions.get("fillable_suggestions", [])),
                 "unfillable_count": len(suggestions.get("unfillable_fields", [])),
+                # 紧凑字段名列表（fill_ratio 用），不携带完整建议载荷
+                "fillable_fields": sorted({
+                    str(s.get("field", "")).split(".")[-1]
+                    for s in suggestions.get("fillable_suggestions", [])
+                }),
                 "fillable_preview": [
                     f"{s.get('field')}: {s.get('suggested_value')} ({s.get('method')})"
                     for s in suggestions.get("fillable_suggestions", [])[:6]

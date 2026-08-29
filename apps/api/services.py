@@ -533,9 +533,12 @@ def _run_suggest_in_thread(
 
         # 3. LLM 增强（可选，走 Claude Agent SDK）
         if use_llm:
-            emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
+            emit("log", "🤖 调用 LLM 对规则建议做智能增强（经 LLM 网关）...")
             try:
-                client = SkillCaller(timeout=180, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+                from core.llm_gateway import LLMGateway
+                client = LLMGateway(user_id=s.get("user_id"),
+                                    purpose_default="suggest.enhance",
+                                    store=session_store)
                 if module_type == "air_compressor":
                     prompt = (
                         "你是一位空压机节能测算顾问。下面是某空压机项目的提取数据、质量报告以及基于规则生成的填充建议。\n"

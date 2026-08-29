@@ -166,32 +166,39 @@ class RuleBrain:
                 tool="suggest_filling", args={},
                 reason=f"数据质量达标（完整率 {state['extracted'].get('completeness')}），生成填充建议",
             )
-        if "apply_filling" in available_tools:
+        if "apply_filling" in available_tools or "request_approval" in available_tools:
+            from agent.tools import fill_ratio
             fillable = state["suggestions"].get("fillable_count", 0)
-            # 风险比率 = 需估算的字段点 / 模板应有的字段点。
-            # 分母用模板可用字段（available_fields），模板天生没有、只能靠
-            # 行业默认值填充的点不属于数据质量风险，不计入分子。
+            # 风险比率 = 需估算的字段点 / 模板应有的字段点（见 fill_ratio）
             available = (state.get("extracted") or {}).get("available_fields")
-            if available:
-                available_set = set(available)
-                fillable_in_template = sum(
-                    1 for s in state["suggestions"].get("fillable_suggestions", [])
-                    if str(s.get("field", "")).split(".")[-1] in available_set
+            ratio = fill_ratio(state["suggestions"], available)
+            # 白名单只剩审批（orchestrator 已判定需人工确认）→ 直接请求审批
+            if "request_approval" in available_tools and "apply_filling" not in available_tools:
+                return BrainDecision(
+                    tool="request_approval",
+                    args={"reason": state.get("gate_note",
+                          f"填充建议占比 {ratio:.0%} 超过审批阈值，等待人工确认")},
+                    reason="填充依赖过重，转人工审批",
                 )
-                ratio = fillable_in_template / (len(available_set) * 12)
-            else:
-                ratio = fillable / (12 * 7)
             if ratio > self.RISKY_FILL_RATIO:
+                # 启用审批策略时转审批暂停（可恢复），否则直接求助用户
+                if "request_approval" in available_tools and state.get("approval_required"):
+                    return BrainDecision(
+                        tool="request_approval",
+                        args={"reason": f"填充建议占比 {ratio:.0%} 超过阈值，等待人工确认后执行填充"},
+                        reason="填充依赖过重，转人工审批",
+                    )
                 return BrainDecision(
                     tool="request_user_input",
                     args={"reason": f"需估算的模板字段占比过高（{ratio:.0%}），建议补充原始数据后重新测算",
                           "missing_items": state["suggestions"].get("unfillable_fields", [])},
                     reason="填充依赖过重，转人工确认",
                 )
-            return BrainDecision(
-                tool="apply_filling", args={},
-                reason=f"共 {fillable} 条填充建议，风险可控，执行填充",
-            )
+            if "apply_filling" in available_tools:
+                return BrainDecision(
+                    tool="apply_filling", args={},
+                    reason=f"共 {fillable} 条填充建议，风险可控，执行填充",
+                )
         if "calculate_saving_rate" in available_tools:
             return BrainDecision(
                 tool="calculate_saving_rate", args={},
