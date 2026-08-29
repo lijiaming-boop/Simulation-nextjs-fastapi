@@ -117,7 +117,21 @@ token 用量按次记录在 `agent_trace.json` 的 `llm_usage` 中（依赖
    注册为 `ToolRegistry` 中的 LLM 型工具，由同一 orchestrator 编排。
 5. **多用户会话存储**：`SessionStore` 目前为进程内 dict（POC 级），生产换 Redis。
 
-## 8. 关键代码索引
+## 8. 平台底座（M1）
+
+| 能力 | 实现 | 位置 |
+|---|---|---|
+| 持久化 | SQLAlchemy（SQLite/PostgreSQL 双兼容，`DATABASE_URL` 切换）；sessions / agent_runs / agent_steps / audit_logs 四张表 | `apps/api/models.py`、`apps/api/storage.py` |
+| 写透会话 | `get()` 返回 LiveSession dict，键赋值自动落库——业务代码沿用内存写法零改造；嵌套结构变更后调 `save()` | `storage.py::LiveSession` |
+| 断点恢复 | 每步经 `on_step` 落库；启动时遗留 running 标记 interrupted；`POST /agent/{id}/run/resume` 从会话目录产物 hydrate 续跑，步号与 token 累计不重置 | `agent/orchestrator.py::hydrate_from_session`、`apps/api/db.py::mark_stale_runs_interrupted` |
+| 认证与 ACL | `REQUIRE_AUTH=true` 强制网关身份头；路由级 `acl_guard` 对所有带 session_id 的请求做归属校验，越权 403 + 审计 | `apps/api/deps.py`、`routers.py::acl_guard` |
+| 审计 | 上传/下载/运行/恢复写 audit_logs | `deps.py::audit` |
+| 部署 | Dockerfile + docker-compose（db/api/web）；CI 含 lint、单测、评测基线门禁 | `docker-compose.yml`、`.github/workflows/ci.yml` |
+
+已知边界：SSE 事件队列与 LiveSession 写缓存为进程内实现，多副本部署需网关按
+session_id 粘滞路由；Redis 运行态缓存与发布订阅为 M2 演进项。
+
+## 9. 关键代码索引
 
 | 组件 | 位置 |
 |---|---|

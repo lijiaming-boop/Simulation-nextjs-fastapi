@@ -205,11 +205,11 @@ def main() -> int:
     if args.compare_baseline:
         diffs = compare_baseline(results)
         if diffs:
-            print(f"⚠️ 与基线存在 {len(diffs)} 处差异:")
+            print(f"❌ 与基线存在 {len(diffs)} 处差异（CI 门禁失败）:")
             for d in diffs:
                 print(f"  - {d['key']}: 基线 {d['baseline']} → 当前 {d['current']}")
-        else:
-            print("✅ 与基线完全一致，无回归")
+            return 2
+        print("✅ 与基线完全一致，无回归")
 
     print(f"\n=== 汇总: 决策正确率 {summary['outcome_accuracy']:.0%}, "
           f"节能率达标 {summary['rate_pass']}/{summary['rate_evaluated']}, "

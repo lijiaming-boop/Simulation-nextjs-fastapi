@@ -629,6 +629,8 @@ class ExcelCalculator:
         wb.close()
 
         # 阶段4: 提取计算结果
+        _excel_error_prefixes = ("#",)  # #DIV/0!、#N/A、#VALUE! 等 Excel 错误值
+
         def get_result_value(result_field: str) -> float:
             """提取结果单元格的值"""
             cell = self.mapper.get_result_cell(result_field)
@@ -638,9 +640,25 @@ class ExcelCalculator:
                 value = result_data[cell_id]
                 if hasattr(value, 'value'):
                     value = value.value[0][0]
-                return float(value) if value is not None else 0.0
+                if value is None:
+                    return 0.0
+                text = str(value).strip()
+                if text.startswith(_excel_error_prefixes) and not _is_number(text):
+                    raise RuntimeError(
+                        f"Excel 公式结果为错误值 {text}（{sheet_name} {cell}，字段 {result_field}）。"
+                        "通常是输入数据缺失（如能耗/温差/频率为空）导致公式除零——"
+                        "请检查调研表提取与填充结果，而不是静默采用无效数值。"
+                    )
+                return float(value)
             else:
                 return 0.0
+
+        def _is_number(text: str) -> bool:
+            try:
+                float(text)
+                return True
+            except (TypeError, ValueError):
+                return False
 
         result = {
             "chiller_saving": get_result_value("chiller_saving_total"),

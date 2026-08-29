@@ -19,11 +19,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from .deps import PROJECT_ROOT, get_current_user, session_store
+from .deps import (
+    PROJECT_ROOT,
+    audit as audit_action,
+    ensure_session_access,
+    get_current_user,
+    session_store,
+)
 from .agent_service import is_agent_running, start_agent_run
 from .services import (
     ensure_ai_queue,
@@ -53,6 +59,31 @@ from .services import (
 
 
 router = APIRouter()
+
+
+# ==================== 访问控制（路由级 ACL） ====================
+
+
+def acl_guard(
+    request: Request,
+    user: dict = Depends(get_current_user),
+) -> None:
+    """路由级访问控制：凡路径带 session_id 的请求统一做归属校验
+
+    - require_auth=False（开发/测试）：除认证强制外全部放行，零配置可跑
+    - require_auth=True（生产）：必须携带网关注入的身份头，
+      仅会话归属人或特权角色（admin/sr）可访问，越权 403 + 审计留痕
+    """
+    session_id = request.path_params.get("session_id")
+    if not session_id:
+        return
+    s = session_store.get(session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    ensure_session_access(s, user, action="access")
+
+
+router = APIRouter(dependencies=[Depends(acl_guard)])
 
 
 # ==================== 公共工具 ====================
@@ -192,13 +223,15 @@ def upload_survey(
     finally:
         file.file.close()
 
-    # 5. 注册会话（内存）
+    # 5. 注册会话（落库持久化）
     session_id = session_store.register(
         session_dir=session_dir,
         original_filename=filename,
         user_id=user.get("sub") or user.get("id"),
         module_type=module_type,
     )
+    audit_action(user, "survey.upload", session_id,
+                 {"filename": filename, "module_type": module_type})
 
     return UploadResponse(
         session_id=session_id,
@@ -223,7 +256,7 @@ def list_sessions():
             "module_type": s["module_type"],
             "stage": s["stage"],
             "original_filename": s["original_filename"],
-            "ai_logs_count": len(s["ai_logs"]),
+            "ai_logs_count": len(s.get("ai_logs") or []),
         }
         for s in sessions
     ]
@@ -548,6 +581,7 @@ def download_result(
     session_id: str,
     filename: str,
     password: Optional[str] = Query(default=None),
+    user: dict = Depends(get_current_user),
 ):
     """下载计算结果 Excel 文件
 
@@ -566,6 +600,7 @@ def download_result(
     fpath = s["session_dir"] / filename
     if not fpath.exists():
         raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
+    audit_action(user, "result.download", session_id, {"filename": filename})
     return FileResponse(str(fpath), filename=filename)
 
 
@@ -830,6 +865,7 @@ def sim_cop_default(session_id: str, idx: int, model_name: str = Query(...), rat
     default_cop = _generate_default_cop_table(rated_cop)
     default_cop["_source"] = "skip_default"
     s["sim_cop_data"][model_name] = default_cop
+    s.save()  # 嵌套结构变更需显式落库
 
     return {
         "status": "ok",
@@ -1196,6 +1232,7 @@ def quote_audit(session_id: str, body: QuoteAuditRequest):
         raise HTTPException(status_code=400, detail=f"未知操作: {action}")
 
     s["quote_edited_items"][item_key] = item["status"]
+    s.save()  # 嵌套结构变更需显式落库
 
     status_summary = {"AUTO": 0, "CONFIRM": 0, "INQUIRY": 0, "NONSTANDARD": 0, "BLOCKED": 0}
     for z in ["software_items", "hardware_items", "construction_items"]:
@@ -1298,6 +1335,7 @@ class AgentRunResponse(BaseModel):
 async def agent_run(
     session_id: str,
     mode: str = Query(default="auto", description="决策模式：auto（有 Key 用 LLM）| deterministic（零成本规则策略）"),
+    user: dict = Depends(get_current_user),
 ):
     """以 Agent 模式执行完整测算主线（提取→质检→填充→计算→结论）
 
@@ -1332,6 +1370,8 @@ async def agent_run(
         raise HTTPException(status_code=500, detail=f"启动 agent 失败: {type(e).__name__}: {e}")
 
     effective_mode = "deterministic" if mode == "deterministic" else "auto"
+    audit_action(user, "agent.run", session_id,
+                 {"mode": effective_mode, "resume": False})
     return AgentRunResponse(
         session_id=session_id,
         status="running",
@@ -1386,8 +1426,55 @@ async def agent_trace(session_id: str):
     s = session_store.get(session_id)
     if not s:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    # M1：优先读库（agent_runs/agent_steps，多副本部署下唯一可信源），文件兜底
+    trace = session_store.trace_from_db(session_id)
+    if trace is not None:
+        return trace
     trace_path = s["session_dir"] / "agent_trace.json"
     if not trace_path.exists():
-        raise HTTPException(status_code=404, detail="轨迹文件不存在（agent 尚未运行或未产生轨迹）")
+        raise HTTPException(status_code=404, detail="轨迹不存在（agent 尚未运行）")
     with open(trace_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+class AgentResumeResponse(BaseModel):
+    session_id: str
+    status: str
+    resumed_step: int
+    stream_url: str
+    trace_url: str
+
+
+@router.post("/agent/run/{session_id}/resume", response_model=AgentResumeResponse, tags=["agent"])
+async def agent_run_resume(
+    session_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """从最近一次中断的 agent 运行断点恢复
+
+    进程重启后，中断的运行（interrupted）可从此处续跑：状态产物从会话
+    目录恢复，已执行的步骤与 token 用量累计在同一 run 记录上。
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if is_agent_running(session_id):
+        raise HTTPException(status_code=409, detail=f"session {session_id!r} 的 agent 任务已在运行")
+    run = session_store.get_latest_run(session_id, statuses=["interrupted"])
+    if run is None:
+        raise HTTPException(status_code=404, detail="没有可恢复的中断运行")
+
+    main_loop = asyncio.get_running_loop()
+    try:
+        start_agent_run(session_id, main_loop=main_loop, resume=True)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    audit_action(user, "agent.resume", session_id,
+                 {"run_id": run["run_id"], "resumed_step": run["step_count"] + 1})
+    return AgentResumeResponse(
+        session_id=session_id,
+        status="running",
+        resumed_step=(run["step_count"] or 0) + 1,
+        stream_url=f"/api/agent/{session_id}/stream",
+        trace_url=f"/api/agent/{session_id}/trace",
+    )

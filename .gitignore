@@ -51,6 +51,9 @@ test_output*.json
 .trae/
 .workbuddy/
 
+# 本地 SQLite（开发持久化）
+data/
+
 # Run outputs（评测的 baselines.json 与 report.md 保留在版本控制）
 output/
 outputs/

@@ -3,7 +3,8 @@
 职责：
 1. 按环境选择决策核心（配置了 API Key → LLMBrain；否则零成本 RuleBrain）
 2. 在后台线程运行 agent 循环，事件经 asyncio.Queue 供 SSE 消费
-3. 运行结束后把产物同步回 session_store，兼容既有 /result、/download 端点
+3. 运行与每步落库（agent_runs / agent_steps），支持进程重启后断点恢复
+4. 运行结束后把产物同步回 session_store，兼容既有 /result、/download 端点
 """
 import asyncio
 import os
@@ -13,10 +14,9 @@ from pathlib import Path
 from typing import Optional
 
 from agent import AgentOrchestrator, RuleBrain
-from .deps import PROJECT_ROOT, session_store
+from .deps import session_store
 
-# session_id → agent 后台 thread
-_agent_tasks: dict = {}
+DEFAULT_MAX_STEPS = 10
 
 
 def _select_brain(mode: Optional[str] = None):
@@ -24,18 +24,18 @@ def _select_brain(mode: Optional[str] = None):
 
     - mode="deterministic" 或未配置 API Key → RuleBrain（零 LLM 成本）
     - 其余 → LLMBrain
-    返回 None 表示由 orchestrator 回退到 RuleBrain。
+    返回 (brain, brain_label)；label 为 None 表示由 orchestrator 回退 RuleBrain。
     """
     if mode == "deterministic":
-        return RuleBrain()
+        return RuleBrain(), "deterministic"
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             from agent import LLMBrain
             from core.llm_client import DirectLLMClient
-            return LLMBrain(client=DirectLLMClient())
+            return LLMBrain(client=DirectLLMClient()), "llm"
         except Exception:
-            return None
-    return None
+            return None, "deterministic"
+    return None, "deterministic"
 
 
 def is_agent_running(session_id: str) -> bool:
@@ -43,14 +43,20 @@ def is_agent_running(session_id: str) -> bool:
     return t is not None and t.is_alive()
 
 
+# session_id → agent 后台 thread
+_agent_tasks: dict = {}
+
+
 def start_agent_run(
     session_id: str,
     mode: Optional[str] = None,
     main_loop: Optional[asyncio.AbstractEventLoop] = None,
+    resume: bool = False,
 ) -> Path:
     """启动 agent 运行线程，返回轨迹文件路径
 
-    要求 session 已通过 /upload 上传调研表。
+    resume=True 时从最近一次 interrupted 的运行断点续跑
+    （状态产物从会话目录文件恢复，步数与用量累计到同一 run 记录）。
     """
     s = session_store.get(session_id)
     if s is None:
@@ -64,15 +70,30 @@ def start_agent_run(
     if not survey_path.exists():
         raise RuntimeError(f"调研表文件缺失: {survey_path.name}")
 
-    trace_path = session_dir / "agent_trace.json"
-    brain = _select_brain(mode)
+    brain, brain_label = _select_brain(mode)
     loop = main_loop
+
+    start_step = 1
+    max_steps = DEFAULT_MAX_STEPS
+    if resume:
+        run = session_store.get_latest_run(session_id, statuses=["interrupted"])
+        if run is None:
+            raise RuntimeError("没有可恢复的中断运行")
+        run_id = run["run_id"]
+        start_step = (run["step_count"] or 0) + 1
+        max_steps = DEFAULT_MAX_STEPS + (run["step_count"] or 0)
+        session_store.update_run(run_id, status="running", summary=None,
+                                 finished_at=None)
+    else:
+        run_id = session_store.create_run(session_id, brain_label)
+        session_store.update_run(run_id, mode=brain_label)
+
+    trace_path = session_dir / "agent_trace.json"
 
     def worker() -> None:
         def on_event(event: dict) -> None:
             """orchestrator 事件 → ai_logs + SSE 队列"""
             ts = datetime.now().strftime("%H:%M:%S")
-            # 面向日志的人类可读消息
             etype = event.get("type", "")
             if etype == "thinking":
                 msg = f"🧠 {event.get('message', '')}"
@@ -99,6 +120,13 @@ def start_agent_run(
                     }}
                     loop.call_soon_threadsafe(q.put_nowait, payload)
 
+        def on_step(step: dict) -> None:
+            """每步落库（断点恢复依据 + token 计量）"""
+            try:
+                session_store.add_step(run_id, step)
+            except Exception:
+                pass
+
         try:
             orchestrator = AgentOrchestrator(
                 session_id=session_id,
@@ -107,17 +135,41 @@ def start_agent_run(
                 original_filename=original_filename,
                 brain=brain,
                 on_event=on_event,
+                on_step=on_step,
+                max_steps=max_steps,
+                start_step=start_step,
             )
+            if resume:
+                orchestrator.hydrate_from_session()
             final = orchestrator.run()
+
+            # 运行结果落库
+            session_store.update_run(
+                run_id,
+                status=final["status"],
+                summary=final.get("summary", ""),
+                finished_at=datetime.now(),
+                llm_usage=orchestrator.trace.llm_usage,
+            )
 
             # 产物同步回 session_store，兼容既有 /result、/download 端点
             s_live = session_store.get(session_id)
             if s_live is not None:
+                formatted = orchestrator.ctx.get("formatted_result")
+                result = orchestrator.ctx.get("result")
+                if formatted is None and result is not None:
+                    try:
+                        filled = orchestrator.ctx.get("filled_data") or {}
+                        from core.excel_calculator import ExcelCalculator
+                        formatted = ExcelCalculator().format_export_results(
+                            filled, result)
+                    except Exception:
+                        formatted = None
                 s_live["extracted_data"] = orchestrator.ctx.get("extracted_data")
                 s_live["quality_report"] = orchestrator.ctx.get("quality_report")
                 s_live["filling_suggestions"] = orchestrator.ctx.get("suggestions")
-                s_live["result"] = orchestrator.ctx.get("result")
-                s_live["formatted_result"] = orchestrator.ctx.get("formatted_result")
+                s_live["result"] = result
+                s_live["formatted_result"] = formatted
                 stage = {"completed": "result", "needs_input": "suggest"}.get(
                     final["status"], "error"
                 )
@@ -135,6 +187,10 @@ def start_agent_run(
                         "message": final.get("summary", ""),
                     })
         except Exception as e:  # 兜底：线程内未捕获异常
+            session_store.update_run(
+                run_id, status="error",
+                summary=f"{type(e).__name__}: {e}", finished_at=datetime.now(),
+            )
             session_store.append_ai_log(
                 session_id, datetime.now().strftime("%H:%M:%S"),
                 f"❌ Agent 运行异常: {type(e).__name__}: {e}",

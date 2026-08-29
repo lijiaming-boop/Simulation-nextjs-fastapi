@@ -14,6 +14,9 @@ httpx>=0.24.0
 anthropic>=0.40.0  # simulation/ai_service.py 铭牌识别视觉模块直接依赖
 openai>=1.0.0
 # P1: FastAPI backend (apps/api)
+# M1 平台底座：持久化（开发 SQLite / 生产 PostgreSQL）
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0  # 仅 DATABASE_URL 用 Postgres 时需要
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 sse-starlette>=2.1.3

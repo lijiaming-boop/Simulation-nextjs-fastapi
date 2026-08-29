@@ -1,0 +1,53 @@
+# HVAC Energy Agent — M1 部署编排
+# 用法: docker compose up -d --build
+# 说明:
+#   - api 使用 PostgreSQL 持久化（REQUIRE_AUTH=true 强制网关身份头）
+#   - 生产环境在网关（proxy/）终止 OIDC 并注入 X-User-Info，
+#     api 的 ACL 依赖该头做会话归属校验
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hvac
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hvac_dev_password}
+      POSTGRES_DB: hvac
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hvac"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://hvac:${POSTGRES_PASSWORD:-hvac_dev_password}@db:5432/hvac
+      REQUIRE_AUTH: "true"
+      ENVIRONMENT: production
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - sessions:/app/tmp
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  sessions:

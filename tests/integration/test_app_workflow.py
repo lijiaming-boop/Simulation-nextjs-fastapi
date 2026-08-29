@@ -5,6 +5,7 @@ import pytest
 from pathlib import Path
 
 
+@pytest.mark.skip(reason="P4 重构后空调/空压流程已迁至 Next.js+FastAPI，app.py 不再承载五阶段工作流，断言的字面量已失效")
 def test_streamlit_workflow_stages():
     """测试 Streamlit 工作流程阶段数量"""
     app_file = Path(__file__).parent.parent.parent / "app.py"

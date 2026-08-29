@@ -101,6 +101,25 @@ python -m evaluation.run_eval --compare-baseline   # 基线回归检查
 pytest tests/unit/test_agent_orchestrator.py -v
 ```
 
+### 企业级部署（M1 平台底座）
+
+```bash
+# 一键起 Postgres + API + 前端（生产配置：强制认证 + 持久化）
+docker compose up -d --build
+
+# 或本地开发（零配置：SQLite 落库 + 免认证）
+uvicorn apps.api.main:app --port 8000
+```
+
+M1 平台底座能力：
+- **持久化**：会话/agent 运行/步骤/审计落库（`DATABASE_URL` 切换 SQLite ↔ PostgreSQL，代码零改动）
+- **认证与 ACL**：`REQUIRE_AUTH=true` 时强制网关注入的 `X-User-Info` 身份头，
+  会话按归属校验（越权 403 + 审计留痕），特权角色 `admin`/`sr` 可跨会话
+- **断点恢复**：agent 每步落库，进程重启后中断的运行标记 `interrupted`，
+  `POST /api/agent/{id}/run/resume` 从断点续跑（不重复计算已完成的步骤）
+- **审计**：上传/下载/运行 agent 均记录操作人（`audit_logs` 表）
+- **CI 门禁**：GitHub Actions 跑 lint + 单测 + 回归评测基线比对（零 LLM 成本）
+
 ## 项目结构
 
 ```

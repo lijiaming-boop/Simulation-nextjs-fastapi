@@ -70,6 +70,22 @@ def test_list_sessions():
     return data
 
 
+import io
+import pytest
+
+
+@pytest.fixture()
+def session_id():
+    """通过真实 /upload 创建一个会话供后续测试使用"""
+    client = TestClient(app)
+    resp = client.post(
+        "/api/upload?module_type=air_conditioner",
+        files={"file": ("t.xlsx", io.BytesIO(b"placeholder"), "application/octet-stream")},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["session_id"]
+
+
 def test_get_session(session_id: str):
     """测试查询单个 session"""
     client = TestClient(app)

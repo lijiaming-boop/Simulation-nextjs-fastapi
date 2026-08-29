@@ -9,10 +9,12 @@ finish / request_user_input 或触发预算限制。
 - 软决策在模型里：白名单内的工具选择、每步的面向用户叙事、最终结论摘要。
 - 执行零 token：所有工具都是确定性函数，LLM 成本只发生在决策点。
 
-事件通过 on_event 回调流出（供 FastAPI SSE 桥接），完整轨迹落盘 agent_trace.json。
+事件通过 on_event 回调流出（供 FastAPI SSE 桥接），完整轨迹落盘 agent_trace.json；
+on_step 回调逐步产出步骤记录（供持久化与断点恢复）。
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -22,6 +24,17 @@ from agent.trace import AgentTrace
 
 # 事件回调类型：(event_dict) -> None
 EventCallback = Callable[[Dict[str, Any]], None]
+# 步骤回调：(step_dict) -> None，每完成一步触发一次（含控制类步骤）
+StepCallback = Callable[[Dict[str, Any]], None]
+
+# 会话目录中各状态产物对应的标准文件名（断点恢复的数据源）
+_STATE_FILES = {
+    "extracted_data": "extracted_data.json",
+    "quality_report": "quality_report.json",
+    "suggestions": "filling_suggestions.json",
+    "filled_data": "filled_data.json",
+    "result": "result_data.json",
+}
 
 
 class AgentOrchestrator:
@@ -36,7 +49,9 @@ class AgentOrchestrator:
         brain: Optional[Brain] = None,
         registry: Optional[ToolRegistry] = None,
         max_steps: int = 10,
+        start_step: int = 1,
         on_event: Optional[EventCallback] = None,
+        on_step: Optional[StepCallback] = None,
     ) -> None:
         self.session_id = session_id
         self.session_dir = Path(session_dir)
@@ -45,9 +60,32 @@ class AgentOrchestrator:
         self.brain = brain
         self.registry = registry or build_default_registry()
         self.max_steps = max_steps
+        self.start_step = start_step
         self.on_event = on_event
+        self.on_step = on_step
         self.trace = AgentTrace(session_id, mode="agent" if brain is not None else "deterministic")
         self.ctx = ToolContext(session_dir=self.session_dir, original_filename=original_filename)
+
+    # ==================== 断点恢复 ====================
+
+    def hydrate_from_session(self) -> int:
+        """从会话目录的产物文件恢复运行状态（进程重启后续跑）
+
+        每个确定性工具都会把产物写为标准文件名，状态循环完全由
+        ctx 驱动（_allowed_tools 只看 ctx），因此恢复 = 把文件读回来。
+        返回成功加载的产物数。
+        """
+        loaded = 0
+        for key, name in _STATE_FILES.items():
+            p = self.session_dir / name
+            if not p.exists():
+                continue
+            try:
+                self.ctx.set(key, json.loads(p.read_text(encoding="utf-8")))
+                loaded += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+        return loaded
 
     # ==================== 主循环 ====================
 
@@ -57,13 +95,14 @@ class AgentOrchestrator:
             self.brain = RuleBrain()
 
         self._emit("run_start", message=f"开始测算（模式: {self.trace.mode}）",
-                   survey=self.survey_path.name)
+                   survey=self.survey_path.name,
+                   resumed=self.start_step > 1)
 
         consecutive_errors = 0
         status, summary = "error", "达到最大步数限制"
         extra: Dict[str, Any] = {}
 
-        for step_no in range(1, self.max_steps + 1):
+        for step_no in range(self.start_step, self.start_step + self.max_steps):
             allowed, gate_note = self._allowed_tools()
             state_view = self._state_view()
             if gate_note:
@@ -116,6 +155,7 @@ class AgentOrchestrator:
                 self.trace.end_step(True, {"status": status})
                 self._emit("tool_end", tool=decision.tool, ok=True, step=step_no,
                            message=summary)
+                self._notify_step()
                 break
 
             # ---- 确定性工具：执行并观察 ----
@@ -134,6 +174,7 @@ class AgentOrchestrator:
                 self._emit("tool_end", tool=decision.tool, ok=False, step=step_no,
                            observation=observation)
 
+            self._notify_step()
             self.trace.save(self.session_dir)
 
             if consecutive_errors >= 3:
@@ -253,6 +294,15 @@ class AgentOrchestrator:
         }
 
     # ==================== 事件 ====================
+
+    def _notify_step(self) -> None:
+        """步骤完成回调（持久化钩子），失败不影响主流程"""
+        if self.on_step is None or not self.trace.steps:
+            return
+        try:
+            self.on_step(dict(self.trace.steps[-1]))
+        except Exception:
+            pass
 
     def _emit(self, event_type: str, **kwargs: Any) -> None:
         if self.on_event is None:
