@@ -43,3 +43,15 @@ frontend/
 
 # Temporary test outputs
 test_output*.json
+
+# Office lock files
+~$*
+
+# AI IDE local dirs
+.trae/
+.workbuddy/
+
+# Run outputs（评测的 baselines.json 与 report.md 保留在版本控制）
+output/
+outputs/
+evaluation/runs/
