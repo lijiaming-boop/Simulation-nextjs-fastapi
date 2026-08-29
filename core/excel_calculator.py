@@ -76,22 +76,9 @@ class ExcelCalculator:
         temp_excel = Path(output_path).parent / "calculation_result.xlsx"
         shutil.copy(template_path, temp_excel)
 
-        try:
-            # 优先使用 formulas 库（纯 Python，无需外部依赖）
-            result = self._calculate_with_formulas(data, temp_excel)
-        except Exception as e:
-            # 输出详细错误信息
-            import traceback
-            error_details = traceback.format_exc()
-            print("=" * 80)
-            print("❌ Excel计算失败，降级到mock结果")
-            print("=" * 80)
-            print(f"异常类型: {type(e).__name__}")
-            print(f"异常信息: {str(e)}")
-            print(f"\n完整堆栈跟踪:")
-            print(error_details)
-            print("=" * 80)
-            result = self._mock_result(data)
+        # 公式计算失败必须显式报错，严禁静默降级到 mock/默认值——
+        # 前端展示的是给销售报价用的节能率，假数据比报错危害更大
+        result = self._calculate_with_formulas(data, temp_excel)
 
         # 保存结果
         output_path = Path(output_path)
@@ -667,37 +654,3 @@ class ExcelCalculator:
         }
 
         return result
-
-    def _mock_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """生成 mock 结果用于测试 (formulas 库不可用时)"""
-        return {
-            # 节能率范围
-            "energy_saving_rate": 0.15,  # 向后兼容（下限值）
-            "energy_saving_rate_min": 0.12,
-            "energy_saving_rate_max": 0.18,
-            "energy_saving_rate_range": "12.0% - 18.0%",
-
-            # 分项节能量范围
-            "chiller_saving": 12.5,
-            "chiller_saving_min": 10.0,
-            "chiller_saving_max": 15.0,
-
-            "pump_saving": 3.2,
-            "pump_saving_min": 2.5,
-            "pump_saving_max": 4.0,
-
-            "tower_saving": 1.8,
-            "tower_saving_min": 1.5,
-            "tower_saving_max": 2.2,
-
-            "total_saving": 17.5,
-            "total_saving_min": 14.0,
-            "total_saving_max": 21.2,
-
-            # 元数据
-            "completeness": data["_metadata"]["final_completeness"],
-            "filled_count": data["_metadata"]["fill_count"],
-            "calculation_timestamp": datetime.now().isoformat(),
-            "calculation_method": "dual_sheet",
-            "mock": True  # 标记为 mock 数据
-        }

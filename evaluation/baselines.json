@@ -1,0 +1,38 @@
+{
+  "complete_huizhou": {
+    "rate_range": "8.6% - 13.1%",
+    "rate_min": 0.08560191677246111,
+    "rate_max": 0.13069342352732158,
+    "actual_outcome": "completed"
+  },
+  "missing_winter": {
+    "rate_range": "7.4% - 10.1%",
+    "rate_min": 0.07374731531198182,
+    "rate_max": 0.10058862621223866,
+    "actual_outcome": "completed"
+  },
+  "missing_summer": {
+    "rate_range": null,
+    "rate_min": null,
+    "rate_max": null,
+    "actual_outcome": "needs_input"
+  },
+  "patchy": {
+    "rate_range": "8.6% - 13.1%",
+    "rate_min": 0.0862628847783807,
+    "rate_max": 0.13078627350473843,
+    "actual_outcome": "completed"
+  },
+  "summer_only": {
+    "rate_range": null,
+    "rate_min": null,
+    "rate_max": null,
+    "actual_outcome": "needs_input"
+  },
+  "insufficient": {
+    "rate_range": null,
+    "rate_min": null,
+    "rate_max": null,
+    "actual_outcome": "needs_input"
+  }
+}

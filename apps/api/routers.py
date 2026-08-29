@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from .deps import PROJECT_ROOT, get_current_user, session_store
+from .agent_service import is_agent_running, start_agent_run
 from .services import (
     ensure_ai_queue,
     get_ai_queue,
@@ -1280,3 +1281,113 @@ def quote_download(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
     return FileResponse(str(fpath), filename=filename)
 
+
+
+# ==================== Agent 模式端点 ====================
+
+
+class AgentRunResponse(BaseModel):
+    session_id: str
+    status: str
+    mode: str
+    stream_url: str
+    trace_url: str
+
+
+@router.post("/agent/run/{session_id}", response_model=AgentRunResponse, tags=["agent"])
+async def agent_run(
+    session_id: str,
+    mode: str = Query(default="auto", description="决策模式：auto（有 Key 用 LLM）| deterministic（零成本规则策略）"),
+):
+    """以 Agent 模式执行完整测算主线（提取→质检→填充→计算→结论）
+
+    与分阶段端点（/extract → /suggest → /calculate）不同，本端点由
+    AgentOrchestrator 自主编排：每一步由决策核心在硬约束白名单内选择工具，
+    过程通过 /agent/{session_id}/stream 的 SSE 实时推送，完整轨迹
+    （含每步工具、参数、观察、token 用量）落盘 agent_trace.json。
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    if s["module_type"] != "air_conditioner":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Agent 模式当前支持 air_conditioner 模块",
+        )
+    if mode not in ("auto", "deterministic"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"mode 只能是 auto 或 deterministic，收到 {mode!r}",
+        )
+    if is_agent_running(session_id):
+        raise HTTPException(status_code=409, detail=f"session {session_id!r} 的 agent 任务已在运行")
+
+    main_loop = asyncio.get_running_loop()
+    try:
+        trace_path = start_agent_run(session_id, mode=None if mode == "auto" else mode,
+                                     main_loop=main_loop)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"启动 agent 失败: {type(e).__name__}: {e}")
+
+    effective_mode = "deterministic" if mode == "deterministic" else "auto"
+    return AgentRunResponse(
+        session_id=session_id,
+        status="running",
+        mode=effective_mode,
+        stream_url=f"/api/agent/{session_id}/stream",
+        trace_url=f"/api/agent/{session_id}/trace",
+    )
+
+
+@router.get("/agent/{session_id}/stream", tags=["agent"])
+async def agent_stream(session_id: str):
+    """SSE 推送 agent 轨迹事件
+
+    事件类型：run_start / thinking / tool_start / tool_end / final / error / done
+    """
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+
+    queue = ensure_ai_queue(session_id)
+    running = is_agent_running(session_id)
+
+    async def event_generator():
+        if not running:
+            yield {
+                "event": "message",
+                "data": json.dumps(
+                    {"type": "complete", "message": "agent 任务未在运行，请查看 /agent/{id}/trace"},
+                    ensure_ascii=False,
+                ),
+            }
+            return
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                yield {"event": "ping", "data": ""}
+                continue
+            yield {
+                "event": "message",
+                "data": json.dumps(event, ensure_ascii=False),
+            }
+            if event.get("type") in ("done", "error"):
+                return
+
+    return EventSourceResponse(event_generator())
+
+
+@router.get("/agent/{session_id}/trace", tags=["agent"])
+async def agent_trace(session_id: str):
+    """返回本次运行的完整 agent 轨迹（可观测性端点）"""
+    s = session_store.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
+    trace_path = s["session_dir"] / "agent_trace.json"
+    if not trace_path.exists():
+        raise HTTPException(status_code=404, detail="轨迹文件不存在（agent 尚未运行或未产生轨迹）")
+    with open(trace_path, "r", encoding="utf-8") as f:
+        return json.load(f)

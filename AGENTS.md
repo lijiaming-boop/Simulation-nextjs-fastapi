@@ -235,7 +235,8 @@ Skills 位于 `.Codex/skills/` 目录，采用目录结构组织：
 
 **关键方法：**
 - `_calculate_with_formulas()`: 使用 formulas 库执行计算
-- `_mock_result()`: 降级方案（当 formulas 不可用时）
+- 计算失败会**显式抛出异常**（不再有 mock 降级方案——2026-08 重构时移除，
+  避免给前端返回假节能率）
 
 **使用示例：**
 ```python

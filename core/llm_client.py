@@ -51,6 +51,23 @@ class DirectLLMClient:
         self.model = model or os.getenv("ANTHROPIC_MODEL") or self.DEFAULT_MODEL
         self.timeout = timeout
         self._httpx = httpx
+        self._repair_ssl_cert_env()
+
+    @staticmethod
+    def _repair_ssl_cert_env() -> None:
+        """修复失效的 SSL_CERT_FILE 环境变量
+
+        httpx 创建 SSL 上下文时会读取 SSL_CERT_FILE；部分机器（如 Miniconda
+        激活脚本）会注入指向不存在文件的路径，导致所有请求直接 FileNotFoundError。
+        检测到坏路径时回退到 certifi 证书包（httpx 的必然依赖）。
+        """
+        bad = os.getenv("SSL_CERT_FILE")
+        if bad and not os.path.isfile(bad):
+            try:
+                import certifi
+                os.environ["SSL_CERT_FILE"] = certifi.where()
+            except ImportError:
+                os.environ.pop("SSL_CERT_FILE", None)
 
     # ==================== 公共接口 ====================
 
@@ -63,6 +80,24 @@ class DirectLLMClient:
         temperature: Optional[float] = None,
     ) -> str:
         """同步调用，返回 LLM 响应文本"""
+        text, _ = self.create_message_with_usage(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        )
+        return text
+
+    def create_message_with_usage(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: Optional[float] = None,
+    ) -> tuple[str, dict[str, int]]:
+        """同步调用，返回 (响应文本, token 用量)
+
+        用量字典: {"input_tokens": int, "output_tokens": int}，
+        代理未返回 usage 字段时对应项为 0。
+        """
         payload = self._build_payload(
             prompt,
             system=system,
@@ -81,7 +116,12 @@ class DirectLLMClient:
                 f"LLM 返回 {resp.status_code}: {resp.text[:500]}"
             )
         body = resp.json()
-        return self._extract_text(body)
+        usage_raw = body.get("usage") or {}
+        usage = {
+            "input_tokens": usage_raw.get("input_tokens", 0) or 0,
+            "output_tokens": usage_raw.get("output_tokens", 0) or 0,
+        }
+        return self._extract_text(body), usage
 
     def stream_message(
         self,
