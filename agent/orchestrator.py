@@ -209,6 +209,7 @@ class AgentOrchestrator:
                 "station_type": extracted.get("station_type"),
                 "completeness": quality.get("completeness"),
                 "confidence_level": quality.get("confidence_level"),
+                "available_fields": extracted.get("available_fields"),
             }
         suggestions = self.ctx.get("suggestions")
         if suggestions is not None:

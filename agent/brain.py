@@ -168,12 +168,23 @@ class RuleBrain:
             )
         if "apply_filling" in available_tools:
             fillable = state["suggestions"].get("fillable_count", 0)
-            total_months = 12
-            ratio = fillable / (total_months * 7) if total_months else 0
+            # 风险比率 = 需估算的字段点 / 模板应有的字段点。
+            # 分母用模板可用字段（available_fields），模板天生没有、只能靠
+            # 行业默认值填充的点不属于数据质量风险，不计入分子。
+            available = (state.get("extracted") or {}).get("available_fields")
+            if available:
+                available_set = set(available)
+                fillable_in_template = sum(
+                    1 for s in state["suggestions"].get("fillable_suggestions", [])
+                    if str(s.get("field", "")).split(".")[-1] in available_set
+                )
+                ratio = fillable_in_template / (len(available_set) * 12)
+            else:
+                ratio = fillable / (12 * 7)
             if ratio > self.RISKY_FILL_RATIO:
                 return BrainDecision(
                     tool="request_user_input",
-                    args={"reason": f"需填充字段过多（{fillable} 项，占比 {ratio:.0%}），建议补充原始数据后重新测算",
+                    args={"reason": f"需估算的模板字段占比过高（{ratio:.0%}），建议补充原始数据后重新测算",
                           "missing_items": state["suggestions"].get("unfillable_fields", [])},
                     reason="填充依赖过重，转人工确认",
                 )

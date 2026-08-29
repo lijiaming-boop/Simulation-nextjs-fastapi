@@ -346,6 +346,10 @@ class SkillCaller:
             # 如果提供了原始文件名,添加到提示词中
             if len(args) >= 3:
                 prompt += f" {args[2]}"
+                prompt += (
+                    f"\n命令的第三个参数 {args[2]} 是用户上传时的原始文件名，"
+                    f"请确保它被原样传入，脚本会用它做项目地区推断。"
+                )
             prompt += "\n"
             prompt += "请确保输出包含 extracted_data 和 quality_report 两部分。"
             return prompt

@@ -12,10 +12,10 @@
     "actual_outcome": "completed"
   },
   "missing_summer": {
-    "rate_range": null,
-    "rate_min": null,
-    "rate_max": null,
-    "actual_outcome": "needs_input"
+    "rate_range": "17.5% - 21.0%",
+    "rate_min": 0.1752091247324098,
+    "rate_max": 0.20959298725199454,
+    "actual_outcome": "completed"
   },
   "patchy": {
     "rate_range": "8.6% - 13.1%",

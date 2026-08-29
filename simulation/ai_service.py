@@ -19,7 +19,9 @@ if _env_path.exists():
 def _get_client():
     """获取 Anthropic 客户端，显式传入 key 和 base_url"""
     base_url = os.environ.get("ANTHROPIC_BASE_URL", "").strip() or None
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("未配置 ANTHROPIC_API_KEY 环境变量")
     return anthropic.Anthropic(api_key=api_key, base_url=base_url)
 
 

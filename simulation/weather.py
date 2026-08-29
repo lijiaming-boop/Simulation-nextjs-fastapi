@@ -33,6 +33,7 @@ def get_monthly_dry_bulb(region: str) -> List[float]:
     return REGION_DRY_BULB["华东"]
 
 def get_monthly_wet_bulb(region: str) -> List[float]:
+    dry_bulb = get_monthly_dry_bulb(region)
     try:
         with open(WEATHER_DATA_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -41,10 +42,13 @@ def get_monthly_wet_bulb(region: str) -> List[float]:
         city = REGION_CITIES.get(region, "上海")
         for key, city_data in data.items():
             if city_data.get("city") == city or city_data.get("region") == region:
-                return [city_data[m] for m in month_keys]
+                wet = [city_data[m] for m in month_keys]
+                # 物理约束：湿球温度恒不超过干球温度。
+                # weather_data.json 的湿球数据与干球表来源不同，冬季普遍偏高
+                #（实测 6/7 地区违规），直接采信会把冷却塔节能算错。
+                return [min(w, d) for w, d in zip(wet, dry_bulb)]
     except (FileNotFoundError, KeyError):
         pass
-    dry_bulb = get_monthly_dry_bulb(region)
     return [t - 4.0 for t in dry_bulb]
 
 

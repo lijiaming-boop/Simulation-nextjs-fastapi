@@ -454,6 +454,129 @@ def find_row_by_keyword(df, keywords, start_row=0, end_row=None):
     return None
 
 
+_MONTH_HEADER_RE = regex_module.compile(r'^\s*(\d{1,2})\s*月\s*$')
+
+
+def is_month_header_row(df, row_idx: int, col_start: int) -> bool:
+    """判断某行是否是"月份表头"行（如 1月/2月/.../12月）
+
+    用于防止把表头行误当成数据行——历史上月份表头曾被解析成
+    total_energy=1,2,3...（把"N月"里的数字读成了能耗），属于静默错数。
+    注意：必须带"月"字才算表头，纯数字行（如供水温度 7,7,7...）是数据。
+    """
+    if row_idx is None or row_idx >= len(df):
+        return False
+    hit = 0
+    for offset in range(12):
+        col = col_start + offset
+        if col >= df.shape[1]:
+            break
+        val = df.iloc[row_idx, col]
+        if pd.isna(val):
+            continue
+        m = _MONTH_HEADER_RE.match(str(val).strip())
+        if m and 1 <= int(m.group(1)) <= 12:
+            hit += 1
+    return hit >= 3
+
+
+def extract_energy_from_meter_sheet(xls: pd.ExcelFile, exclude_sheet: Optional[str] = None) -> Optional[Dict[int, float]]:
+    """从电表逐柜记录表中解析冷站月度用电量（深度调研模板变体）
+
+    适配的表结构特征（如上海和元调研表的 Sheet1）：
+    - 表头一行中含多个 "N月" 标签，"N月"列下的数值为该月当月用电量（kWh）
+    - 设备柜行（名称含 冷却塔/冷却水泵/冷冻水泵/冷水机组/泵 等）逐柜记录
+    - 表尾可能有 合计/占比 汇总块，需排除
+
+    Returns:
+        {月份: 万kWh}；未识别到电表结构时返回 None
+    """
+    device_keywords = ['冷却塔', '冷却水泵', '冷冻水泵', '冷水机组', '冷冻机组', '冷却泵', '冷冻泵']
+    exclude_keywords = ['合计', '占比', '%', '汇总']
+
+    for sheet in xls.sheet_names:
+        if sheet == exclude_sheet:
+            continue
+        try:
+            df = pd.read_excel(xls, sheet_name=sheet, header=None)
+        except Exception:
+            continue
+
+        # 定位表头行：包含 >=4 个 "N月" 标签
+        for r in range(min(len(df), 10)):
+            month_cols: Dict[int, int] = {}
+            for c in range(df.shape[1]):
+                val = df.iloc[r, c]
+                if pd.isna(val):
+                    continue
+                m = _MONTH_HEADER_RE.match(str(val).strip())
+                if m and 1 <= int(m.group(1)) <= 12:
+                    month_cols[int(m.group(1))] = c
+            if len(month_cols) < 4:
+                continue
+
+            # 汇总设备柜行。注意：表中" N月"列下的值有的是当月增量（要累加），
+            # 有的是累计读数（不能累加，否则能耗虚高数倍）。判别方法：
+            # 当月增量必然小于两侧相邻的累计读数（抄表值单调递增）。
+            sums = {m: 0.0 for m in month_cols}
+            device_rows = 0
+            for rr in range(r + 1, len(df)):
+                label = ' '.join(
+                    str(df.iloc[rr, c]) for c in range(0, min(6, df.shape[1])) if pd.notna(df.iloc[rr, c])
+                )
+                if not label or not any(k in label for k in device_keywords):
+                    continue
+                if any(k in label for k in exclude_keywords):
+                    continue
+                added = 0
+                for m, c in sorted(month_cols.items()):
+                    if c >= df.shape[1]:
+                        continue
+                    v = df.iloc[rr, c]
+                    if pd.isna(v):
+                        continue
+                    try:
+                        num = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if num <= 0:
+                        continue
+                    prev_v = df.iloc[rr, c - 1] if c - 1 >= 0 else None
+                    next_v = df.iloc[rr, c + 1] if c + 1 < df.shape[1] else None
+
+                    def _num(x):
+                        try:
+                            return float(x)
+                        except (TypeError, ValueError):
+                            return None
+
+                    p, n = _num(prev_v), _num(next_v)
+                    # 与两侧累计读数比较；两侧都不可用时视为增量
+                    is_delta = True
+                    if p is not None and n is not None:
+                        is_delta = num < min(p, n)
+                    elif p is not None:
+                        is_delta = num < p
+                    elif n is not None:
+                        is_delta = num < n
+                    if is_delta:
+                        sums[m] += num
+                        added += 1
+                if added:
+                    device_rows += 1
+
+            if device_rows < 3:
+                continue
+
+            # 单位判断：电表原始值为 kWh（逐柜累计的月度电量），转为万kWh
+            annual_total = sum(sums.values())
+            scale = 1e-4 if annual_total > 1000 else 1.0
+            result = {m: round(s * scale, 2) for m, s in sums.items() if s > 0}
+            if len(result) >= 4:
+                return result
+    return None
+
+
 def detect_month_column_start(df, row_idx):
     """检测指定行的月份列起始位置
 
@@ -725,14 +848,16 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
             project_region = extract_region(df_overview)
 
     # 查找关键行（中英文关键词兼容）
+    # 注意：部分模板变体（如深度调研版）只写"供水温度"而非"冷机供水温度"，
+    # 精确关键词匹配失败后用短关键词兜底
     row_mappings = {
-        'chiller_supply_temp': ['冷机供水温度', 'Chiller Supply Temp'],
-        'cooling_pump_freq': ['冷却泵运行频率', 'Cooling Pump Freq'],
-        'cooling_water_temp_diff': ['冷却侧供回水温差', 'Cooling Side ΔT'],
-        'freezing_pump_freq': ['冷冻泵运行频率', 'Chilled Pump Freq'],
-        'freezing_water_temp_diff': ['冷冻侧供回水温差', 'Chilled Side ΔT'],
+        'chiller_supply_temp': ['冷机供水温度', 'Chiller Supply Temp', '供水温度'],
+        'cooling_pump_freq': ['冷却泵运行频率', 'Cooling Pump Freq', '冷却泵频率'],
+        'cooling_water_temp_diff': ['冷却侧供回水温差', 'Cooling Side ΔT', '冷却水温差'],
+        'freezing_pump_freq': ['冷冻泵运行频率', 'Chilled Pump Freq', '冷冻泵频率'],
+        'freezing_water_temp_diff': ['冷冻侧供回水温差', 'Chilled Side ΔT', '冷冻水温差'],
         'cooling_tower_outlet_temp': ['冷却塔出水温度', 'Cooling Tower Outlet Temp'],
-        'total_energy': ['整个冷站', '万kWh', 'Entire Chiller Plant']
+        'total_energy': ['整个冷站', '万kWh', 'Entire Chiller Plant', '总能耗']
     }
 
     # 动态查找"设备运行规律"/"Equipment Operation Patterns"标题行
@@ -793,13 +918,13 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         # 设备运行规律字段：从设备运行规律部分开始查找
         if key != 'total_energy':
             row_idx = find_row_by_keyword(df, keywords, start_row=equipment_month_row_idx, end_row=equipment_month_row_idx + 15)
-            if row_idx is not None:
+            if row_idx is not None and not is_month_header_row(df, row_idx, equipment_col_start):
                 data_rows[key] = row_idx
         # 用电情况字段：从用电情况统计部分开始查找
         else:
             if energy_month_row_idx is not None:
                 row_idx = find_row_by_keyword(df, keywords, start_row=energy_month_row_idx, end_row=energy_month_row_idx + 5)
-                if row_idx is not None:
+                if row_idx is not None and not is_month_header_row(df, row_idx, energy_col_start):
                     # 检查找到的行数据是否合理（万kWh应该<100）
                     # 如果第一个月份列的值>100，说明这是kWh单位的行，需要跳到下一行
                     if energy_col_start is not None and energy_col_start < len(df.columns):
@@ -808,12 +933,12 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
                             # 当前行是kWh，检查下一行
                             if row_idx + 1 < len(df):
                                 next_row_val = df.iloc[row_idx + 1, energy_col_start]
-                                if pd.notna(next_row_val) and next_row_val < 100:
+                                if pd.notna(next_month_val := next_row_val) and next_month_val < 100:
                                     row_idx = row_idx + 1
                     data_rows[key] = row_idx
-            # 兜底：使用硬编码行号
-            if 'total_energy' not in data_rows and len(df) > 43:
-                data_rows['total_energy'] = 43  # 修正：用电量通常在第44行（索引43）
+            # 不再使用硬编码行号兜底：关键词匹配失败时盲读固定行，
+            # 曾把"月份"表头行解析成能耗 1,2,3...（静默错数）。
+            # 找不到就留空，由电表解析器或质量检查兜底。
 
     # 提取月度数据
     monthly_data = []
@@ -864,6 +989,28 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
 
         monthly_data.append(month_record)
 
+    # 深度调研模板变体兜底：冷站 sheet 的"用电情况统计"为空、关键词匹配不到时，
+    # 尝试从工作簿中的电表逐柜记录表（如 Sheet1）按"N月"列汇总月度用电量
+    energy_source = 'survey_sheet'
+    if valid_energy_count == 0:
+        meter_energy = extract_energy_from_meter_sheet(xls, exclude_sheet=cold_station_sheet)
+        if meter_energy:
+            for month_record in monthly_data:
+                m = month_record['month']
+                if month_record['total_energy'] is None and m in meter_energy:
+                    month_record['total_energy'] = meter_energy[m]
+                    valid_energy_count += 1
+            energy_source = 'meter_sheet'
+
+    # 标记模板实际可提供的字段（用于完整率计算：分母按可用字段计，
+    # 而不是把模板本身没有的字段算作"数据缺失"）
+    available_fields = [
+        field for field in ['total_energy', 'chiller_supply_temp', 'cooling_pump_freq',
+                            'cooling_water_temp_diff', 'freezing_pump_freq',
+                            'freezing_water_temp_diff', 'cooling_tower_outlet_temp']
+        if any(rec.get(field) is not None for rec in monthly_data)
+    ]
+
     # 注意：不再强制要求至少3个月数据，让质量检查报告来反馈数据完整性问题
     # 这样即使是空白模板也能返回提取结果和详细的质量报告
 
@@ -889,6 +1036,8 @@ def extract_data_from_excel(survey_excel_path: str, original_filename: Optional[
         "station_type": station_type_info["station_type"],
         "station_type_confidence": station_type_info["confidence"],
         "station_type_reason": station_type_info["reason"],
+        "energy_source": energy_source,
+        "available_fields": available_fields,
         "monthly_data": monthly_data
     }
 
@@ -934,6 +1083,7 @@ class DataQualityChecker:
     def check_monthly_data(self) -> None:
         """检查月度数据"""
         monthly_data = self.data.get('monthly_data', [])
+        available_fields = set(self._available_fields())
 
         for idx, month_data in enumerate(monthly_data):
             month = month_data.get('month', idx + 1)
@@ -942,6 +1092,17 @@ class DataQualityChecker:
 
             for field in self.MONTHLY_FIELDS[2:]:
                 self._check_field(month, month_data, field)
+
+            # 模板本身没有的字段缺失不算数据质量问题，降级为提示
+            for field in self.MONTHLY_FIELDS:
+                if field not in available_fields and month_data.get(field) is None:
+                    self.issues.append({
+                        'field': f'monthly_data[{month-1}].{field}',
+                        'severity': 'low',
+                        'type': 'not_in_template',
+                        'message': f'{month}月{self._get_field_name(field)}为调研表模板未包含字段，'
+                                   f'将由行业默认值填充并标注置信度'
+                    })
 
     def _check_total_energy(self, month: int, data: Dict) -> None:
         """检查总能耗"""
@@ -1031,17 +1192,30 @@ class DataQualityChecker:
         }
         return field_names.get(field, field)
 
+    def _available_fields(self) -> List[str]:
+        """模板实际可提供的月度字段
+
+        完整率只应衡量"模板有的字段填了几成"。部分模板变体（如深度调研版）
+        本身没有泵频率/温差等行，把它们算进分母会把完整率压到 0.2 左右，
+        误触发低置信度中断。未标记 available_fields 的旧数据按全部 7 字段计。
+        """
+        available = self.data.get('available_fields')
+        if available:
+            return [f for f in self.MONTHLY_FIELDS if f in available]
+        return list(self.MONTHLY_FIELDS)
+
     def calculate_completeness(self) -> float:
         """计算数据完整率"""
         monthly_data = self.data.get('monthly_data', [])
         if not monthly_data:
             return 0.0
 
-        total_points = len(monthly_data) * len(self.MONTHLY_FIELDS)
+        fields = self._available_fields()
+        total_points = len(monthly_data) * len(fields)
         non_null_points = 0
 
         for month_data in monthly_data:
-            for field in self.MONTHLY_FIELDS:
+            for field in fields:
                 if month_data.get(field) is not None:
                     non_null_points += 1
 

@@ -154,8 +154,9 @@ class TestGetMonthlyWetBulb:
             result = get_monthly_wet_bulb("华东")
 
         assert len(result) == 12
-        # 湿球温度应该接近JSON中的数据
-        assert result[0] == 6.1  # 1月
+        # JSON 的湿球数据若超过干球温度（该数据源冬季普遍如此），应被钳制到干球值
+        assert result[0] == 5   # 1月：mock 里的 6.1 > 干球 5，物理约束生效
+        assert result[6] == 27.2  # 7月：数据本身合法，原样返回
 
     def test_get_wet_bulb_file_not_found(self):
         """测试文件不存在时的降级处理"""
@@ -193,17 +194,19 @@ class TestGetMonthlyWetBulb:
             dry_bulb = get_monthly_dry_bulb(region)
 
             with patch("builtins.open", side_effect=FileNotFoundError):
-                wet_bulb = get_monthly_wet_bulb(region)
+                import simulation.weather as _weather
+                wet_bulb = _weather.get_monthly_wet_bulb(region)
 
-            # 湿球温度应始终低于干球温度
+            # 湿球温度应始终不超过干球温度（100%湿度时两者相等）
             for wb, db in zip(wet_bulb, dry_bulb):
-                assert wb < db
+                assert wb <= db
 
     def test_get_wet_bulb_reasonable_range(self):
         """测试湿球温度合理范围"""
         for region in REGION_DRY_BULB:
             with patch("builtins.open", side_effect=FileNotFoundError):
-                wet_bulb = get_monthly_wet_bulb(region)
+                import simulation.weather as _weather
+                wet_bulb = _weather.get_monthly_wet_bulb(region)
 
             # 湿球温度应在合理范围内
             assert min(wet_bulb) >= -25  # 合理下限
@@ -337,7 +340,8 @@ class TestWeatherDataIntegration:
         mock_wet_values = [t - 5.0 for t in dry_bulb]
         
         with patch("simulation.weather.get_monthly_wet_bulb", return_value=mock_wet_values):
-            wet_bulb = get_monthly_wet_bulb(region)
+            import simulation.weather as _weather
+            wet_bulb = _weather.get_monthly_wet_bulb(region)
             assert len(wet_bulb) == 12
 
             # 3. 湿球温度应低于干球温度

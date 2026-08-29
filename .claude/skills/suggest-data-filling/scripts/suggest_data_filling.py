@@ -105,7 +105,7 @@ class DataFillingSuggester:
 
         # 检查所有月度字段的数据量（每个字段独立判断）
         fields_to_check = {
-            'chiller_supply_temp': '���机供水温度',
+            'chiller_supply_temp': '冷机供水温度',
             'cooling_pump_freq': '冷却泵频率',
             'freezing_pump_freq': '冷冻泵频率',
             'cooling_water_temp_diff': '冷却水温差',
@@ -113,12 +113,24 @@ class DataFillingSuggester:
             'cooling_tower_outlet_temp': '冷却塔出水温度',
         }
 
+        # 模板实际可提供的字段（深度调研版等变体没有泵频率/温差等行）
+        available_fields = self.data.get('available_fields')
+
         for field, field_name in fields_to_check.items():
             valid_count = sum(
                 1 for month_data in self.monthly_data
                 if month_data.get(field) is not None
             )
             if valid_count < 6:
+                # 模板本身不包含该字段（0 锚点且不在 available_fields）：
+                # 用行业默认值全量填充并标注低置信度，不再视为不可填充。
+                # "至少6个月"规则针对的是插值推断，对纯默认值填充不适用。
+                if (
+                    available_fields is not None
+                    and valid_count == 0
+                    and field not in available_fields
+                ):
+                    continue
                 self.unfillable_fields.append({
                     'field': field,
                     'reason': f'仅有{valid_count}个月的{field_name}数据,不足以推断全年,建议至少提供6个月数据'

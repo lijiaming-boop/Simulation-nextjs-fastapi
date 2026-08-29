@@ -47,9 +47,9 @@ CASES = [
         key="missing_summer",
         filename="【缺夏季】12.1%上海和元-机房智能化调研表模板（深度调研）.xlsx",
         expected_outcome="completed", expected_rate=12.1, expected_region="华东",
-        note="缺夏季能耗数据，需填充",
-        known_gap=("深度调研模板变体的行位与标准模板不同，供水温度/泵频率等字段"
-                   "提取不到，完整率被低估为 14% 触发低置信度门禁（提取规则待扩展）"),
+        note=("深度调研模板变体：泵频率/温差/塔温为模板未包含字段，由行业默认值填充；"
+              "能耗来自 Sheet1 电表逐柜记录解析。填充参数与人工测算口径不同，"
+              "节能率偏差偏大属预期内"),
     ),
     EvalCase(
         key="patchy",
