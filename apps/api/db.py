@@ -73,6 +73,30 @@ def mark_stale_runs_interrupted() -> int:
     return n
 
 
+def recover_stuck_sessions() -> int:
+    """启动恢复（M1 补充）：把上次进程遗留的"任务中"阶段会话标记为 error
+
+    旧分阶段路径（extract/suggest/calculate）的后台线程不可恢复，
+    与其让前端永远停在 extracting 状态，不如显式置错并提示重试。
+    agent 主线运行由 mark_stale_runs_interrupted 单独处理（可断点续跑）。
+    """
+    from .models import SessionRecord
+
+    stuck_stages = ("extracting", "suggesting", "calculating", "agent_running")
+    n = 0
+    with make_session() as db:
+        rows = db.query(SessionRecord).filter(
+            SessionRecord.stage.in_(stuck_stages)).all()
+        for row in rows:
+            row.stage = "error"
+            data = dict(row.data or {})
+            data["calc_error"] = "服务重启导致任务中断，请重新发起该步骤"
+            row.data = data
+            n += 1
+        db.commit()
+    return n
+
+
 def db_ping() -> bool:
     try:
         with get_engine().connect() as conn:

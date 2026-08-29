@@ -15,6 +15,8 @@
 import asyncio
 import json
 import os
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -85,9 +87,65 @@ def acl_guard(
 
 
 router = APIRouter(dependencies=[Depends(acl_guard)])
+# 匿名可达的探活路由（不参与 ACL；业务端点全部在受保护 router 上）
+public_router = APIRouter()
 
 
 # ==================== 公共工具 ====================
+
+
+# 单文件上传上限：真实样例最大 79MB（内嵌图片），100MB 覆盖 + 余量
+MAX_UPLOAD_MB = 100
+
+
+def _check_upload_size(content: bytes) -> None:
+    """上传大小限制：超限返回 413，防止大文件打爆磁盘与内存"""
+    if len(content) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件超过 {MAX_UPLOAD_MB}MB 上限",
+        )
+
+
+class _SlidingWindowLimiter:
+    """进程内滑动窗口限流（多副本部署时由网关限流接管）"""
+
+    def __init__(self, max_events: int, window_seconds: float) -> None:
+        self.max_events = max_events
+        self.window = window_seconds
+        self._events: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            hits = [t for t in self._events.get(key, []) if now - t < self.window]
+            if len(hits) >= self.max_events:
+                self._events[key] = hits
+                return False
+            hits.append(now)
+            self._events[key] = hits
+            return True
+
+
+import threading as _threading_mod
+upload_limiter = _SlidingWindowLimiter(max_events=20, window_seconds=300)      # 5 分钟 20 次上传
+run_limiter = _SlidingWindowLimiter(max_events=30, window_seconds=300)         # 5 分钟 30 次运行
+
+
+def _rate_limit(request: Request, limiter: _SlidingWindowLimiter) -> None:
+    """按客户端 IP 限流；超限 429"""
+    ip = (request.client.host if request.client else "unknown")
+    if not limiter.allow(ip):
+        raise HTTPException(
+            status_code=429,
+            detail="请求过于频繁，请稍后再试",
+        )
+
+
+def _sanitize_filename(name: str) -> str:
+    """剥离路径成分，防止文件名拼接的路径遍历"""
+    return Path(name).name
 
 
 def _recover_multipart_filename(raw: str) -> str:
@@ -149,7 +207,7 @@ class SessionInfo(BaseModel):
 # ==================== /health ====================
 
 
-@router.get("/health", response_model=HealthResponse, tags=["meta"])
+@public_router.get("/health", response_model=HealthResponse, tags=["meta"])
 def health():
     """健康检查"""
     import os
@@ -168,6 +226,7 @@ def health():
 
 @router.post("/upload", response_model=UploadResponse, tags=["session"])
 def upload_survey(
+    request: Request,
     file: UploadFile = File(..., description="空调或空压机调研表 (.xlsx/.xls)"),
     module_type: str = Query(
         default="air_conditioner",
@@ -175,6 +234,7 @@ def upload_survey(
     ),
     user: dict = Depends(get_current_user),
 ):
+    _rate_limit(request, upload_limiter)
     """上传调研表，创建独立会话目录
 
     与 Streamlit `app.py` 的 upload 阶段保持一致：
@@ -214,6 +274,7 @@ def upload_survey(
     saved_path = session_dir / filename
     try:
         content = file.file.read()
+        _check_upload_size(content)
         if not content:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1314,7 +1375,7 @@ def quote_download(session_id: str, filename: str):
     if not s:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
     output_dir = s["session_dir"] / f"generated_{session_id}"
-    fpath = output_dir / filename
+    fpath = output_dir / _sanitize_filename(filename)
     if not fpath.exists():
         raise HTTPException(status_code=404, detail=f"文件不存在: {filename}")
     return FileResponse(str(fpath), filename=filename)
@@ -1337,8 +1398,10 @@ async def agent_run(
     session_id: str,
     mode: str = Query(default="auto", description="决策模式：auto（有 Key 用 LLM）| deterministic（零成本规则策略）"),
     require_approval: bool = Query(default=False, description="填充建议占比超阈值时是否暂停等人工审批"),
+    request: Request = None,
     user: dict = Depends(get_current_user),
 ):
+    _rate_limit(request, run_limiter)
     """以 Agent 模式执行完整测算主线（提取→质检→填充→计算→结论）
 
     与分阶段端点（/extract → /suggest → /calculate）不同，本端点由
@@ -1562,6 +1625,7 @@ async def resolve_needs_input(
     filename = _recover_multipart_filename(file.filename or "resolved.xlsx")
     saved = s["session_dir"] / filename
     content = await file.read()
+    _check_upload_size(content)
     if not content:
         raise HTTPException(status_code=400, detail="文件为空")
     with open(saved, "wb") as f:
@@ -1747,3 +1811,45 @@ def llm_budget(user: dict = Depends(get_current_user)):
     budget = int(os.getenv("LLM_DAILY_TOKEN_BUDGET", "500000"))
     return {"user_id": user.get("sub"), "used_today": used, "daily_budget": budget,
             "remaining": max(0, budget - used)}
+
+
+# ==================== 最小指标端点（清单5） ====================
+
+
+@router.get("/metrics", tags=["meta"])
+def metrics(user: dict = Depends(get_current_user)):
+    """运行指标汇总：agent 运行分布、会话阶段分布、当日 LLM 用量、平均耗时。
+
+    供外部轮询或接入告警（如：error 占比突增、LLM 用量异常）。
+    """
+    from sqlalchemy import case, func
+
+    from .db import make_session
+    from .models import AgentRun, AgentStep, LLMCall, SessionRecord
+
+    with make_session() as db:
+        runs = dict(
+            db.query(AgentRun.status, func.count(AgentRun.run_id))
+            .group_by(AgentRun.status).all()
+        )
+        stages = dict(
+            db.query(SessionRecord.stage, func.count(SessionRecord.session_id))
+            .group_by(SessionRecord.stage).all()
+        )
+        llm_today = db.query(
+            func.count(LLMCall.id),
+            func.coalesce(func.sum(LLMCall.output_tokens), 0),
+            func.coalesce(func.sum(case((LLMCall.ok.is_(False), 1), else_=0)), 0),
+        ).filter(func.date(LLMCall.created_at) == datetime.now().date().isoformat()).first()
+        avg_step_ms = db.query(
+            func.coalesce(func.avg(AgentStep.duration_ms), 0)
+        ).scalar()
+
+    return {
+        "agent_runs_by_status": {k: int(v) for k, v in runs.items()},
+        "sessions_by_stage": {k: int(v) for k, v in stages.items()},
+        "llm_calls_today": int(llm_today[0]),
+        "llm_output_tokens_today": int(llm_today[1]),
+        "llm_calls_failed_today": int(llm_today[2]),
+        "avg_agent_step_ms": round(float(avg_step_ms), 1),
+    }

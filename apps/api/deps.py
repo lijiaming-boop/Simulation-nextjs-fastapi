@@ -106,10 +106,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 @asynccontextmanager
 async def startup_banner(app):
     """启动时打印关键环境信息，便于排查；并做启动恢复"""
-    from .db import db_ping, init_db, mark_stale_runs_interrupted
+    from .db import db_ping, init_db, mark_stale_runs_interrupted, recover_stuck_sessions
 
     init_db()  # 幂等：确保 schema 存在（多 worker 各自执行亦安全）
     recovered = mark_stale_runs_interrupted()
+    stuck = recover_stuck_sessions()
     print("=" * 60)
     print("  空调/空压节能测算 FastAPI 后端")
     print("=" * 60)
@@ -121,8 +122,14 @@ async def startup_banner(app):
     print(f"  ANTHROPIC_BASE_URL: {os.getenv('ANTHROPIC_BASE_URL', '(default)')}")
     skills_dir = PROJECT_ROOT / ".claude" / "skills"
     print(f"  skills 目录  : {skills_dir} ({'存在' if skills_dir.exists() else '❌ 不存在'})")
+    base_url = os.getenv("ANTHROPIC_BASE_URL", "")
+    if base_url.startswith("http://"):
+        print(f"  ⚠️ 安全告警  : ANTHROPIC_BASE_URL 使用明文 HTTP（{base_url}），"
+              "客户数据将未加密传输——上线前必须切换 HTTPS 或私有化端点")
     if recovered:
         print(f"  启动恢复     : {recovered} 个中断的 agent 运行可 resume")
+    if stuck:
+        print(f"  启动恢复     : {stuck} 个旧路径卡死会话已置为 error（需重新发起）")
     print("=" * 60)
 
     yield

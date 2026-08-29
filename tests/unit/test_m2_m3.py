@@ -261,6 +261,13 @@ def test_inbox_needs_input_loop(api_client):
             and a["action_type"] == "needs_input"]
     assert mine, "应产生求助待办"
 
+    # 等待运行线程完全退出，避免 resolve 撞上 409（任务仍在运行）
+    from apps.api import agent_service as _asvc
+    for _ in range(30):
+        if not _asvc.is_agent_running(sid):
+            break
+        time.sleep(0.5)
+
     # 上传齐全表闭环 → 重新测算 → 完成
     with open(SURVEY, "rb") as f:
         resp = c.post(f"/api/agent/{sid}/resolve?mode=deterministic",
