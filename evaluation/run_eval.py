@@ -80,8 +80,8 @@ def save_report(run_id: str, results: list, summary: dict) -> None:
         "",
         "## 汇总指标",
         "",
-        f"| 指标 | 数值 |",
-        f"|---|---|",
+        "| 指标 | 数值 |",
+        "|---|---|",
         f"| 流程决策正确率（全部用例） | {summary['outcome_accuracy']:.0%} |",
     ]
     if summary.get("outcome_accuracy_excl_gaps") is not None:

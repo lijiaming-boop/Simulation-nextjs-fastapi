@@ -1,0 +1,16 @@
+# 起步规则集：语法/名称错误 + pyflakes（真错误）。
+# 风格现代化（UP006/UP045/DTZ/BLE 等 600+ 存量项）渐进处理，不阻塞 CI。
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# main.py：load_dotenv 必须先于其他导入执行（环境变量驱动配置）
+"apps/api/main.py" = ["E402"]
+# services.py：窗口化导入避免重依赖拖慢无关路径
+"apps/api/services.py" = ["E402"]
+"core/quote/skill_caller.py" = ["E402"]
+# __init__.py 的 re-export 是刻意设计
+"**/__init__.py" = ["F401"]

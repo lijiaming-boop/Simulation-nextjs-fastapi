@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from .config import settings
 

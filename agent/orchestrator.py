@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from agent.brain import Brain, RuleBrain
-from agent.tools import AgentToolError, ToolContext, ToolRegistry, build_default_registry
+from agent.tools import ToolContext, ToolRegistry, build_default_registry
 from agent.trace import AgentTrace
 
 # 事件回调类型：(event_dict) -> None

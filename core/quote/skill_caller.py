@@ -119,7 +119,6 @@ class SkillCaller:
                          f"超时（>{self.timeout}秒）")
             raise SkillError(f"Skill '{skill_name}' 执行超时") from e
         except Exception as e:
-            import traceback
             if callback:
                 callback(datetime.now().strftime("%H:%M:%S"),
                          f"出错: {str(e)}")

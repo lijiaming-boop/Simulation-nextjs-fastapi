@@ -479,11 +479,11 @@ class SkillCaller:
                 report_hint = ""
                 if task_type == "old_station":
                     report_hint = (
-                        f"\n## 旧站房特别要求\n"
-                        f"- 报告标题格式: `# {{项目名称}}中央空调冷站 控制策略优化仿真报告`\n"
-                        f"- 报告文件名: `{{项目名称}}_COP性能仿真分析报告.md`\n"
-                        f"- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
-                        f"- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
+                        "\n## 旧站房特别要求\n"
+                        "- 报告标题格式: `# {项目名称}中央空调冷站 控制策略优化仿真报告`\n"
+                        "- 报告文件名: `{项目名称}_COP性能仿真分析报告.md`\n"
+                        "- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
+                        "- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
                     )
                 return (
                     f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"

@@ -14,8 +14,7 @@ agent 会话而非单次调用，M3 后按"LLM 型工具"方式纳入统一计�
 from __future__ import annotations
 
 import time
-from datetime import date
-from typing import Any, Optional
+from typing import Optional
 
 from core.llm_client import DirectLLMClient, LLMError
 
@@ -44,7 +43,6 @@ class LLMGateway:
         client: Optional[DirectLLMClient] = None,
         store=None,
     ) -> None:
-        import os
         self.client = client or DirectLLMClient()
         self.user_id = user_id
         self.purpose_default = purpose_default

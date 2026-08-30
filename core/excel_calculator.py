@@ -4,7 +4,6 @@
 """
 import json
 import shutil
-from copy import copy
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -305,7 +304,7 @@ class ExcelCalculator:
                         end_row=new_end_row,
                         end_column=new_end_col
                     )
-                except:
+                except Exception:
                     pass
         
         # 删除原始工作表
@@ -328,8 +327,8 @@ class ExcelCalculator:
             计算结果字典（包含范围）
         """
         try:
-            import formulas
-            import openpyxl
+            import formulas  # noqa: F401  可用性探测
+            import openpyxl  # noqa: F401
         except ImportError as e:
             raise RuntimeError(f"Required library not installed: {e}")
 

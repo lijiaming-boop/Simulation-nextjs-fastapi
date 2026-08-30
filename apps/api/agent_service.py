@@ -41,7 +41,6 @@ def _select_brain(mode: Optional[str] = None, user_id: Optional[str] = None):
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             from agent import LLMBrain
-            from core.llm_client import DirectLLMClient
             from core.llm_gateway import LLMGateway
             gateway = LLMGateway(user_id=user_id, purpose_default="agent.brain",
                                  store=session_store)

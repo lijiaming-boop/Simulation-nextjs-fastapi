@@ -1,11 +1,8 @@
 """空压机节能率计算器"""
 import json
-import os
 from datetime import datetime
 from pathlib import Path
-import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 class AirCompressorCalculator:

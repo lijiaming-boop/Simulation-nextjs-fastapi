@@ -128,8 +128,32 @@ token 用量按次记录在 `agent_trace.json` 的 `llm_usage` 中（依赖
 | 审计 | 上传/下载/运行/恢复写 audit_logs | `deps.py::audit` |
 | 部署 | Dockerfile + docker-compose（db/api/web）；CI 含 lint、单测、评测基线门禁 | `docker-compose.yml`、`.github/workflows/ci.yml` |
 
-已知边界：SSE 事件队列与 LiveSession 写缓存为进程内实现，多副本部署需网关按
-session_id 粘滞路由；Redis 运行态缓存与发布订阅为 M2 演进项。
+## 8.1 事件总线与多副本（M2+ 演进落地）
+
+`apps/api/events.py` 提供 EventBroker 抽象：
+- **进程内模式**（默认，REDIS_URL 留空）：asyncio.Queue + 主循环桥接，单副本零依赖；
+- **Redis 模式**（REDIS_URL 配置后）：事件写 Redis List（LPUSH + BRPOP 阻塞消费 +
+  EXPIRE 兜底），与进程内队列语义对齐（缓冲/FIFO/可排空），**多副本部署无需
+  网关粘滞路由**——任意副本产生的事件，消费副本都能拿到；刻意不用 Pub/Sub
+  （不缓冲，迟到订阅丢事件）。运行结束后订阅可回放全部缓冲事件（容器内
+  15 事件回放验证通过）。LiveSession 写缓存仍为进程内——多副本时同一会话
+  的写请求应路由到同一副本（网关按 session_id hash），或演进为写透 Redis。
+
+## 8.2 数据库迁移
+
+`migrations/`（Alembic）：基线迁移含 7 张业务表，对空库 `alembic upgrade head`
+验证通过。开发/测试仍走幂等 create_all；生产部署执行 `alembic upgrade head`。
+
+## 8.3 对象存储：显式裁剪决策
+
+会话产物（调研表/结果 Excel）当前落本地卷（compose 挂 sessions volume）。
+**决策：暂不引入 MinIO/S3**——内网试用规模（几十 GB 内）本地卷足够，而
+MinIO 接入若不经过真实多副本验证只会制造"已建未验证"负债。迁移路径已预留：
+所有文件 I/O 收敛在 `SessionManager` 与 session_dir 约定上，后续实现
+S3SessionManager 替换即可。触发条件：多副本部署或单卷容量告警。
+
+已知边界：LiveSession 写缓存为进程内实现——多副本时同一会话的写请求应
+路由到同一副本（网关按 session_id hash），或演进为写透 Redis。
 
 ## 9. 关键代码索引
 

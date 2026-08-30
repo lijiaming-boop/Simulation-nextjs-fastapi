@@ -6,10 +6,9 @@
 
 import io
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import openpyxl
-import pandas as pd
 import streamlit as st
 
 from .presets import PRESET_SCHEDULES, SCHEDULE_LABELS

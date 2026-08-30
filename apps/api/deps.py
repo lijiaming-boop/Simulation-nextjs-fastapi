@@ -2,11 +2,10 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Header, HTTPException, status
 
-from core.session_manager import SessionManager
 
 from .config import settings
 from .storage import PersistentSessionStore

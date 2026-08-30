@@ -1,7 +1,7 @@
 """气象数据服务 - 提供全年逐月干湿球温度"""
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List
 
 WEATHER_DATA_PATH = Path(__file__).parent.parent / "config" / "weather_data.json"
 

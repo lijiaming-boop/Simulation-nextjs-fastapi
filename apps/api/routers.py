@@ -19,7 +19,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
@@ -36,7 +36,6 @@ from .deps import (
 from .agent_service import is_agent_running, run_agent_sync, start_agent_run
 from .services import (
     ensure_ai_queue,
-    get_ai_queue,
     is_extract_running,
     is_calculate_running,
     is_suggest_running,
@@ -128,7 +127,6 @@ class _SlidingWindowLimiter:
             return True
 
 
-import threading as _threading_mod
 upload_limiter = _SlidingWindowLimiter(max_events=20, window_seconds=300)      # 5 分钟 20 次上传
 run_limiter = _SlidingWindowLimiter(max_events=30, window_seconds=300)         # 5 分钟 30 次运行
 
@@ -1423,9 +1421,9 @@ async def agent_run(
 
     main_loop = asyncio.get_running_loop()
     try:
-        trace_path = start_agent_run(session_id, mode=None if mode == "auto" else mode,
-                                     main_loop=main_loop,
-                                     require_fill_approval=require_approval)
+        start_agent_run(session_id, mode=None if mode == "auto" else mode,
+                        main_loop=main_loop,
+                        require_fill_approval=require_approval)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:

@@ -754,7 +754,7 @@ def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.Ab
         if excel_text_path:
             args.append(str(excel_text_path))
 
-        skill_result = caller.call_skill(
+        _ = caller.call_skill(
             "plant-simulation",
             *args,
             callback=cb,
@@ -971,7 +971,7 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
                 callback=cb,
                 max_retries=2,
             )
-        except Exception as timeout_e:
+        except Exception:
             # 超时容错：检查输出文件是否已生成
             csv_files = list(output_dir.glob("*.csv"))
             xlsx_files = list(output_dir.glob("*.xlsx"))

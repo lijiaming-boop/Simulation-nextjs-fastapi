@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .presets import PRESET_SCHEDULES, SCHEDULE_LABELS
+from .presets import PRESET_SCHEDULES
 
 _PRESET_FILE = Path(__file__).parent / "user_presets.json"
 
