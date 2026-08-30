@@ -76,20 +76,35 @@ def is_quote_calculate_running(session_id: str) -> bool:
 
 # ==================== AI 事件通道 ====================
 
+class _EventProxy:
+    """代理队列：put_nowait 路由到事件总线（Redis Pub/Sub 或进程内队列）
+
+    保留旧调用点的 `q.put_nowait(event)` 写法，事件实际经 apps/api/events.py
+    投递——配置 REDIS_URL 后多副本部署无需粘滞路由。
+    """
+
+    def __init__(self, session_id: str) -> None:
+        self._sid = session_id
+
+    def put_nowait(self, event: dict) -> None:
+        from .events import ensure_queue, publish_event
+        ensure_queue(self._sid)  # 进程内模式需要队列先存在（缓冲到 SSE 消费）
+        publish_event(self._sid, event)
+
+
 def ensure_ai_queue(session_id: str) -> asyncio.Queue:
-    """为 session 创建/复用 AI 事件 Queue"""
+    """为 session 创建/复用 AI 事件通道（M2+ 起经事件总线投递）"""
     s = session_store.get(session_id)
     if s is None:
         raise RuntimeError(f"session {session_id!r} 不存在")
-    if "ai_queue" not in s:
-        # 注意：必须在主线程事件循环中创建，才能被 SSE 端点消费
-        s["ai_queue"] = asyncio.Queue()
-    return s["ai_queue"]
+    from .events import ensure_queue
+    ensure_queue(session_id)  # 进程内降级通道
+    return s.get("ai_queue") or _EventProxy(session_id)
 
 
-def get_ai_queue(session_id: str) -> Optional[asyncio.Queue]:
+def get_ai_queue(session_id: str):
     s = session_store.get(session_id)
-    return s.get("ai_queue") if s else None
+    return _EventProxy(session_id) if s else None
 
 
 # ==================== 提取任务（在线程中执行） ====================
@@ -208,6 +223,9 @@ def start_extract(
 
     # 注入主事件循环（线程内 put_nowait 需要用）
     session_store._main_loop = main_loop
+    from .events import set_main_loop as _set_main_loop
+    if main_loop is not None:
+        _set_main_loop(main_loop)
 
     # 确保 AI Queue 存在
     ensure_ai_queue(session_id)

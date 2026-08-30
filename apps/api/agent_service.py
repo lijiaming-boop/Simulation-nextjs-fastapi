@@ -105,11 +105,10 @@ def _finalize_run(run_id: str, session_id: str, orchestrator: AgentOrchestrator,
         s_live["filling_suggestions"] = orchestrator.ctx.get("suggestions")
         s_live["result"] = result
         s_live["formatted_result"] = formatted
-        stage = {"completed": "result", "needs_input": "suggest",
-                 "pending_approval": "suggest"}.get(final["status"], "error")
-        session_store.update_stage(session_id, stage)
 
-    # Human-in-the-loop：求助/审批 → 待办收件箱
+    # Human-in-the-loop：求助/审批 → 待办收件箱。
+    # 注意顺序：必须先建待办、再置 stage——stage 是"本轮结束"的信号，
+    # 轮询方看到 stage 后应能立刻查到待办（顺序颠倒会产生竞态窗口）。
     if final["status"] in ("needs_input", "pending_approval"):
         try:
             session_store.create_action(
@@ -121,6 +120,11 @@ def _finalize_run(run_id: str, session_id: str, orchestrator: AgentOrchestrator,
             )
         except Exception:
             pass
+
+    if s_live is not None:
+        stage = {"completed": "result", "needs_input": "suggest",
+                 "pending_approval": "suggest"}.get(final["status"], "error")
+        session_store.update_stage(session_id, stage)
 
     # 通知（M3）：完成/求助/审批/失败 推送 webhook（未配置则跳过）
     try:
@@ -183,6 +187,7 @@ def start_agent_run(
     if not survey_path.exists():
         raise RuntimeError(f"调研表文件缺失: {survey_path.name}")
 
+    _register_main_loop(main_loop)
     brain, brain_label = _select_brain(mode, user_id=s.get("user_id"))
     registry = build_registry_for_module(s.get("module_type", "air_conditioner"))
     run_id = session_store.create_run(session_id, brain_label)
@@ -212,6 +217,7 @@ def resume_agent_run(session_id: str, main_loop=None,
     if run is None:
         raise RuntimeError("没有可恢复的中断或待审批运行")
 
+    _register_main_loop(main_loop)
     return _start_run_thread(
         session_id, resume_run=run, approval_granted=approval_granted,
         main_loop=main_loop,
@@ -317,6 +323,12 @@ def _start_run_thread(
     _agent_tasks[session_id] = t
     session_store.update_stage(session_id, "agent_running")
     return trace_path
+
+
+def _register_main_loop(loop) -> None:
+    if loop is not None:
+        from .events import set_main_loop
+        set_main_loop(loop)
 
 
 def json_safe(event: dict) -> str:

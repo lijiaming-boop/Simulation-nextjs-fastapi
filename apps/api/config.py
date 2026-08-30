@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # 环境标识
     environment: str = "development"
 
+    # Redis（可选）：配置后 SSE 事件经 Pub/Sub 投递，多副本无需粘滞路由；
+    # 留空则使用进程内队列（单副本，零依赖）
+    redis_url: str = ""
+
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
     @property

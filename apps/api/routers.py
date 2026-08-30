@@ -459,7 +459,7 @@ async def extract_stream(session_id: str):
     if not s:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
 
-    queue = ensure_ai_queue(session_id)
+    ensure_ai_queue(session_id)
 
     # 判断是否有任务在运行（extract / suggest / calculate 任一）
     any_running = (
@@ -472,19 +472,15 @@ async def extract_stream(session_id: str):
 
     async def event_generator():
         if not any_running:
-            # 排空队列中残留的事件（线程已完成但事件尚未消费）
-            while True:
-                try:
-                    event = queue.get_nowait()
-                    yield {
-                        "event": "message",
-                        "data": json.dumps(event, ensure_ascii=False),
-                    }
-                    if event.get("type") in ("done", "complete", "error"):
-                        return
-                except asyncio.QueueEmpty:
-                    break
-            # 队列已空但没有终止事件，补发一个
+            # 排空残留事件（线程已完成但事件尚未消费）
+            from .events import drain_pending
+            for event in drain_pending(session_id):
+                yield {
+                    "event": "message",
+                    "data": json.dumps(event, ensure_ascii=False),
+                }
+                if event.get("type") in ("done", "complete", "error"):
+                    return
             yield {
                 "event": "message",
                 "data": json.dumps(
@@ -494,13 +490,13 @@ async def extract_stream(session_id: str):
             }
             return
 
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=30.0)
-            except asyncio.TimeoutError:
+        # 事件总线订阅（Redis Pub/Sub 或进程内队列）
+        from .events import stream_events
+        async for event in stream_events(session_id, idle_timeout=30.0,
+                                         terminal_types=("done", "complete", "error")):
+            if event.get("__ping__"):
                 yield {"event": "ping", "data": ""}
                 continue
-
             yield {
                 "event": "message",
                 "data": json.dumps(event, ensure_ascii=False),
@@ -1457,11 +1453,20 @@ async def agent_stream(session_id: str):
     if not s:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} 不存在")
 
-    queue = ensure_ai_queue(session_id)
+    ensure_ai_queue(session_id)
     running = is_agent_running(session_id)
 
     async def event_generator():
         if not running:
+            # 运行已结束：回放事件总线中缓冲的事件（跨副本经 Redis List 持久）
+            from .events import drain_pending
+            for event in drain_pending(session_id):
+                yield {
+                    "event": "message",
+                    "data": json.dumps(event, ensure_ascii=False),
+                }
+                if event.get("type") in ("done", "error"):
+                    return
             yield {
                 "event": "message",
                 "data": json.dumps(
@@ -1470,10 +1475,10 @@ async def agent_stream(session_id: str):
                 ),
             }
             return
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=30.0)
-            except asyncio.TimeoutError:
+        from .events import stream_events
+        async for event in stream_events(session_id, idle_timeout=30.0,
+                                         terminal_types=("done", "error")):
+            if event.get("__ping__"):
                 yield {"event": "ping", "data": ""}
                 continue
             yield {
