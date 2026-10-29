@@ -3,7 +3,7 @@
 映射 JSON 数据字段到 Excel 模板单元格位置
 基于模板: 00_sample/模板测算表/节能评估表-按冷站电量数据-标准版.xlsx
 """
-from typing import Dict, List
+from typing import List
 
 
 class CellMapping:

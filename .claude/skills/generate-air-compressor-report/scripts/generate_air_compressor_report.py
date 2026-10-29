@@ -11,6 +11,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def generate_equipment_table(equipment_list: list) -> str:
     """生成空压机运行情况表格"""
@@ -55,7 +58,7 @@ def generate_md_report(extracted_data: Dict[str, Any], result: Dict[str, Any], o
         # 读取模板
         template_path = Path('00_sample/模板测算表/空压系统数智化升级方案模板.md')
         if not template_path.exists():
-            print(f"❌ MD模板文件不存在: {template_path}")
+            print(f" MD模板文件不存在: {template_path}")
             return None
         
         # 读取模板内容
@@ -131,11 +134,11 @@ def generate_md_report(extracted_data: Dict[str, Any], result: Dict[str, Any], o
         with open(md_output_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
-        print(f"✅ MD报告已生成: {md_output_path}")
+        print(f" MD报告已生成: {md_output_path}")
         return md_output_path
         
     except Exception as e:
-        print(f"❌ 生成MD报告失败: {str(e)}")
+        print(f" 生成MD报告失败: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
@@ -183,14 +186,14 @@ def convert_md_to_pdf(md_path: Path, output_dir: Path) -> Optional[Path]:
         pdf_output_path = output_dir / f"{md_path.stem}.pdf"
         HTML(string=html_content).write_pdf(str(pdf_output_path), stylesheets=[css])
         
-        print(f"✅ PDF报告已生成: {pdf_output_path}")
+        print(f" PDF报告已生成: {pdf_output_path}")
         return pdf_output_path
         
     except ImportError:
-        print("❌ 需要安装依赖库: pip install markdown weasyprint")
+        print(" 需要安装依赖库: pip install markdown weasyprint")
         return None
     except Exception as e:
-        print(f"❌ 转换PDF失败: {str(e)}")
+        print(f" 转换PDF失败: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
@@ -209,13 +212,13 @@ def generate_word_report(extracted_data: Dict[str, Any], result: Dict[str, Any],
     if output_paths:
         # 返回生成的文件路径列表
         for path in output_paths:
-            print(f"✅ 报告已生成: {path}")
+            print(f" 报告已生成: {path}")
         return output_paths[0]  # 返回第一个生成的文件
     else:
         # 如果pandoc不可用，生成HTML格式
         html_path = generate_html_report(md_path, output_dir)
         if html_path:
-            print(f"✅ HTML报告已生成: {html_path}")
+            print(f" HTML报告已生成: {html_path}")
             return html_path
         
         # 最后返回MD文件
@@ -232,10 +235,10 @@ def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
     try:
         result = subprocess.run(['pandoc', '--version'], capture_output=True)
         if result.returncode != 0:
-            print("⚠️ pandoc未安装，尝试生成HTML报告")
+            print(" pandoc未安装，尝试生成HTML报告")
             return []
     except FileNotFoundError:
-        print("⚠️ pandoc未安装，尝试生成HTML报告")
+        print(" pandoc未安装，尝试生成HTML报告")
         return []
     
     try:
@@ -255,7 +258,7 @@ def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 output_paths.append(word_path)
-                print(f"✅ pandoc转换Word成功（使用自定义模板）")
+                print(f" pandoc转换Word成功（使用自定义模板）")
             else:
                 raise Exception(result.stderr)
         except:
@@ -275,9 +278,9 @@ def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 output_paths.append(word_path)
-                print(f"✅ pandoc转换Word成功（使用默认格式）")
+                print(f" pandoc转换Word成功（使用默认格式）")
             else:
-                print(f"⚠️ pandoc转换Word失败: {result.stderr}")
+                print(f" pandoc转换Word失败: {result.stderr}")
         
         # 转换为PDF
         pdf_path = output_dir / f"{md_path.stem}.pdf"
@@ -294,12 +297,12 @@ def convert_md_with_pandoc(md_path: Path, output_dir: Path) -> list:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             output_paths.append(pdf_path)
-            print(f"✅ pandoc转换PDF成功")
+            print(f" pandoc转换PDF成功")
         else:
-            print(f"⚠️ pandoc转换PDF失败: {result.stderr}")
+            print(f" pandoc转换PDF失败: {result.stderr}")
         
     except Exception as e:
-        print(f"❌ pandoc转换失败: {str(e)}")
+        print(f" pandoc转换失败: {str(e)}")
     
     return output_paths
 
@@ -442,10 +445,10 @@ def generate_html_report(md_path: Path, output_dir: Path) -> Optional[Path]:
         return html_path
         
     except ImportError:
-        print("❌ 需要安装 markdown 库: pip install markdown")
+        print(" 需要安装 markdown 库: pip install markdown")
         return None
     except Exception as e:
-        print(f"❌ 生成HTML报告失败: {str(e)}")
+        print(f" 生成HTML报告失败: {str(e)}")
         return None
 
 
@@ -463,10 +466,10 @@ def main():
     calculation_result_path = sys.argv[2]
     output_dir = Path(sys.argv[3])
     
-    print(f"🚀 [报告生成] 开始生成空压机报告...")
-    print(f"📁 [报告生成] 提取数据: {extracted_data_path}")
-    print(f"📁 [报告生成] 计算结果: {calculation_result_path}")
-    print(f"📁 [报告生成] 输出目录: {output_dir}")
+    print(f" [报告生成] 开始生成空压机报告...")
+    print(f" [报告生成] 提取数据: {extracted_data_path}")
+    print(f" [报告生成] 计算结果: {calculation_result_path}")
+    print(f" [报告生成] 输出目录: {output_dir}")
     
     try:
         # 确保输出目录存在
@@ -479,21 +482,21 @@ def main():
         with open(calculation_result_path, 'r', encoding='utf-8') as f:
             result = json.load(f)
         
-        print(f"✅ [报告生成] 数据读取成功")
+        print(f" [报告生成] 数据读取成功")
         
         # 生成报告（MD + Word）
         report_path = generate_word_report(extracted_data, result, output_dir)
         
         # 输出结果
         if report_path:
-            print(f"📄 报告: {report_path}")
-            print(f"✅ [报告生成] 报告生成完成")
+            print(f" 报告: {report_path}")
+            print(f" [报告生成] 报告生成完成")
         else:
-            print(f"❌ [报告生成] 报告生成失败")
+            print(f" [报告生成] 报告生成失败")
             sys.exit(1)
             
     except Exception as e:
-        print(f"❌ [报告生成] 处理失败: {str(e)}")
+        print(f" [报告生成] 处理失败: {str(e)}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

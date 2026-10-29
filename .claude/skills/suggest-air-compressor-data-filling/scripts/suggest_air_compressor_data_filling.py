@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import datetime
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # 附表1：压力波动与安全裕量查询表
 PRESSURE_SAFETY_TABLE = {
     "电池": {"pressure_fluctuation": 0.15, "safety_margin": 0.10},
@@ -64,7 +67,7 @@ class AirCompressorDataFiller:
     def generate_suggestions(self, extracted_data: Dict[str, Any], quality_report: Dict[str, Any]) -> Dict[str, Any]:
         """生成填充建议"""
         
-        print(f"🔍 [数据填充] 开始分析缺失字段...")
+        print(f" [数据填充] 开始分析缺失字段...")
         
         # 重置建议列表
         self.suggestions = []
@@ -92,8 +95,8 @@ class AirCompressorDataFiller:
             "summary": summary
         }
         
-        print(f"✅ [数据填充] 生成了 {len(self.suggestions)} 个填充建议")
-        print(f"⚠️  [数据填充] 发现 {len(self.unfillable_fields)} 个无法填充的字段")
+        print(f" [数据填充] 生成了 {len(self.suggestions)} 个填充建议")
+        print(f"  [数据填充] 发现 {len(self.unfillable_fields)} 个无法填充的字段")
         
         return result
     
@@ -396,10 +399,10 @@ def main():
     quality_report_path = sys.argv[2]
     output_path = sys.argv[3]
     
-    print(f"🚀 [空压数据填充] 开始生成填充建议")
-    print(f"📁 [空压数据填充] 提取数据: {extracted_data_path}")
-    print(f"📁 [空压数据填充] 质量报告: {quality_report_path}")
-    print(f"📁 [空压数据填充] 输出路径: {output_path}")
+    print(f" [空压数据填充] 开始生成填充建议")
+    print(f" [空压数据填充] 提取数据: {extracted_data_path}")
+    print(f" [空压数据填充] 质量报告: {quality_report_path}")
+    print(f" [空压数据填充] 输出路径: {output_path}")
     
     try:
         # 读取提取的数据
@@ -418,11 +421,11 @@ def main():
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(suggestions, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ [空压数据填充] 填充建议生成完成")
-        print(f"📄 结果已保存到: {output_path}")
+        print(f" [空压数据填充] 填充建议生成完成")
+        print(f" 结果已保存到: {output_path}")
         
     except Exception as e:
-        print(f"❌ [空压数据填充] 处理失败: {str(e)}")
+        print(f" [空压数据填充] 处理失败: {str(e)}")
         
         # 保存错误结果
         error_result = {

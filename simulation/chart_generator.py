@@ -1,8 +1,6 @@
 """图表生成 - Plotly交互式图表"""
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 
 
@@ -116,7 +114,7 @@ def generate_cop_curve_chart(
     sorted_items = sorted(cop_curve.items(), key=lambda x: x[0])
     loads = [item[0] for item in sorted_items]
     cops = [item[1] for item in sorted_items]
-    load_pct = [round(l * 100, 1) for l in loads]
+    load_pct = [round(v * 100, 1) for v in loads]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(

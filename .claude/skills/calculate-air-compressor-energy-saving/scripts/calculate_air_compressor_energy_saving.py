@@ -10,6 +10,9 @@ import math
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # 常量定义
 ATMOSPHERIC_PRESSURE = 1.0  # bar，大气压力
 MAIN_PIPELINE_DIRECT_CONSUMPTION_RATIO = 70  # %，主管网直接耗量比例
@@ -26,7 +29,7 @@ class AirCompressorEnergyCalculator:
     def calculate_energy_saving(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """计算空压机系统节能率"""
         
-        print(f"🔢 [节能计算] 开始计算空压机系统节能率...")
+        print(f" [节能计算] 开始计算空压机系统节能率...")
         
         # 初始化中间数据
         self.intermediate_data = {
@@ -127,11 +130,11 @@ class AirCompressorEnergyCalculator:
             "equipment_analysis": self._analyze_equipment(equipment_data)
         }
         
-        print(f"✅ [节能计算] 计算完成")
-        print(f"📊 当前系统能耗: {current_energy / 10000:.1f} 万kWh/年")
-        print(f"📊 优化后能耗: {optimized_energy / 10000:.1f} 万kWh/年")
-        print(f"📊 节能量: {energy_saving / 10000:.1f} 万kWh/年")
-        print(f"📊 节能率: {energy_saving_rate * 100:.1f}%")
+        print(f" [节能计算] 计算完成")
+        print(f" 当前系统能耗: {current_energy / 10000:.1f} 万kWh/年")
+        print(f" 优化后能耗: {optimized_energy / 10000:.1f} 万kWh/年")
+        print(f" 节能量: {energy_saving / 10000:.1f} 万kWh/年")
+        print(f" 节能率: {energy_saving_rate * 100:.1f}%")
         
         return result
     
@@ -146,7 +149,7 @@ class AirCompressorEnergyCalculator:
     def _calculate_input_fields(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """计算第二部分：输入字段定义（计算逻辑的直接输入）"""
         
-        print(f"🧮 [输入字段计算] 计算第二部分输入字段定义...")
+        print(f" [输入字段计算] 计算第二部分输入字段定义...")
         
         # 提取原始数据
         project_level = raw_data.get("rawData", {}).get("projectLevel", {})
@@ -195,10 +198,10 @@ class AirCompressorEnergyCalculator:
             "mainPipelineDirectConsumptionRatio": MAIN_PIPELINE_DIRECT_CONSUMPTION_RATIO
         }
         
-        print(f"📊 智控后平均压力: {post_control_pressure} bar")
-        print(f"📊 系统压缩机功率因子: {system_compressor_power_factor}")
-        print(f"📊 系统比功率: {system_specific_power} kW/(m³/min)")
-        print(f"📊 系统压缩空气流量: {system_compressed_air_flow} m³/min")
+        print(f" 智控后平均压力: {post_control_pressure} bar")
+        print(f" 系统压缩机功率因子: {system_compressor_power_factor}")
+        print(f" 系统比功率: {system_specific_power} kW/(m³/min)")
+        print(f" 系统压缩空气流量: {system_compressed_air_flow} m³/min")
         
         return calculation_inputs
     
@@ -337,7 +340,7 @@ class AirCompressorEnergyCalculator:
     def _calculate_system_parameters(self, equipment_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """计算系统级参数"""
         
-        print(f"🔧 [系统参数] 计算系统级参数...")
+        print(f" [系统参数] 计算系统级参数...")
         
         # 筛选运行和备用设备
         running_equipment = [eq for eq in equipment_data if eq["runningStatus"] in ["运行", "备用"]]
@@ -365,16 +368,16 @@ class AirCompressorEnergyCalculator:
             "totalEquipmentCount": len(equipment_data)
         }
         
-        print(f"📊 系统压缩机功率因子: {system_params['systemCompressorPowerFactor']}")
-        print(f"📊 系统比功率: {system_params['systemSpecificPower']} kW/(m³/min)")
-        print(f"📊 系统压缩空气流量: {system_params['systemCompressedAirFlow']} m³/min")
+        print(f" 系统压缩机功率因子: {system_params['systemCompressorPowerFactor']}")
+        print(f" 系统比功率: {system_params['systemSpecificPower']} kW/(m³/min)")
+        print(f" 系统压缩空气流量: {system_params['systemCompressedAirFlow']} m³/min")
         
         return system_params
     
     def _calculate_current_energy_consumption(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> float:
         """计算当前系统能耗"""
         
-        print(f"⚡ [当前能耗] 计算当前系统能耗...")
+        print(f" [当前能耗] 计算当前系统能耗...")
         
         # 基础参数
         current_pressure = project_data["averagePressure"]  # bar
@@ -384,8 +387,8 @@ class AirCompressorEnergyCalculator:
         self.calculation_details["current_pressure"] = current_pressure
         self.calculation_details["annual_energy_from_survey"] = annual_energy
         
-        print(f"📊 调研表年度总能耗: {annual_energy / 10000:.1f} 万kWh")
-        print(f"📊 当前系统平均压力: {current_pressure} bar")
+        print(f" 调研表年度总能耗: {annual_energy / 10000:.1f} 万kWh")
+        print(f" 当前系统平均压力: {current_pressure} bar")
         
         # 直接使用调研表中的年度总能耗作为当前系统能耗
         # 这是最准确的基准值
@@ -398,7 +401,7 @@ class AirCompressorEnergyCalculator:
     def _calculate_optimized_energy_consumption(self, project_data: Dict[str, Any], system_params: Dict[str, Any]) -> float:
         """计算优化后系统能耗（按照需求文档公式）"""
         
-        print(f"⚡ [优化能耗] 计算优化后系统能耗...")
+        print(f" [优化能耗] 计算优化后系统能耗...")
         
         # 基础参数
         current_pressure = project_data["averagePressure"]  # bar
@@ -414,7 +417,7 @@ class AirCompressorEnergyCalculator:
         
         # 检查压力合理性：如果当前压力低于优化后压力，说明当前系统已经很高效
         if current_pressure <= optimized_pressure:
-            print(f"⚠️  当前压力({current_pressure} bar)已经接近或低于优化目标({optimized_pressure} bar)")
+            print(f"  当前压力({current_pressure} bar)已经接近或低于优化目标({optimized_pressure} bar)")
             # 在这种情况下，节能主要来自控制优化，而非压力降低
             control_optimization_factor = 0.9  # 10%的控制优化节能
             optimized_total_energy = annual_energy * control_optimization_factor
@@ -464,19 +467,19 @@ class AirCompressorEnergyCalculator:
             "optimized_calculation_method": "按照需求文档公式计算"
         })
         
-        print(f"📊 优化后系统平均压力: {optimized_pressure} bar")
-        print(f"📊 压力变化: {current_pressure - optimized_pressure:.2f} bar")
+        print(f" 优化后系统平均压力: {optimized_pressure} bar")
+        print(f" 压力变化: {current_pressure - optimized_pressure:.2f} bar")
         
         # 根据优化类型显示不同信息
         if "control_optimization_factor" in self.calculation_details:
-            print(f"📊 控制优化系数: {self.calculation_details['control_optimization_factor']:.3f}")
+            print(f" 控制优化系数: {self.calculation_details['control_optimization_factor']:.3f}")
         else:
-            print(f"📊 压力降低值(deltaPressure): {self.calculation_details.get('deltaPressure', 0):.2f} bar")
-            print(f"📊 空气消耗降低百分比: {self.calculation_details.get('airReductionPercent', 0):.2f}%")
-            print(f"📊 空气流量降低值(deltaFlowRate): {self.calculation_details.get('deltaFlowRate', 0):.2f} m³/min")
-            print(f"📊 压力降低节能量(E_pressure): {self.calculation_details.get('E_pressure_MWh', 0):.2f} MWh")
-            print(f"📊 空气消耗降低节能量(E_air): {self.calculation_details.get('E_air_MWh', 0):.2f} MWh")
-            print(f"📊 总节能量(E_total): {self.calculation_details.get('E_total_MWh', 0):.2f} MWh")
+            print(f" 压力降低值(deltaPressure): {self.calculation_details.get('deltaPressure', 0):.2f} bar")
+            print(f" 空气消耗降低百分比: {self.calculation_details.get('airReductionPercent', 0):.2f}%")
+            print(f" 空气流量降低值(deltaFlowRate): {self.calculation_details.get('deltaFlowRate', 0):.2f} m³/min")
+            print(f" 压力降低节能量(E_pressure): {self.calculation_details.get('E_pressure_MWh', 0):.2f} MWh")
+            print(f" 空气消耗降低节能量(E_air): {self.calculation_details.get('E_air_MWh', 0):.2f} MWh")
+            print(f" 总节能量(E_total): {self.calculation_details.get('E_total_MWh', 0):.2f} MWh")
         
         return optimized_total_energy
     
@@ -584,10 +587,10 @@ def main():
     output_path_obj = Path(output_path)
     intermediate_data_path = output_path_obj.parent / f"{output_path_obj.stem}_intermediate.json"
     
-    print(f"🚀 [空压节能计算] 开始计算节能率")
-    print(f"📁 [空压节能计算] 原始数据: {raw_data_path}")
-    print(f"📁 [空压节能计算] 输出路径: {output_path}")
-    print(f"📁 [空压节能计算] 中间数据路径: {intermediate_data_path}")
+    print(f" [空压节能计算] 开始计算节能率")
+    print(f" [空压节能计算] 原始数据: {raw_data_path}")
+    print(f" [空压节能计算] 输出路径: {output_path}")
+    print(f" [空压节能计算] 中间数据路径: {intermediate_data_path}")
     
     try:
         # 读取原始数据
@@ -616,12 +619,12 @@ def main():
         with open(intermediate_data_path, 'w', encoding='utf-8') as f:
             json.dump(intermediate_data, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ [空压节能计算] 计算完成")
-        print(f"📄 结果已保存到: {output_path}")
-        print(f"📊 中间数据已保存到: {intermediate_data_path}")
+        print(f" [空压节能计算] 计算完成")
+        print(f" 结果已保存到: {output_path}")
+        print(f" 中间数据已保存到: {intermediate_data_path}")
         
     except Exception as e:
-        print(f"❌ [空压节能计算] 计算失败: {str(e)}")
+        print(f" [空压节能计算] 计算失败: {str(e)}")
         
         # 保存错误结果
         error_result = {

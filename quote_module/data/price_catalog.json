@@ -1,0 +1,2140 @@
+{
+  "software": {
+    "platform": {
+      "name": "平台基础功能",
+      "module_group": "基础平台",
+      "category": "基础平台",
+      "config_type": "标配",
+      "description": "平台基础功能，B/S架构",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 60000.0,
+      "channel_price": 42000.0
+    },
+    "数字化监测": {
+      "name": "数字化监测",
+      "module_group": "空调\n板块",
+      "category": "空调分析\n功能",
+      "config_type": "选配",
+      "description": "1、自定义大屏：机房与末端设备的运行状态、故障状态、各温度/压力/流量参数、能耗状况、能效状况以及末端各监测点温湿度状况可在控制室大屏显示\n\n2、末端监测：展示每一个末端监测点的实时与历史的送回风温湿度信息以及整体站房的舒适性评价，并且可自定义设置监测点温湿度限值\n\n3、机房组态：根据机房实际运行状况可自定义设置机房组态，机房组态页面可查看管道流动状态与设备运行状态、功率等信息，针对关键参数可自定义设置参数运行数据图表，针对关键状态参数可设置参数块",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 45000.0,
+      "channel_price": 31500.0
+    },
+    "运行抄表": {
+      "name": "运行抄表",
+      "module_group": "空压板块",
+      "category": "空压分析功能",
+      "config_type": "选配",
+      "description": "支持用户根据实际需求，配置不同报表。报表可自定义选择不同设备、监测参数、报表样式等。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 100000.0,
+      "channel_price": 70000.0
+    },
+    "空压分析": {
+      "name": "空压分析",
+      "module_group": "空压板块",
+      "category": "空压分析功能",
+      "config_type": "标配",
+      "description": "支持空压场景安全供能（供气安全、露点安全、设备隐患、预警安全）和节能降碳（效益、能耗、整站效率、单机效率、过程浪费）的评分和专项分析。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 85000.0,
+      "channel_price": 59500.0
+    },
+    "ai可视化": {
+      "name": "AI可视化",
+      "module_group": "空压板块",
+      "category": "空压分析功能",
+      "config_type": "标配",
+      "description": "1、AI实时压力预测：支持实时秒级压力预测，并根据压力动态变化，实时调整系统控制策略\n\n2、AI流量预测：供需流量动态平衡算法：根据实际工况，按供需匹配生成AI算法包\n\n3、AI单机能效诊断：设备实际比功率动态计算：通过AI智能算法计算每台空压机的动态比功率，从而匹配最高效的运行方式（需要母管安装流量计，每台设备安装电表）\n\n4、AI整站能效诊断：基于设备运行组合的整站能效分析，推荐匹配用气需求的最佳设备运行组合",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 120000.0,
+      "channel_price": 84000.0
+    },
+    "主合同_按照整千位数统计_如_1823个点位_按照2000点位计算___增补合同_可按照接入点位具体数量计算": {
+      "name": "主合同：按照整千位数统计（如:1823个点位，按照2000点位计算）\n\n增补合同：可按照接入点位具体数量计算",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤1,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 35.0,
+      "channel_price": 24.5
+    },
+    "参数数量__2_000个": {
+      "name": "参数数量：≤2,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤2,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 34.0,
+      "channel_price": 23.8
+    },
+    "参数数量__3_000个": {
+      "name": "参数数量：≤3,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤3,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 33.0,
+      "channel_price": 23.1
+    },
+    "参数数量__4_000个": {
+      "name": "参数数量：≤4,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤4,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 32.0,
+      "channel_price": 22.4
+    },
+    "参数数量__5_000个": {
+      "name": "参数数量：≤5,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤5,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 31.0,
+      "channel_price": 21.7
+    },
+    "参数数量__6_000个": {
+      "name": "参数数量：≤6,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤6,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30.0,
+      "channel_price": 21.0
+    },
+    "参数数量__7_000个": {
+      "name": "参数数量：≤7,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤7,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 29.0,
+      "channel_price": 20.3
+    },
+    "参数数量__8_000个": {
+      "name": "参数数量：≤8,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤8,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 28.0,
+      "channel_price": 19.6
+    },
+    "参数数量__9_000个": {
+      "name": "参数数量：≤9,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤9,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 27.0,
+      "channel_price": 18.9
+    },
+    "参数数量__10_000个": {
+      "name": "参数数量：≤10,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤10,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 26.0,
+      "channel_price": 18.2
+    },
+    "参数数量__20_000个": {
+      "name": "参数数量：≤20,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤20,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 25.0,
+      "channel_price": 17.5
+    },
+    "参数数量__30_000个": {
+      "name": "参数数量：≤30,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤30,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 24.0,
+      "channel_price": 16.8
+    },
+    "参数数量__40_000个": {
+      "name": "参数数量：≤40,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤40,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 23.0,
+      "channel_price": 16.1
+    },
+    "参数数量__50_000个": {
+      "name": "参数数量：≤50,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤50,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 22.0,
+      "channel_price": 15.4
+    },
+    "参数数量__60_000个": {
+      "name": "参数数量：≤60,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤60,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 21.0,
+      "channel_price": 14.7
+    },
+    "参数数量__70_000个": {
+      "name": "参数数量：≤70,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤70,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20.0,
+      "channel_price": 14.0
+    },
+    "参数数量__80_000个": {
+      "name": "参数数量：≤80,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤80,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 19.0,
+      "channel_price": 13.3
+    },
+    "参数数量__90_000个": {
+      "name": "参数数量：≤90,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤90,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 18.0,
+      "channel_price": 12.6
+    },
+    "参数数量__100_000个": {
+      "name": "参数数量：≤100,000个",
+      "module_group": "数据点位",
+      "category": "点位数量",
+      "config_type": "选配",
+      "description": "参数数量：≤100,000个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 17.0,
+      "channel_price": 11.9
+    },
+    "数字驾驶舱配置与管理": {
+      "name": "数字驾驶舱配置与管理",
+      "module_group": "系统管理功能",
+      "category": "管理后台",
+      "config_type": "选配",
+      "description": "支持数据可视化界面编辑与管理，支持通过拖拉拽的方式编辑数据驾驶舱，利用已有的数据驾驶舱组件搭建和修改大屏内容。包含提供对应的线下培训服务、后续功能答疑和操作指引资料",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 10000.0
+    },
+    "能源管理模型配置与管理": {
+      "name": "能源管理模型配置与管理",
+      "module_group": "系统管理功能",
+      "category": "管理后台",
+      "config_type": "选配",
+      "description": "支持能源编辑与管理，可根据业务实际变化，调整任意能源管理的数据结构和数据源。包含对应的线下培训服务、后续答疑和操作指引资料",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 16000.0
+    },
+    "网关_设备_协议配置与管理": {
+      "name": "网关、设备、协议配置与管理",
+      "module_group": "系统管理功能",
+      "category": "管理后台",
+      "config_type": "选配",
+      "description": "支持统一管理物联网终端接入，支持协议通信与设备状态监控。包含对应的线下培训服务、后续答疑和操作指引资料",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 50000.0,
+      "channel_price": 36000.0
+    },
+    "mobile_cloud": {
+      "name": "微信小程序（基础版）",
+      "module_group": "移动端",
+      "category": "移动端\n（云端部署）",
+      "config_type": "选配",
+      "description": "1、实时数据展示：设备参数的实时展示。\n2、预警消息查看：微信小程序内查看预警消息。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 12000.0,
+      "channel_price": 8400.0
+    },
+    "微信小程序_基础版": {
+      "name": "微信小程序（基础版）",
+      "module_group": "移动端",
+      "category": "移动端\n（本地部署）",
+      "config_type": "选配",
+      "description": "1、实时数据展示：设备参数的实时展示。\n2、预警消息查看：微信小程序内查看预警消息。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 14000.0
+    },
+    "app_安卓二维码下载_本地化部署": {
+      "name": "APP（安卓二维码下载，本地化部署）",
+      "module_group": "移动端",
+      "category": "移动端\n（本地部署）",
+      "config_type": "选配",
+      "description": "1、实时数据展示：设备参数的实时展示。\n2、预警消息查看：APP内查看预警消息。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 28000.0
+    },
+    "app_安卓_ios版_本地化部署": {
+      "name": "APP（安卓+iOS版，本地化部署）",
+      "module_group": "移动端",
+      "category": "移动端\n（本地部署）",
+      "config_type": "选配",
+      "description": "1、实时数据展示：设备参数的实时展示。\n2、预警消息查看：APP内查看预警消息。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 60000.0,
+      "channel_price": 56000.0
+    },
+    "钉钉群_个人推送": {
+      "name": "钉钉群/个人推送",
+      "module_group": "报警定向推送",
+      "category": "钉钉消息推送",
+      "config_type": "选配",
+      "description": "支持通过钉钉官方接口，将通知报警推送给对应用户，或钉钉机器人在内部群聊进行报警推送。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "钉钉群_个人推送_2": {
+      "name": "钉钉群/个人推送",
+      "module_group": "报警定向推送",
+      "category": "钉钉消息推送",
+      "config_type": "选配",
+      "description": "支持通过客户封装接口，将通知报警推送给对应用户，或钉钉机器人在内部群聊进行报警推送。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "企业微信群_个人推送": {
+      "name": "企业微信群/个人推送",
+      "module_group": "报警定向推送",
+      "category": "企业微信推送",
+      "config_type": "选配",
+      "description": "支持通过企业微信官方接口，将通知报警推送给对应用户，或钉钉机器人在内部群聊进行报警推送。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "企业微信群_个人推送_2": {
+      "name": "企业微信群/个人推送",
+      "module_group": "报警定向推送",
+      "category": "企业微信推送",
+      "config_type": "选配",
+      "description": "支持通过客户封装接口，将通知报警推送给对应用户，或钉钉机器人在内部群聊进行报警推送。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "能源效率分析__如_单位产品能耗_单位产值能耗": {
+      "name": "能源效率分析\n（如：单位产品能耗、单位产值能耗）",
+      "module_group": "能源管理\n高级功能",
+      "category": "高级分析功能",
+      "config_type": "选配",
+      "description": "1.支持各类能源的效率分析，包括单位产品能效和单位产值能效分析\n2.统计维度可包含：基地、厂区、车间、线体/部门 \n3.可支持人工录入产量产值数据\n4.如需对接第三方系统自动获取日产量数据，请额外选配“MES系统（每日产量）”数据对接服务",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 40000.0,
+      "channel_price": 28000.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "产线/部门"
+        ]
+      }
+    },
+    "能耗分摊统计": {
+      "name": "能耗分摊统计",
+      "module_group": "能源管理\n高级功能",
+      "category": "高级分析功能",
+      "config_type": "选配",
+      "description": "支持根据能源价格/产量/固定比例等核算逻辑，计算厂区、楼栋、车间的能源成本，并完成等比例的复杂分摊统计。分摊公式支持自定义配置。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 14000.0
+    },
+    "能源目标管理": {
+      "name": "能源目标管理",
+      "module_group": "能源管理\n高级功能",
+      "category": "高级分析功能",
+      "config_type": "选配",
+      "description": "支持日、周、月等不同时间颗粒度的设置和调整能源目标。以曲线图和报表方式展现指定区域、部门当前用各类能源的能耗值与基准值或考核值的对比情况。目标未达标时，可联动报警功能，针对不同部门、不同分责任进行分层分级的消息推送和策略设置。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 14000.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "产线/部门"
+        ]
+      }
+    },
+    "batch_analysis": {
+      "name": "批次单耗分析",
+      "module_group": "能源管理\n高级功能",
+      "category": "高级分析功能",
+      "config_type": "选配",
+      "description": "1. 支持分析不同批次、不同产品类型、不同型号的多种能源消耗和单位产品能耗\n2. 支持人工录入和编辑生产批次信息\n3. 如需对接第三方系统自动获取批次数据，请额外选配“MES系统（批次信息）”对接服务",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 50000.0,
+      "channel_price": 35000.0
+    },
+    "能源ai预测": {
+      "name": "能源AI预测",
+      "module_group": "能源管理\n高级功能",
+      "category": "能源AI智能分析",
+      "config_type": "选配",
+      "description": "1. 使用AI预测算法，支持根据历史数据或生产计划、单位产品能耗，对用能量进行预测。\n2. 系统通过曲线图和报表方式直观显示预测的偏差值和准确率。\n3 .如需系统自动获取生产计划信息，请额外选配“排产计划系统（APS）”对接服务",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 40000.0,
+      "channel_price": 28000.0
+    },
+    "折碳系数管理": {
+      "name": "折碳系数管理",
+      "module_group": "能源管理\n高级功能",
+      "category": "碳管理",
+      "config_type": "选配",
+      "description": "支持修改和维护各类能源的折煤折碳系数",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "设备台账管理": {
+      "name": "设备台账管理",
+      "module_group": "运维功能",
+      "category": "设备台账",
+      "config_type": "选配",
+      "description": "记录普通设备全生命周期的档案，可查看设备的台账信息、资产档案、点检档案、保养档案、维修档案、报警档案及关联文档。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "特种设备管理": {
+      "name": "特种设备管理",
+      "module_group": "运维功能",
+      "category": "设备台账",
+      "config_type": "选配",
+      "description": "特种设备台账跟设备台账的功能是类似的，只是针对的设备类型不同。设备台账主要针对的是常规设备，比如空压机、冷水主机；特种设备台账针对的是特种设备，比如油气桶、货梯。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": null
+    },
+    "点检标准": {
+      "name": "点检标准",
+      "module_group": "运维功能",
+      "category": "点巡检管理",
+      "config_type": "选配",
+      "description": "制定针对设备的点检周期及项目标准",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": null
+    },
+    "巡检计划": {
+      "name": "巡检计划",
+      "module_group": "运维功能",
+      "category": "点巡检管理",
+      "config_type": "选配",
+      "description": "支持设备监测参数批量巡检的计划设定，可根据日/周/月/年周期的计划排期并自动生成任务，任务支持时/日/周/月频率的自动抄表数据巡检。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": null
+    },
+    "点巡检统计": {
+      "name": "点巡检统计",
+      "module_group": "运维功能",
+      "category": "点巡检管理",
+      "config_type": "选配",
+      "description": "点检、巡剑统计概览页面，包括统计数据和记录清单。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": null
+    },
+    "工单中心": {
+      "name": "工单中心",
+      "module_group": "运维功能",
+      "category": "工单管理",
+      "config_type": "选配",
+      "description": "1.承载计划性工单任务，按保养/检定计划周期自动生成；承载非计划性的工单任务（例如：点巡检异常、设备故障、系统异常报警等场景延伸需跟进的维修工单）。\n2.支持工单的流程流转（派单、转派、委外）、执行反馈及联动库存，闭环处理留痕。\n3.工单归档成为设备全生命周期闭环，形成设备完整运行管理档案；优秀工单案例归档知识库。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 65000.0,
+      "channel_price": 45500.0
+    },
+    "工单设置": {
+      "name": "工单设置",
+      "module_group": "运维功能",
+      "category": "工单管理",
+      "config_type": "选配",
+      "description": "1、工单设置包含基础配置、工单类型设置和签到设置。\n2、基础配置\n（1）工单负责人：计划/报警自动生成的工单会按照此处的设置指派至对应负责人。\n（2）工单生成自动化：计划/报警自动生成的工单会按照此处的设置指派至对应负责人。\n（3）项目结果类型设置\n（4）库存备件联动：开启之后，工单所用备件自动生成出库记录，自动扣减库存数量。\n3、工单类型：支持新增自定义类型，并可编辑流程节点（如签到、审批）。注意：固定流程节点不能关闭，签到为非固定流程节点，可以关闭节点。支持配置工单打印模版。\n4、签到设置：允许定义有效打卡范围和地点。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": null
+    },
+    "我的待办": {
+      "name": "我的待办",
+      "module_group": "运维功能",
+      "category": "工单管理",
+      "config_type": "选配",
+      "description": "1、包括“待我处理”、“我已处理”、“我创建的”三个模块。\n待我处理：流程流转至我的任务，可选择按创建时间/计划完成时间排序，点击看任务详情。\n我已处理：我已处理过的任务列表，可选择按创建时间/处理时间排序，点击查看任务详情。\n我创建的：我创建过的所有的工单，可选择按创建时间排序，点击查看任务详情。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": null
+    },
+    "保养计划": {
+      "name": "保养计划",
+      "module_group": "运维功能",
+      "category": "保养检定管理",
+      "config_type": "选配",
+      "description": "支持对普通设备设定保养计划，按周期手动/自动生成保养工单。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "检定计划": {
+      "name": "检定计划",
+      "module_group": "运维功能",
+      "category": "保养检定管理",
+      "config_type": "选配",
+      "description": "支持对特种设备设定检定计划，按周期手动/自动生成检定工单。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "备件档案": {
+      "name": "备件档案",
+      "module_group": "运维功能",
+      "category": "备件管理",
+      "config_type": "选配",
+      "description": "进行备品备件的库存管理，支持库存的增减和低库存提醒",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 15000.0,
+      "channel_price": 10500.0
+    },
+    "文档管理": {
+      "name": "文档管理",
+      "module_group": "运维功能",
+      "category": "知识库",
+      "config_type": "选配",
+      "description": "1、支持上传文档，并进行文档管理，支持预览、下载\n2、优秀工单案例归档知识库。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5000.0,
+      "channel_price": 3500.0
+    },
+    "vi定制": {
+      "name": "VI定制",
+      "module_group": "企业定制",
+      "category": "VI定制",
+      "config_type": "选配",
+      "description": "企业自行提供指定尺寸的登录页、登录框、导航栏设计图。乙方负责开发配置。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5000.0,
+      "channel_price": 3500.0
+    },
+    "extra_dashboard": {
+      "name": "2D/2.5D版，客户自行提供底图，按照要求设计大屏",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，客户自行提供底图，按照要求设计大屏",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 9000.0,
+      "channel_price": 6300.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "客户供图"
+        ]
+      }
+    },
+    "2d_2_5d版_客户自行提供底图_按照要求设计大屏_英文版": {
+      "name": "2D/2.5D版，客户自行提供底图，按照要求设计大屏（英文版）",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，客户自行提供底图，按照要求设计大屏（英文版）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 13500.0,
+      "channel_price": 9450.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "客户供图"
+        ]
+      }
+    },
+    "全厂看板_园区看板": {
+      "name": "全厂看板/园区看板",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，客户自行提供底图，按照要求设计大屏",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 9000.0,
+      "channel_price": 6300.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "客户供图"
+        ]
+      }
+    },
+    "2d_2_5d版_客户自行提供底图_按照要求设计大屏_英文版_2": {
+      "name": "2D/2.5D版，客户自行提供底图，按照要求设计大屏（英文版）",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，客户自行提供底图，按照要求设计大屏（英文版）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 13500.0,
+      "channel_price": 9450.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "客户供图"
+        ]
+      }
+    },
+    "产线_部门管理看板": {
+      "name": "产线/部门管理看板",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，无底图，使用标准模板，模板可进行微调",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "标准模板"
+        ]
+      }
+    },
+    "2d_2_5d版_无底图_使用标准模板_模板可进行微调_英文版": {
+      "name": "2D/2.5D版，无底图，使用标准模板，模板可进行微调（英文版）",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，无底图，使用标准模板，模板可进行微调（英文版）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 9000.0,
+      "channel_price": 6300.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "标准模板"
+        ]
+      }
+    },
+    "能源概览_目标体系看板": {
+      "name": "能源概览/目标体系看板",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，无底图，使用标准模板，模板可进行微调",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "标准模板"
+        ]
+      }
+    },
+    "2d_2_5d版_无底图_使用标准模板_模板可进行微调_英文版_2": {
+      "name": "2D/2.5D版，无底图，使用标准模板，模板可进行微调（英文版）",
+      "module_group": "定制化大屏",
+      "category": "管理看板",
+      "config_type": "选配",
+      "description": "2D/2.5D版，无底图，使用标准模板，模板可进行微调（英文版）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 9000.0,
+      "channel_price": 6300.0,
+      "tier_info": {
+        "type": "dashboard",
+        "keywords": [
+          "2D",
+          "标准模板"
+        ]
+      }
+    },
+    "extra_topology": {
+      "name": "组态数量≤10个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤10个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 10
+      }
+    },
+    "组态数量_20个": {
+      "name": "组态数量≤20个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤20个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5900.0,
+      "channel_price": 4130.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 20
+      }
+    },
+    "组态数量_30个": {
+      "name": "组态数量≤30个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤30个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5800.0,
+      "channel_price": 4060.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 30
+      }
+    },
+    "组态数量_40个": {
+      "name": "组态数量≤40个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤40个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5700.0,
+      "channel_price": 3990.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 40
+      }
+    },
+    "组态数量_50个": {
+      "name": "组态数量≤50个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤50个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5600.0,
+      "channel_price": 3920.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 50
+      }
+    },
+    "组态数量_60个": {
+      "name": "组态数量≤60个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤60个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5500.0,
+      "channel_price": 3850.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 60
+      }
+    },
+    "组态数量_70个": {
+      "name": "组态数量≤70个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤70个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5400.0,
+      "channel_price": 3780.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 70
+      }
+    },
+    "组态数量_80个": {
+      "name": "组态数量≤80个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤80个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5300.0,
+      "channel_price": 3710.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 80
+      }
+    },
+    "组态数量_90个": {
+      "name": "组态数量≤90个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤90个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5200.0,
+      "channel_price": 3640.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 90
+      }
+    },
+    "组态数量_100个": {
+      "name": "组态数量≤100个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤100个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5100.0,
+      "channel_price": 3570.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 100
+      }
+    },
+    "组态数量_200个": {
+      "name": "组态数量≤200个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤200个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 4500.0,
+      "channel_price": 3150.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 200
+      }
+    },
+    "组态数量_300个": {
+      "name": "组态数量≤300个",
+      "module_group": "定制化大屏",
+      "category": "站房组态",
+      "config_type": "选配",
+      "description": "组态数量≤300个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 4000.0,
+      "channel_price": 2800.0,
+      "tier_info": {
+        "type": "topology",
+        "max_points": 300
+      }
+    },
+    "extra_report": {
+      "name": "增量标准报表",
+      "module_group": "定制化报表",
+      "category": "报表",
+      "config_type": "选配",
+      "description": "在标准交付报表之外增加标准模板报表。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 1500,
+      "channel_price": 1200
+    },
+    "报表数量_10个": {
+      "name": "报表数量≤10个",
+      "module_group": "定制化报表",
+      "category": "定制化报表",
+      "config_type": "选配",
+      "description": "报表数量≤10个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 1200.0,
+      "channel_price": 960.0
+    },
+    "报表数量_15个": {
+      "name": "报表数量≤15个",
+      "module_group": "定制化报表",
+      "category": "定制化报表",
+      "config_type": "选配",
+      "description": "报表数量≤15个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 900.0,
+      "channel_price": 720.0
+    },
+    "报表数量_20个": {
+      "name": "报表数量≤20个",
+      "module_group": "定制化报表",
+      "category": "定制化报表",
+      "config_type": "选配",
+      "description": "报表数量≤20个",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 600.0,
+      "channel_price": 480.0
+    },
+    "自控系统": {
+      "name": "自控系统",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "物联数据对接",
+      "config_type": "选配",
+      "description": "非工业协议对接，例如（API、MQTT）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "微电网系统": {
+      "name": "微电网系统",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "物联数据对接",
+      "config_type": "选配",
+      "description": "对接微电网系统采集数据，例如（API、MQTT）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "光伏系统": {
+      "name": "光伏系统",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "物联数据对接",
+      "config_type": "选配",
+      "description": "对接光伏系统采集数据，例如（API、MQTT）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "mes系统_每日产量": {
+      "name": "MES系统（每日产量)",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "能管数据对接",
+      "config_type": "选配",
+      "description": "获取每小时或每日的产量数据",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "mes系统_批次信息": {
+      "name": "MES系统（批次信息）",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "能管数据对接",
+      "config_type": "选配",
+      "description": "获取批次的产量数据",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "排产计划系统_aps": {
+      "name": "排产计划系统（APS）",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "能管数据对接",
+      "config_type": "选配",
+      "description": "获取未来一段时间每天的排产数据，用于能耗预测",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "省政府能源管理平台": {
+      "name": "省政府能源管理平台",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "能管数据对接",
+      "config_type": "选配",
+      "description": "按天、小时颗粒度上报企业的总能耗数据到省政府能源管理平台",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "统一身份认证平台": {
+      "name": "统一身份认证平台",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "系统基础数据对接",
+      "config_type": "选配",
+      "description": "对接客户的统一登录平台，实现免密登录到4.0系统",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "视频监控系统": {
+      "name": "视频监控系统",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "视频监控对接",
+      "config_type": "选配",
+      "description": "与视频监控平台打通，实现在4.0 视频监控模块下查看实时监控画面",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "外网_天气预报": {
+      "name": "外网-天气预报",
+      "module_group": "系统集成\n（云智控读取第三方系统数据）",
+      "category": "天气预报对接",
+      "config_type": "选配",
+      "description": "定期获取当地未来两周时间内的每天平均气温",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 30000.0,
+      "channel_price": 21000.0
+    },
+    "hvac_数字化监测": {
+      "name": "[空调]数字化监测",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "数字化监测",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 112500.0,
+      "channel_price": 78750.0
+    },
+    "hvac_能效分析": {
+      "name": "[空调]能效分析",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "能效分析",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 150000.0,
+      "channel_price": 105000.0
+    },
+    "hvac_空调_板块": {
+      "name": "[空调]空调\n板块",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 175000.0,
+      "channel_price": 122500.0
+    },
+    "hvac_预测性维护": {
+      "name": "[空调]预测性维护",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "预测性维护",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 190000.0,
+      "channel_price": 133000.0
+    },
+    "hvac_微信小程序_空调版": {
+      "name": "[空调]微信小程序（空调版）",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "微信小程序（空调版）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 12000.0,
+      "channel_price": 8400.0
+    },
+    "hvac_ai智控算法": {
+      "name": "[空调]AI智控算法",
+      "module_group": "空调\n板块",
+      "category": "空调",
+      "config_type": "选配",
+      "description": "AI智控算法",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 25000.0,
+      "channel_price": 17500.0
+    },
+    "compressor_1类_有节能率要求空压站房__4__项目节能率___离心机数量": {
+      "name": "[空压]1类，有节能率要求空压站房\n（4%＜项目节能率）\n*离心机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "1类，有节能率要求空压站房\n（4%＜项目节能率）\n*离心机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 120500.0,
+      "channel_price": 84350.0
+    },
+    "compressor_2类_有节能率要求空压站房__0_项目节能率__4____离心机数量": {
+      "name": "[空压]2类，有节能率要求空压站房\n（0＜项目节能率＜=4%）\n*离心机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "2类，有节能率要求空压站房\n（0＜项目节能率＜=4%）\n*离心机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 100500.0,
+      "channel_price": 70350.0
+    },
+    "compressor_3类_无节能要求空压站房__项目不要求节能率___离心机数量": {
+      "name": "[空压]3类，无节能要求空压站房\n（项目不要求节能率）\n*离心机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "3类，无节能要求空压站房\n（项目不要求节能率）\n*离心机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 60500.0,
+      "channel_price": 42350.0
+    },
+    "compressor_离心ai算法模型_备注_带节能率站房标配__填写需节能智控离心机数量": {
+      "name": "[空压]离心AI算法模型\n备注：带节能率站房标配，\n填写需节能智控离心机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "离心AI算法模型\n备注：带节能率站房标配，\n填写需节能智控离心机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 98500.0,
+      "channel_price": 68950.0
+    },
+    "compressor_1类_有节能率要求空压站房__4__项目节能率___螺杆机数量": {
+      "name": "[空压]1类，有节能率要求空压站房\n（4%＜项目节能率）\n*螺杆机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "1类，有节能率要求空压站房\n（4%＜项目节能率）\n*螺杆机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 55000.0,
+      "channel_price": 38500.0
+    },
+    "compressor_2类_有节能率要求空压站房__0_项目节能率__4____螺杆机数量": {
+      "name": "[空压]2类，有节能率要求空压站房\n（0＜项目节能率＜=4%）\n*螺杆机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "2类，有节能率要求空压站房\n（0＜项目节能率＜=4%）\n*螺杆机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 45000.0,
+      "channel_price": 31500.0
+    },
+    "compressor_3类_无节能率要求空压站房__项目不要求节能率___螺杆机数量": {
+      "name": "[空压]3类，无节能率要求空压站房\n（项目不要求节能率）\n*螺杆机数量",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "3类，无节能率要求空压站房\n（项目不要求节能率）\n*螺杆机数量",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 35000.0,
+      "channel_price": 24500.0
+    },
+    "compressor_冷干机_吸干机等后处理设备__联动控制_固定数量控制": {
+      "name": "[空压]冷干机、吸干机等后处理设备\n（联动控制、固定数量控制）",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "冷干机、吸干机等后处理设备\n（联动控制、固定数量控制）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 3000.0,
+      "channel_price": 2100.0
+    },
+    "compressor_冷干机_吸干机等后处理设备__产气流量控制_露点控制等": {
+      "name": "[空压]冷干机、吸干机等后处理设备\n（产气流量控制、露点控制等）",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "冷干机、吸干机等后处理设备\n（产气流量控制、露点控制等）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0
+    },
+    "compressor_水泵_冷却塔_风机_阀门等空压站附属设备__联动控制_固定数量运行": {
+      "name": "[空压]水泵，冷却塔、风机、阀门等空压站附属设备\n（联动控制、固定数量运行）",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "水泵，冷却塔、风机、阀门等空压站附属设备\n（联动控制、固定数量运行）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 3000.0,
+      "channel_price": 2100.0
+    },
+    "compressor_水泵_冷却塔_风机_阀门等空压站附属设备__根据温度_压力变化调节控制": {
+      "name": "[空压]水泵，冷却塔、风机、阀门等空压站附属设备\n（根据温度、压力变化调节控制）",
+      "module_group": "边缘智能控制系统V4.0\n包含：边缘智能控制软件、边缘智能服务器",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "水泵，冷却塔、风机、阀门等空压站附属设备\n（根据温度、压力变化调节控制）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0
+    },
+    "compressor_离心机": {
+      "name": "[空压]离心机",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "离心机",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 10000.0,
+      "channel_price": 7000.0
+    },
+    "compressor_螺杆机": {
+      "name": "[空压]螺杆机",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "螺杆机",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 6000.0,
+      "channel_price": 4200.0
+    },
+    "compressor_活塞机": {
+      "name": "[空压]活塞机",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "活塞机",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5000.0,
+      "channel_price": 3500.0
+    },
+    "compressor_干燥机": {
+      "name": "[空压]干燥机",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "干燥机",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 1000.0,
+      "channel_price": 700.0
+    },
+    "compressor_其它设备_附属设备及传感器": {
+      "name": "[空压]其它设备（附属设备及传感器）",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "其它设备（附属设备及传感器）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 350.0,
+      "channel_price": 245.0
+    },
+    "compressor_视频软件": {
+      "name": "[空压]视频软件",
+      "module_group": "上位机软件V4.0\n（PC端）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "视频软件",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 1000.0,
+      "channel_price": 700.0
+    },
+    "compressor_手机端小程序": {
+      "name": "[空压]手机端小程序",
+      "module_group": "上位机软件V4.0\n（移动端）\n（仅支持公有云版本）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "手机端小程序",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 12000.0,
+      "channel_price": 8400.0
+    },
+    "compressor_阿特拉斯_ac_离心控制单元": {
+      "name": "[空压]阿特拉斯(AC)离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "阿特拉斯(AC)离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 49500.0,
+      "channel_price": 34650.0
+    },
+    "compressor_英格索兰_ir_离心控制单元": {
+      "name": "[空压]英格索兰(IR)离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "英格索兰(IR)离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 48500.0,
+      "channel_price": 33950.0
+    },
+    "compressor_寿力_ihi_离心控制单元": {
+      "name": "[空压]寿力（IHI）离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "寿力（IHI）离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 45500.0,
+      "channel_price": 31850.0
+    },
+    "compressor_复盛_fs_离心控制单元": {
+      "name": "[空压]复盛(FS)离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "复盛(FS)离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 45500.0,
+      "channel_price": 31850.0
+    },
+    "compressor_韩华_hanwha_离心控制单元": {
+      "name": "[空压]韩华（Hanwha)离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "韩华（Hanwha)离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 48500.0,
+      "channel_price": 33950.0
+    },
+    "compressor_卡麦隆_cameron_离心控制单元": {
+      "name": "[空压]卡麦隆（Cameron）离心控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "卡麦隆（Cameron）离心控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 62500.0,
+      "channel_price": 43750.0
+    },
+    "compressor_螺杆控制单元": {
+      "name": "[空压]螺杆控制单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "螺杆控制单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 2500.0,
+      "channel_price": 1750.0
+    },
+    "compressor_基站通讯单元": {
+      "name": "[空压]基站通讯单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "基站通讯单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 3000.0,
+      "channel_price": 2100.0
+    },
+    "compressor_附属设备智控单元__设备带通讯": {
+      "name": "[空压]附属设备智控单元\n（设备带通讯）",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "附属设备智控单元\n（设备带通讯）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 2500.0,
+      "channel_price": 1750.0
+    },
+    "compressor_附属设备智控单元__设备不带通讯_需改造": {
+      "name": "[空压]附属设备智控单元\n（设备不带通讯，需改造）",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "附属设备智控单元\n（设备不带通讯，需改造）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5500.0,
+      "channel_price": 3850.0
+    },
+    "compressor_智能功率监测单元": {
+      "name": "[空压]智能功率监测单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "智能功率监测单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5000.0,
+      "channel_price": 3500.0
+    },
+    "compressor_智能传感采集单元": {
+      "name": "[空压]智能传感采集单元",
+      "module_group": "监控单元",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "智能传感采集单元",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 5000.0,
+      "channel_price": 3500.0
+    },
+    "compressor_maxw5pro_c1": {
+      "name": "[空压]Maxw5Pro-C1",
+      "module_group": "工业网关\n（五代）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "Maxw5Pro-C1",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 2200.0,
+      "channel_price": 1540.0
+    },
+    "compressor_maxw5pro_lan": {
+      "name": "[空压]Maxw5Pro-LAN",
+      "module_group": "工业网关\n（五代）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "Maxw5Pro-LAN",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 2000.0,
+      "channel_price": 1400.0
+    },
+    "compressor_maxw5pro_c1ln": {
+      "name": "[空压]Maxw5Pro-C1LN",
+      "module_group": "工业网关\n（五代）",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "Maxw5Pro-C1LN",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 2500.0,
+      "channel_price": 1750.0
+    },
+    "compressor_与现有系统对接_融合": {
+      "name": "[空压]与现有系统对接（融合）",
+      "module_group": "技术服务费",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "与现有系统对接（融合）",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 20000.0,
+      "channel_price": 14000.0
+    },
+    "compressor_现场施工与安装": {
+      "name": "[空压]现场施工与安装",
+      "module_group": "技术服务费",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "现场施工与安装",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": null,
+      "channel_price": null
+    },
+    "compressor_现场技术指导_系统调试_培训": {
+      "name": "[空压]现场技术指导、系统调试、培训",
+      "module_group": "技术服务费",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "现场技术指导、系统调试、培训",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 3000.0,
+      "channel_price": 2550.0
+    },
+    "compressor_税费": {
+      "name": "[空压]税费",
+      "module_group": "税费",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": null,
+      "channel_price": null
+    },
+    "compressor_买断模式_总价合计_无折扣": {
+      "name": "[空压]（买断模式）总价合计（无折扣）：",
+      "module_group": "（买断模式）总价合计（无折扣）：",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": null,
+      "channel_price": null
+    },
+    "compressor_买断模式_第四年起云资源及软件升级服务费用_元_年": {
+      "name": "[空压]（买断模式）第四年起云资源及软件升级服务费用 元/年）：",
+      "module_group": "（买断模式）第四年起云资源及软件升级服务费用 元/年）：",
+      "category": "空压",
+      "config_type": "选配",
+      "description": "",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": null,
+      "channel_price": null
+    },
+    "energy_efficiency_analysis": {
+      "name": "单位能耗分析",
+      "module_group": "能源管理高级功能",
+      "category": "高级分析功能",
+      "config_type": "选配",
+      "description": "支持按产品、车间等维度统计单位产量能耗和单位产值能耗。",
+      "brand": "蘑菇物联",
+      "model": "云智控4.0",
+      "standard_price": 40000,
+      "channel_price": 28000
+    },
+    "mobile_private": {
+      "name": "移动端",
+      "module_group": "移动端（本地部署）",
+      "category": "移动端",
+      "config_type": "选配",
+      "description": "支持移动端实时数据查看和预警信息查看，按本地部署条件配置。",
+      "brand": "蘑菇物联",
+      "model": "微信小程序基础版",
+      "standard_price": 20000,
+      "channel_price": 14000
+    }
+  },
+  "hardware": {
+    "cloud_box": {
+      "name": "能管云盒",
+      "brand": "蘑菇物联",
+      "model": "MAXW4-C1LN",
+      "standard_price": 1200,
+      "channel_price": 840
+    },
+    "adl400_meter": {
+      "name": "三相多功能电表",
+      "brand": "安科瑞",
+      "model": "ADL400",
+      "standard_price": 305,
+      "channel_price": 245
+    },
+    "cable_per_meter": {
+      "name": "屏蔽双绞线",
+      "brand": "国产优质",
+      "model": "RVSP2*1.0",
+      "standard_price": 6.375,
+      "channel_price": 5.1
+    },
+    "power_supply": {
+      "name": "开关电源",
+      "brand": "金升阳",
+      "model": "LI30-20B24PR2",
+      "standard_price": 92,
+      "channel_price": 73
+    },
+    "air_switch": {
+      "name": "空气开关",
+      "brand": "施耐德",
+      "model": "2P/10A",
+      "standard_price": 68,
+      "channel_price": 54
+    },
+    "comm_box": {
+      "name": "通讯箱",
+      "brand": "蘑菇物联",
+      "model": "MG-3号电箱",
+      "standard_price": 150,
+      "channel_price": 105
+    },
+    "power_cable_per_meter": {
+      "name": "电源线",
+      "brand": "国产优质",
+      "model": "RVV3*1.5",
+      "standard_price": 7.5,
+      "channel_price": 6.0
+    },
+    "network_cable_per_meter": {
+      "name": "超五类网线",
+      "brand": "国产优质",
+      "model": "UTP5E",
+      "standard_price": 3.125,
+      "channel_price": 2.5
+    },
+    "industrial_switch": {
+      "name": "工业交换机",
+      "brand": "TP-Link",
+      "model": "TL-SG2008工业级",
+      "standard_price": 735,
+      "channel_price": 585
+    },
+    "current_wire_per_meter": {
+      "name": "电流线",
+      "brand": "国产优质",
+      "model": "RV*2.5",
+      "standard_price": 3.875,
+      "channel_price": 3.1
+    },
+    "voltage_wire_per_meter": {
+      "name": "电压线",
+      "brand": "国产优质",
+      "model": "RV*1.5",
+      "standard_price": 1.825,
+      "channel_price": 1.46
+    }
+  },
+  "ct_mapping": [
+    {
+      "current": 150,
+      "type": "穿缆圆孔式",
+      "aperture": "24mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 65,
+      "channel_price": 52
+    },
+    {
+      "current": 200,
+      "type": "穿缆圆孔式",
+      "aperture": "24mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 65,
+      "channel_price": 52
+    },
+    {
+      "current": 250,
+      "type": "穿缆圆孔式",
+      "aperture": "24mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 65,
+      "channel_price": 52
+    },
+    {
+      "current": 300,
+      "type": "穿缆圆孔式",
+      "aperture": "24mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 65,
+      "channel_price": 52
+    },
+    {
+      "current": 350,
+      "type": "穿缆圆孔式",
+      "aperture": "36mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 98,
+      "channel_price": 78
+    },
+    {
+      "current": 400,
+      "type": "穿缆圆孔式",
+      "aperture": "36mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 98,
+      "channel_price": 78
+    },
+    {
+      "current": 600,
+      "type": "穿缆圆孔式",
+      "aperture": "36mm",
+      "brand": "安科瑞",
+      "model": "AKH-0.66K",
+      "standard_price": 98,
+      "channel_price": 78
+    },
+    {
+      "current": 600,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 285,
+      "channel_price": 228
+    },
+    {
+      "current": 400,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 366,
+      "channel_price": 293
+    },
+    {
+      "current": 600,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 366,
+      "channel_price": 293
+    },
+    {
+      "current": 800,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 366,
+      "channel_price": 293
+    },
+    {
+      "current": 1000,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 366,
+      "channel_price": 293
+    },
+    {
+      "current": 2000,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 420,
+      "channel_price": 337
+    },
+    {
+      "current": 2500,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 420,
+      "channel_price": 337
+    },
+    {
+      "current": 3000,
+      "type": "母排方孔式",
+      "aperture": "",
+      "brand": "安科瑞",
+      "model": "AKH-0.66/K",
+      "standard_price": 420,
+      "channel_price": 337
+    }
+  ],
+  "water_meters": {
+    "DN15": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-15",
+      "standard_price": 265,
+      "channel_price": 210,
+      "install_price": 300
+    },
+    "DN20": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-20",
+      "standard_price": 300,
+      "channel_price": 240,
+      "install_price": 300
+    },
+    "DN25": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-25",
+      "standard_price": 350,
+      "channel_price": 280,
+      "install_price": 300
+    },
+    "DN32": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-32",
+      "standard_price": 650,
+      "channel_price": 520,
+      "install_price": 300
+    },
+    "DN40": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-40",
+      "standard_price": 825,
+      "channel_price": 660,
+      "install_price": 300
+    },
+    "DN50": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-50",
+      "standard_price": 1080,
+      "channel_price": 860,
+      "install_price": 500
+    },
+    "DN65": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-65",
+      "standard_price": 1970,
+      "channel_price": 1570,
+      "install_price": 1000
+    },
+    "DN80": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-80",
+      "standard_price": 2240,
+      "channel_price": 1790,
+      "install_price": 1000
+    },
+    "DN100": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-100",
+      "standard_price": 2420,
+      "channel_price": 1930,
+      "install_price": 1000
+    },
+    "DN125": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-125",
+      "standard_price": 2690,
+      "channel_price": 2150,
+      "install_price": 1000
+    },
+    "DN150": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-150",
+      "standard_price": 3130,
+      "channel_price": 2500,
+      "install_price": 1000
+    },
+    "DN200": {
+      "brand": "捷先数码（深水牌）",
+      "model": "LXLGY-200",
+      "standard_price": 3850,
+      "channel_price": 3080,
+      "install_price": 1000
+    }
+  },
+  "flow_meters": [
+    {
+      "name": "超声波流量计",
+      "model": "DCT1158W-1-1-W211-N",
+      "brand": "建恒",
+      "type": "插入式",
+      "dn_min": 50,
+      "dn_max": 1000,
+      "standard_price": 7040.0,
+      "channel_price": 5630.0
+    },
+    {
+      "name": "超声波流量计",
+      "model": "SUP-FSC400",
+      "brand": "美仪",
+      "type": "插入式",
+      "dn_min": 80,
+      "dn_max": 6000,
+      "standard_price": 3150.0,
+      "channel_price": 2500.0
+    },
+    {
+      "name": "超声波流量计",
+      "model": "DCT1158/1-1-CP035-N-09G",
+      "brand": "建恒",
+      "type": "外夹式",
+      "dn_min": 50,
+      "dn_max": 700,
+      "standard_price": 4880.0,
+      "channel_price": 3900.0
+    },
+    {
+      "name": "超声波流量计",
+      "model": "SUP-FSC400",
+      "brand": "美仪",
+      "type": "外夹式",
+      "dn_min": 50,
+      "dn_max": 700,
+      "standard_price": 2150.0,
+      "channel_price": 1720.0
+    },
+    {
+      "name": "冷/热量表",
+      "model": "HCM1158LH-1-1-W211-N",
+      "brand": "建恒",
+      "type": "插入式",
+      "dn_min": 50,
+      "dn_max": 1000,
+      "standard_price": 12440.0,
+      "channel_price": 9950.0
+    },
+    {
+      "name": "冷/热量表",
+      "model": "SUP-FSC400",
+      "brand": "美仪",
+      "type": "插入式",
+      "dn_min": 80,
+      "dn_max": 6000,
+      "standard_price": 4000.0,
+      "channel_price": 3200.0
+    },
+    {
+      "name": "冷/热量表",
+      "model": "HCM1158LH-1-1-CP035-N",
+      "brand": "建恒",
+      "type": "外夹式",
+      "dn_min": 50,
+      "dn_max": 700,
+      "standard_price": 7350.0,
+      "channel_price": 5880.0
+    },
+    {
+      "name": "冷/热量表",
+      "model": "SUP-FSC400",
+      "brand": "美仪",
+      "type": "外夹式",
+      "dn_min": 50,
+      "dn_max": 700,
+      "standard_price": 2950.0,
+      "channel_price": 2350.0
+    },
+    {
+      "name": "涡街流量计",
+      "model": "DN40",
+      "brand": "美仪",
+      "type": "管段式",
+      "dn_min": 40,
+      "dn_max": 40,
+      "standard_price": 4380.0,
+      "channel_price": 3500.0
+    },
+    {
+      "name": "涡街流量计",
+      "model": "DN40",
+      "brand": "昆仑海岸",
+      "type": "管段式",
+      "dn_min": 40,
+      "dn_max": 40,
+      "standard_price": 5400.0,
+      "channel_price": 4200.0
+    },
+    {
+      "name": "差压式流量计",
+      "model": "F201A-W",
+      "brand": "飞思",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 250,
+      "standard_price": 14800.0,
+      "channel_price": 11800.0
+    },
+    {
+      "name": "差压式流量计",
+      "model": "F201B-W",
+      "brand": "飞思",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 600,
+      "standard_price": 15300.0,
+      "channel_price": 12300.0
+    },
+    {
+      "name": "热式质量流量计",
+      "model": "F211A",
+      "brand": "飞思",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 250,
+      "standard_price": 10300.0,
+      "channel_price": 8200.0
+    },
+    {
+      "name": "热式质量流量计",
+      "model": "F211B",
+      "brand": "飞思",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 600,
+      "standard_price": 10800.0,
+      "channel_price": 8600.0
+    },
+    {
+      "name": "差压式流量计",
+      "model": "PTF570",
+      "brand": "科迈捷",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 40,
+      "standard_price": 9700.0,
+      "channel_price": 7750.0
+    },
+    {
+      "name": "热式质量流量计",
+      "model": "TGF460",
+      "brand": "科迈捷",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 50,
+      "standard_price": 10800.0,
+      "channel_price": 8600.0
+    },
+    {
+      "name": "热式流量计",
+      "model": "VA500",
+      "brand": "CS",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 40,
+      "standard_price": 18750.0,
+      "channel_price": 15000.0
+    },
+    {
+      "name": "差压式流量计",
+      "model": "VD500",
+      "brand": "CS",
+      "type": "管段式",
+      "dn_min": 15,
+      "dn_max": 40,
+      "standard_price": 25600.0,
+      "channel_price": 20500.0
+    }
+  ],
+  "construction": {
+    "meter_install": {
+      "name": "新装电表施工",
+      "standard_price": 500,
+      "channel_price": 500
+    },
+    "cloudbox_install": {
+      "name": "通讯箱安装",
+      "standard_price": 350,
+      "channel_price": 350
+    },
+    "cable_concentrated": {
+      "name": "通讯线敷设(集中区域)",
+      "standard_price": 100,
+      "channel_price": 100
+    },
+    "cable_scattered": {
+      "name": "通讯线敷设(分散区域)",
+      "standard_price": 120,
+      "channel_price": 120
+    },
+    "water_threaded_install": {
+      "name": "螺纹水表安装及改造",
+      "standard_price": 500,
+      "channel_price": 500
+    },
+    "water_flange_install": {
+      "name": "法兰水表安装及改造",
+      "standard_price": 1000,
+      "channel_price": 1000
+    },
+    "local_networking": {
+      "name": "本地部署自组网",
+      "standard_price": 1000,
+      "channel_price": 1000
+    }
+  },
+  "tax_info": {
+    "software_hardware_rate": 0.13,
+    "construction_rate": 0.06,
+    "template_note": "以上单价均为税前价，增值税另算——软件和硬件按13%、技术实施按6%",
+    "pricing_basis": "税前价（line item prices are pre-tax, VAT calculated on top）"
+  },
+  "_meta": {
+    "source_file": "E:\\contion simulation\\conditioner_saving\\conditioner_saving\\conditioner_saving\\00_sample\\报价模板\\2025年云智控报价体系-全产品线11.xlsx",
+    "source_name": "2025年云智控报价体系-全产品线11.xlsx",
+    "generated_at": "2026-08-12T22:51:18.731524",
+    "generated_by": "local",
+    "excel_modified_at": "2026-08-12T05:56:08.026339",
+    "standard_energy_profile": "2026-08-five-project-acceptance"
+  }
+}

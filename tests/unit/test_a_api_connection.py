@@ -149,7 +149,8 @@ except Exception as e:
     print(f"    • claude-3-haiku-20240307 (快速、便宜)")
     print(f"    • claude-3-sonnet-20240229 (推荐)")
     print(f"    • claude-3-opus-20240229 (最强)")
-    sys.exit(1)
+    if __name__ == "__main__":
+        sys.exit(1)
 
 
 def chat_with_claude(message: str, max_tokens: int = 1000) -> str:

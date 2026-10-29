@@ -3,10 +3,23 @@
 提供统一的 Skill 调用接口,使用异步方式调用 Claude Agent SDK
 """
 import os
+import sys
 import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
+
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 
@@ -136,7 +149,8 @@ class SkillCaller:
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
             setting_sources=["user", "project"],
-            allowed_tools=["Skill", "Read", "Write", "Bash"]
+            allowed_tools=["Skill", "Read", "Write", "Bash"],
+            permission_mode="bypassPermissions"
         )
 
         # 重试循环：支持 Agent 多轮修复代码
@@ -161,7 +175,10 @@ class SkillCaller:
                         if isinstance(message, AssistantMessage):
                             for block in message.content:
                                 if isinstance(block, TextBlock):
-                                    print(f"[AI Response] {block.text}")
+                                    try:
+                                        print(f"[AI Response] {block.text}", flush=True)
+                                    except (UnicodeEncodeError, OSError):
+                                        pass
                                     ai_responses.append(block.text)
                                     if callback:
                                         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -176,7 +193,8 @@ class SkillCaller:
                     continue
                 raise SkillError(f"Skill '{skill_name}' {last_error}") from e
             except Exception as e:
-                last_error = str(e)
+                import traceback
+                last_error = f"{e}\n{traceback.format_exc()}"
                 if callback:
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     callback(timestamp, f"❌ 执行出错: {last_error}")
@@ -284,11 +302,12 @@ class SkillCaller:
         """纯文本 LLM 调用的异步实现"""
         options = ClaudeAgentOptions(
             cwd=str(self.project_root),
-            setting_sources=[],          # 不加载项目/用户技能设置，纯对话
+            setting_sources=["user"],     # 加载 user 设置（代理 API 需要），不加载项目设置
             allowed_tools=[],            # 禁用工具，只要文本回复
             max_turns=1,                 # 单轮
             system_prompt=system,
             model=model or os.getenv("ANTHROPIC_MODEL") or None,
+            permission_mode="bypassPermissions",
         )
 
         texts: List[str] = []
@@ -327,6 +346,10 @@ class SkillCaller:
             # 如果提供了原始文件名,添加到提示词中
             if len(args) >= 3:
                 prompt += f" {args[2]}"
+                prompt += (
+                    f"\n命令的第三个参数 {args[2]} 是用户上传时的原始文件名，"
+                    f"请确保它被原样传入，脚本会用它做项目地区推断。"
+                )
             prompt += "\n"
             prompt += "请确保输出包含 extracted_data 和 quality_report 两部分。"
             return prompt
@@ -456,11 +479,11 @@ class SkillCaller:
                 report_hint = ""
                 if task_type == "old_station":
                     report_hint = (
-                        f"\n## 旧站房特别要求\n"
-                        f"- 报告标题格式: `# {{项目名称}}中央空调冷站 控制策略优化仿真报告`\n"
-                        f"- 报告文件名: `{{项目名称}}_COP性能仿真分析报告.md`\n"
-                        f"- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
-                        f"- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
+                        "\n## 旧站房特别要求\n"
+                        "- 报告标题格式: `# {项目名称}中央空调冷站 控制策略优化仿真报告`\n"
+                        "- 报告文件名: `{项目名称}_COP性能仿真分析报告.md`\n"
+                        "- 节能率必须与输入中的 target_energy_saving_rate 对齐（误差<1%）\n"
+                        "- 报告内容由 AI 根据仿真数据动态生成，参考七章节结构\n"
                     )
                 return (
                     f"请使用 plant-simulation skill 生成并执行冷站仿真代码。\n"

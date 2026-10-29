@@ -8,11 +8,16 @@ from core.excel_calculator import ExcelCalculator
 @pytest.fixture
 def sample_filled_data_standard(tmp_path):
     """标准版样例填充数据"""
+    # 注意：填写全部 7 个月度字段（与真实管线一致）——只填能耗会令模板
+    # 公式除零产生 #DIV/0!，计算引擎将显式报错而非返回无效数值
     data = {
         "station_type": "standard",
         "project_region": "华南",
         "monthly_data": [
-            {"month": i, "total_energy": 100 + i * 10}
+            {"month": i, "total_energy": 100 + i * 10,
+             "chiller_supply_temp": 7.0, "cooling_pump_freq": 45.0,
+             "cooling_water_temp_diff": 4.5, "freezing_pump_freq": 48.0,
+             "freezing_water_temp_diff": 4.0, "cooling_tower_outlet_temp": 32.0}
             for i in range(1, 13)
         ],
         "_metadata": {"final_completeness": 1.0, "fill_count": 0}
@@ -32,7 +37,10 @@ def sample_filled_data_secondary(tmp_path):
         "station_type": "secondary_pump",
         "project_region": "华北",
         "monthly_data": [
-            {"month": i, "total_energy": 120 + i * 15}
+            {"month": i, "total_energy": 120 + i * 15,
+             "chiller_supply_temp": 7.5, "cooling_pump_freq": 44.0,
+             "cooling_water_temp_diff": 4.5, "freezing_pump_freq": 47.0,
+             "freezing_water_temp_diff": 4.2, "cooling_tower_outlet_temp": 31.0}
             for i in range(1, 13)
         ],
         "_metadata": {"final_completeness": 1.0, "fill_count": 0}

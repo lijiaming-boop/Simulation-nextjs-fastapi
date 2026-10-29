@@ -301,7 +301,9 @@ class TestAIGenerateSimulationReport:
 
         # 验证 prompt 中包含 summary 数据
         call_args = mock_client.messages.create.call_args
-        prompt = call_args[1]['messages'][0]['content'][-1]['text']
+        # 兼容两种消息格式：纯字符串 content 或 block 列表
+        _content = call_args[1]['messages'][0]['content']
+        prompt = _content[-1]['text'] if isinstance(_content, list) else _content
         assert "5.23" in prompt
         assert "6.15" in prompt
 
@@ -325,7 +327,9 @@ class TestAIGenerateSimulationReport:
 
         # 验证 prompt 中不包含设备描述部分
         call_args = mock_client.messages.create.call_args
-        prompt = call_args[1]['messages'][0]['content'][-1]['text']
+        # 兼容两种消息格式：纯字符串 content 或 block 列表
+        _content = call_args[1]['messages'][0]['content']
+        prompt = _content[-1]['text'] if isinstance(_content, list) else _content
         assert "## 设备描述" not in prompt
 
     @patch('simulation.ai_service._get_client')

@@ -1,0 +1,56 @@
+{
+  "complete_huizhou": {
+    "rate_range": "8.6% - 13.1%",
+    "rate_min": 0.08560191677246111,
+    "rate_max": 0.13069342352732158,
+    "actual_outcome": "completed"
+  },
+  "missing_winter": {
+    "rate_range": "7.4% - 10.1%",
+    "rate_min": 0.07374731531198182,
+    "rate_max": 0.10058862621223866,
+    "actual_outcome": "completed"
+  },
+  "missing_summer": {
+    "rate_range": "17.5% - 21.0%",
+    "rate_min": 0.1752091247324098,
+    "rate_max": 0.20959298725199454,
+    "actual_outcome": "completed"
+  },
+  "patchy": {
+    "rate_range": "8.6% - 13.1%",
+    "rate_min": 0.0862628847783807,
+    "rate_max": 0.13078627350473843,
+    "actual_outcome": "completed"
+  },
+  "summer_only": {
+    "rate_range": null,
+    "rate_min": null,
+    "rate_max": null,
+    "actual_outcome": "needs_input"
+  },
+  "smoke_yichang_nanbo": {
+    "rate_range": "5.7% - 7.1%",
+    "rate_min": 0.05713675627727757,
+    "rate_max": 0.07082143381467339,
+    "actual_outcome": "completed"
+  },
+  "smoke_shijiazhuang_siyao": {
+    "rate_range": "10.2% - 12.9%",
+    "rate_min": 0.10174784161276983,
+    "rate_max": 0.12906221320029335,
+    "actual_outcome": "completed"
+  },
+  "smoke_aeon_vietnam": {
+    "rate_range": "3.4% - 5.4%",
+    "rate_min": 0.034212835073751904,
+    "rate_max": 0.05388257794625461,
+    "actual_outcome": "completed"
+  },
+  "insufficient": {
+    "rate_range": null,
+    "rate_min": null,
+    "rate_max": null,
+    "actual_outcome": "needs_input"
+  }
+}

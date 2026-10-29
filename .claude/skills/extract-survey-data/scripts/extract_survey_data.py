@@ -266,7 +266,7 @@ def main():
         print(f"提取失败: {result.get('message')}")
         sys.exit(1)
 
-    print(f"✓ 数据提取成功，输出到: {output_path}")
+    print(f" 数据提取成功，输出到: {output_path}")
     print(f"  - 项目地区: {result.get('project_region', '未识别')}")
 
     valid_months = sum(1 for m in result['monthly_data'] if m.get('total_energy') is not None)

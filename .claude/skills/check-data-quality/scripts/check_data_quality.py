@@ -9,6 +9,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 class DataQualityChecker:
     """数据质量检查器"""
@@ -271,7 +274,7 @@ def main():
         output_json_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_json_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        print(f'✅ 质量报告已生成: {output_json_path}')
+        print(f' 质量报告已生成: {output_json_path}')
         print(f'\n{report["summary"]}')
     except Exception as e:
         print(f'错误: 写入输出文件失败: {e}')

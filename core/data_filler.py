@@ -5,7 +5,6 @@
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
 
 
 class DataFiller:
@@ -59,7 +58,7 @@ class DataFiller:
             if field_path in protected_fields:
                 print(f"Warning: Skipping protected field: {field_path}")
                 print(f"  Suggested value: {suggested_value}")
-                print(f"  Reason: This field should only be set by extract-and-check-data skill")
+                print("  Reason: This field should only be set by extract-and-check-data skill")
                 continue
 
             # 解析字段路径: "monthly_data[1].chiller_supply_temp"

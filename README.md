@@ -1,340 +1,175 @@
-# 空调节能率智能测算工具
+# HVAC Energy Agent — 暖通节能率智能测算 Agent
 
-> 一款基于 AI 和 Excel 计算引擎的中央空调节能率智能评估工具，帮助销售和解决方案团队快速、准确地完成节能率测算。
+> 面向暖通/空调节能售前场景的领域 Agent：上传一份客户调研表，Agent 在硬约束护栏内
+> 自主编排"提取 → 质检 → 填充 → 计算 → 结论"的完整测算流程，LLM 只花在决策与叙事上，
+> 计算交给确定性物理公式引擎，偏差可回归验证。
 
-## 📋 项目简介
+[架构设计](./ARCHITECTURE.md) · [回归评测报告](./evaluation/report.md) · [产品需求(PRD)](./02_prd/PRD-空调节能率智能测算工具.md) · [历史版本文档](./docs/legacy/)
 
-在中央空调销售和解决方案制定过程中，AR（销售）和 SR（解决方案专家）面临协作效率低下的问题：
-- AR 抱怨 SR 响应慢，方案出具周期长
-- SR 抱怨 AR 填写的调研表数据质量差，反复沟通确认
-- 人工测算耗时长，缺乏标准化流程
+## 业务场景
 
-本工具通过 **AI 辅助数据处理** + **Excel 公式计算引擎** 的混合架构，实现了：
-- ✅ **智能数据提取**：自动从调研表中提取关键数据
-- ✅ **数据质量检查**：识别缺失、异常、不合理的数据
-- ✅ **智能数据填充**：基于季节模式和已有数据推断缺失值
-- ✅ **精准节能率计算**：基于真实物理公式，测算偏差 ≤2%
-- ✅ **透明计算过程**：可查看完整计算过程和中间结果
+中央空调节能改造的售前环节，销售（AR）与解决方案专家（SR）协作的三个痛点：
 
-## 🎯 核心功能
+- **响应慢**：AR 拿到客户调研表后，SR 人工测算一份方案以天计；
+- **数据脏**：调研表由客户手填，缺月、错值、季节性范围值（如"16~20"）比比皆是；
+- **不标准**：节能率测算依赖个人经验，报价口径不统一。
 
-### 1. 数据自动提取
-- 支持标准调研表上传（Excel 格式）
-- 自动提取基本信息、设备参数、运行规律、用电数据
-- 识别项目地区，匹配气象数据
+本系统把这条链路交给 Agent：**售前人员上传调研表，Agent 自动完成数据提取、质量
+评估、缺失数据填充、物理公式测算，并产出面向客户的结论摘要**——数据质量不达标时
+自主中断并说明缺什么，而不是硬算一个不可信的结果。
 
-### 2. 数据质量检查
-- **完整性检查**：识别 12 个月中哪些月份数据缺失
-- **合理性检查**：温度、频率、湿度范围验证
-- **风险评估**：根据数据完整度给出置信度（高/中/低）
+| 业务线 | 现状 | Agent 能力 |
+|---|---|---|
+| 空调节能率测算（主线） | ✅ 已 Agent 化（`agent/`） | 自主编排 + 质量门禁 + 轨迹可观测 |
+| 空压机节能测算 | ✅ 可用 | LLM 非结构化字段提取（Excel/Word/PPT） |
+| 冷站全年 8760h 仿真 | ✅ 可用 | Agent 动态生成仿真代码并自检自愈 |
+| 标准能管报价生成 | ✅ 可用 | LLM 语义冲突检测（调研表 × 价格目录） |
 
-### 3. 智能数据填充
-- **季节代表月法**：夏季用 7 月，春秋用 5/10 月，冬季用 1 月
-- **线性插值法**：基于已有数据推断缺失月份
-- **置信度标注**：区分实测数据和估算数据
-
-### 4. 节能率计算
-基于真实物理公式计算节能率：
-- **冷机优化**：供水温度每提高 1℃，节能 4%
-- **水泵优化**：变频调节，能耗 ∝ 频率^2.5
-- **冷却塔优化**：出水温度每降低 1℃，冷机节能 1.5%
-
-输出结果：
-- 节能率范围（最低-推荐-最高）
-- 分项节能明细（冷机/水泵/冷却塔）
-- 数据完整度和置信度
-
-### 5. 结果展示
-- 📊 可视化仪表盘
-- 📈 分项节能量柱状图
-- 📥 下载完整 Excel 计算表（需管理员密码）
-
-## 🏗️ 技术架构
-
-### 架构设计
+## Agent 架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Streamlit UI (app.py)                  │
-│              文件上传 -> 数据展示 -> 结果可视化              │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    核心处理模块 (core/)                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ SkillCaller  │  │  DataFiller  │  │ExcelCalculator│     │
-│  │  调用Skills  │  │  数据填充     │  │  Excel计算   │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Claude Skills (AI 辅助层)                       │
-│  ┌────────────────────┐  ┌────────────────────┐             │
-│  │ extract-survey-data│  │ check-data-quality │             │
-│  │   数据提取Skill     │  │   质量检查Skill    │             │
-│  └────────────────────┘  └────────────────────┘             │
-│  ┌────────────────────┐                                     │
-│  │suggest-data-filling│                                     │
-│  │   填充建议Skill     │                                     │
-│  └────────────────────┘                                     │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                 计算引擎（formulas 库）                      │
-│        机房智能化节能评估表-按冷站电量数据.xlsx              │
-│                 (包含完整物理公式)                           │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│ Next.js 前端（SSE 订阅 agent 轨迹）   FastAPI /agent/run 端点   │
+└──────────────────────────────┬─────────────────────────────────┘
+                               ▼
+┌────────────────────────────────────────────────────────────────┐
+│                  AgentOrchestrator（ReAct 循环）                │
+│   决策(Brain) → 执行(Tool) → 观察 → 再决策 → … → finish/求助    │
+│                                                                │
+│   Brain（软决策，唯一 LLM 成本点）       硬约束（代码强制执行）   │
+│   ├─ LLMBrain：白名单内选工具           ├─ 工具前置依赖         │
+│   │   + JSON 强约束 + 失败重试          ├─ 质量门禁：完整率<50%  │
+│   └─ RuleBrain：零成本规则策略          │   或 unsupported 站房  │
+│       （评测/离线/无Key 场景）          │   → 强制转人工         │
+│                                        └─ 步骤预算 + 熔断       │
+└──────────────┬─────────────────────────────────────────────────┘
+               ▼ ToolRegistry（确定性工具，执行零 token）
+┌──────────────┬──────────────┬──────────────┬──────────────────┐
+│ extract_survey│suggest_filling│apply_filling │calculate_saving  │
+│ 规则提取+质检  │ 插值/季节填充 │ 机械执行填充  │ formulas 双sheet  │
+└──────────────┴──────────────┴──────────────┴──────────────────┘
+               ▼                                   ▼
+      Excel 物理公式引擎（模板内嵌 COP/泵定律）   agent_trace.json（逐帧轨迹）
 ```
 
-### 核心模块
+**设计要点：LLM 与传统代码的边界。** 节能率计算精度要求 ≤2%，因此公式引擎、
+数据填充、质量检查全部是确定性函数（agent 的"手"，零 token）；LLM 只负责
+感知与决策（agent 的"脑"）：白名单内选工具、每步面向用户的叙事、最终结论摘要。
+硬约束（门禁/依赖/预算）在代码里强制执行，模型无法绕过——自主性有边界，结果才可信。
 
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| 主应用 | `app.py` | Streamlit UI，流程编排 |
-| Skill 调用器 | `core/skill_caller.py` | 调用 Claude Skills |
-| 数据填充器 | `core/data_filler.py` | 应用填充建议，生成完整数据 |
-| Excel 计算器 | `core/excel_calculator.py` | 调用 Excel 引擎计算节能率 |
+## 量化指标（回归评测，确定性模式可复现）
 
-### 技术栈
+评测集为 6 份标注样例调研表（文件名自带预期节能率锚点，见 `evaluation/`）：
 
-- **前端框架**：Streamlit 1.28+
-- **数据处理**：Pandas 2.0+
-- **Excel 处理**：formulas 1.3+ (纯 Python 公式计算), openpyxl 3.1+ (文件读写)
-- **AI 辅助**：Claude Skills (数据提取/质量检查/填充建议)
-- **可视化**：Plotly 5.0+
-- **测试框架**：pytest 7.0+
+| 指标 | 数值 |
+|---|---|
+| 流程决策正确率（该算的算完/该拦的拦下） | **100%**（6/6，含深度调研模板变体） |
+| 低质量数据中断正确率 | 2/2 |
+| 节能率与人工锚点偏差 | 平均 1.97pp，最大 5.42pp（≤2pp 达标 2/4；最大偏差来自行业默认值填充的模板变体，见评测报告） |
+| 地区识别正确率（三级推断） | 100% |
+| 单次测算 LLM 成本 | 决策点 3~5 次小额调用；工具执行零 token |
+| 评测模式 LLM 成本 | 0（RuleBrain 驱动，结果逐字节可复现） |
 
-## 🚀 快速开始
+完整明细与已知缺口根因：[evaluation/report.md](./evaluation/report.md)
 
-### 前置要求
+## 快速开始
 
-- Python 3.8+
-- pip 包管理器
-
-### 环境变量
-
-**必需配置：**
 ```bash
-export ANTHROPIC_API_KEY='your-api-key-here'
-```
-
-获取 API Key: https://console.anthropic.com/settings/keys
-
-### 安装步骤
-
-1. **克隆项目**
-```bash
-cd /path/to/your/workspace
-git clone <repository-url>
-cd conditioner_saving
-```
-
-2. **安装依赖**
-```bash
+# 1. 安装依赖（Python 3.10+）
 pip install -r requirements.txt
+
+# 2. 配置 LLM（可选——不配置也能跑，agent 自动降级为零成本规则策略）
+copy .env.example .env    # 填入 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL
+
+# 3. 启动后端
+uvicorn apps.api.main:app --port 8000
+
+# 4. 启动前端（可选，亦可直接 curl）
+cd apps/web && npm install && npm run dev
+
+# 5. Agent 模式跑一次完整测算
+curl -X POST "localhost:8000/api/upload?module_type=air_conditioner" -F "file=@调研表.xlsx"
+curl -X POST "localhost:8000/api/agent/run/<session_id>?mode=auto"
+#    mode=deterministic 为零 LLM 成本模式；SSE 轨迹: /api/agent/<id>/stream
+#    逐帧复盘:         /api/agent/<id>/trace
+
+# 6. 回归评测（零成本，产出 evaluation/report.md）
+python -m evaluation.run_eval
+python -m evaluation.run_eval --compare-baseline   # 基线回归检查
+
+# 7. 单元测试
+pytest tests/unit/test_agent_orchestrator.py -v
 ```
 
-3. **配置 Streamlit**
-
-创建 `.streamlit/config.toml`：
-```toml
-[server]
-port = 8501
-address = "0.0.0.0"
-headless = true
-enableCORS = false
-enableXsrfProtection = true
-```
-
-创建 `.streamlit/secrets.toml`（用于下载保护）：
-```toml
-admin_password = "your_secure_password"
-```
-
-4. **启动应用**
-```bash
-streamlit run app.py
-```
-
-5. **访问应用**
-```
-http://localhost:8501
-```
-
-## 📖 使用说明
-
-### 操作流程
-
-1. **上传调研表**
-   - 点击"选择文件"上传标准调研表（Excel 格式）
-   - 参考模板：`00_sample/02-中央空调节能调研表（首页含问题指引）-工业板块.xlsx`
-
-2. **数据提取和质量检查**（自动执行）
-
-   系统自动提取调研表数据并进行质量检查：
-
-   - **数据完整率**：计算所有字段的填写比例
-   - **置信度评估**：
-     - 高 (≥80%)：数据质量良好，可直接使用
-     - 中 (50-80%)：部分数据需要智能填充，谨慎使用结果
-     - **低 (<50%)：自动中断流程，要求补充数据**
-   - **问题列表**：按严重程度展示所有数据问题
-
-   ⚠️ **重要**：如果数据完整率低于 50%，系统将中断计算流程，要求用户：
-   1. 在原始调研表中补充缺失数据
-   2. 确保至少填写 6 个月以上的运行数据
-   3. 重点补充月度总能耗和冷机供水温度
-   4. 补充完成后重新上传调研表
-
-3. **数据填充建议**（需用户确认）
-   - 查看智能填充建议（字段、原始值、建议值、方法、置信度）
-   - 确认后开始计算，或取消重新上传
-
-4. **执行计算**（自动执行）
-   - 数据填充
-   - 调用 Excel 计算引擎
-   - 生成测算结果
-
-5. **查看结果**
-   - 核心指标：预估节能率、总节能量、数据完整度、填充字段数
-   - 分项节能明细：冷机/水泵/冷却塔节能量和占比
-   - 置信度说明（高/中/低）
-   - （可选）输入管理员密码下载完整 Excel 计算表
-
-### 数据要求
-
-调研表必须包含以下关键数据（位于"冷站"工作表）：
-
-| 数据项 | 位置 | 说明 |
-|--------|------|------|
-| 项目地区 | 行 4/6 | 用于匹配气象数据 |
-| 车间温度要求 | 行 6 | 判断运行工况 |
-| 车间湿度要求 | 行 6 | <40% 需特殊处理 |
-| 冷机供水温度（1-12月） | 行 38 | 冷冻水温 |
-| 冷却泵运行频率（1-12月） | 行 39 | 变频/工频 |
-| 冷却侧供回水温差（1-12月） | 行 40 | 冷却水 |
-| 冷冻泵运行频率（1-12月） | 行 41 | 变频/工频 |
-| 冷冻侧供回水温差（1-12月） | 行 42 | 冷冻水 |
-| 冷却塔出水温度（1-12月） | 行 44 | 冷却水 |
-| 冷站月度耗电量（1-12月） | 行 47 | 核心数据，单位：万kWh |
-
-### 结果解读
-
-**节能率范围**：
-- **最低值**：保守估计（优化效果 × 0.8），用于风险评估
-- **推荐值**：正常估计（标准系数），用于方案报价
-- **最高值**：乐观估计（优化效果 × 1.2），用于潜力分析
-
-**置信度判断**：
-- **高置信度**（数据完整度 ≥80%）：数据完整，结果可靠
-- **中等置信度**（数据完整度 50-80%）：部分数据通过智能填充，建议谨慎使用
-- **低置信度**（数据完整度 <50%）：数据严重缺失，**系统会自动中断流程**，要求补充数据后重新上传
-
-## 🛠️ 开发指南
-
-### 项目结构
-
-```
-conditioner_saving/
-├── app.py                          # Streamlit 主应用
-├── core/                           # 核心模块
-│   ├── skill_caller.py             # Skill 调用器
-│   ├── data_filler.py              # 数据填充器
-│   └── excel_calculator.py         # Excel 计算器
-├── .claude/skills/                 # Claude Skills
-│   ├── extract-survey-data.md      # 数据提取 Skill
-│   ├── check-data-quality.md       # 质量检查 Skill
-│   └── suggest-data-filling.md     # 填充建议 Skill
-├── config/                         # 配置文件
-│   ├── cell_mapping.json           # Excel 单元格映射配置
-│   └── weather_data.json           # 气象数据（6个主要城市）
-├── tests/                          # 测试用例
-│   ├── test_data_filler.py
-│   ├── test_excel_calculator.py
-│   └── fixtures/                   # 测试数据
-├── 00_sample/                      # 样例文件
-│   ├── 02-中央空调节能调研表.xlsx
-│   └── 机房智能化节能评估表-按冷站电量数据.xlsx
-├── .streamlit/                     # Streamlit 配置
-│   ├── config.toml
-│   └── secrets.toml
-├── tmp/                            # 临时文件目录
-├── requirements.txt                # Python 依赖
-├── pytest.ini                      # pytest 配置
-└── README.md                       # 本文档
-```
-
-### 运行测试
+### 企业级部署（M1 平台底座）
 
 ```bash
-# 运行所有测试
-pytest
+# 一键起 Postgres + API + 前端（生产配置：强制认证 + 持久化）
+docker compose up -d --build
 
-# 运行指定测试文件
-pytest tests/test_data_filler.py
-
-# 显示详细输出
-pytest -v
-
-# 显示打印信息
-pytest -s
+# 或本地开发（零配置：SQLite 落库 + 免认证）
+uvicorn apps.api.main:app --port 8000
 ```
 
-### 扩展开发
+M1 平台底座能力：
+- **持久化**：会话/agent 运行/步骤/审计落库（`DATABASE_URL` 切换 SQLite ↔ PostgreSQL，代码零改动）
+- **认证与 ACL**：`REQUIRE_AUTH=true` 时强制网关注入的 `X-User-Info` 身份头，
+  会话按归属校验（越权 403 + 审计留痕），特权角色 `admin`/`sr` 可跨会话
+- **断点恢复**：agent 每步落库，进程重启后中断的运行标记 `interrupted`，
+  `POST /api/agent/{id}/run/resume` 从断点续跑（不重复计算已完成的步骤）
+- **审计**：上传/下载/运行 agent 均记录操作人（`audit_logs` 表）
+- **CI 门禁**：GitHub Actions 跑 lint + 单测 + 回归评测基线比对（零 LLM 成本）
 
-#### 添加新的数据提取逻辑
+### 平台功能（M2/M3）
 
-编辑 `.claude/skills/extract-survey-data.md`，更新提取规则。
+- **LLM 网关**（`core/llm_gateway.py`）：所有决策调用统一计量（`llm_calls` 表）、
+  按用户日 token 预算超额拒绝、连续失败熔断、瞬时错误退避重试、双模型路由
+- **Human-in-the-loop 闭环**：数据不达标 → 求助待办；填充占比超阈值 → 审批待办；
+  `GET /api/inbox` 查看待办，`POST /inbox/{id}/approve` 批准后从断点恢复，
+  `POST /agent/{id}/resolve` 上传补充调研表重跑
+- **多业务线统一编排**：`/api/agent/run` 同时支持空调与空压（空压提取为 LLM 型
+  工具经 agent 会话，填充/计算为确定性工具），同一套门禁与轨迹语义
+- **批量测算**：`POST /api/agent/batch` 一次上传多份调研表顺序执行，
+  `GET /api/agent/batch/{id}` 查进度与逐文件结果
+- **历史测算库**：`GET /api/history`（按地区/站型筛选）、
+  `GET /api/history/{id}/similar` 相似案例推荐
+- **通知集成**：`NOTIFY_WEBHOOK_URL` 支持企业微信/钉钉/通用 webhook，
+  测算完成/求助/审批事件自动推送
+- **轨迹回放**：`/agent` 前端页面逐帧回放 agent 的思考-行动-观察与 token 用量
 
-#### 添加新的数据质量检查
+## 项目结构
 
-编辑 `.claude/skills/check-data-quality.md`，添加检查逻辑。
+```
+├── agent/                  # ★ Agent 核心（P1 改造新增）
+│   ├── tools.py            #     工具注册表：确定性能力 → JSON Schema 工具
+│   ├── brain.py            #     决策核心：LLMBrain（JSON 强约束）+ RuleBrain（零成本）
+│   ├── orchestrator.py     #     ReAct 循环 + 白名单硬约束 + 事件流
+│   └── trace.py            #     轨迹记录器（步骤/观察/token 用量 → agent_trace.json）
+├── evaluation/             # ★ 回归评测（P2 改造新增）
+│   ├── dataset.py          #     6 份标注样例的预期锚点
+│   ├── metrics.py          #     决策正确率/节能率偏差/中断正确率
+│   └── run_eval.py         #     评测 CLI（--save-baseline / --compare-baseline）
+├── apps/api/               # FastAPI 后端（含 /agent/run、/agent/trace 端点）
+├── apps/web/               # Next.js 16 前端（SSE 订阅 agent 轨迹）
+├── core/                   # 业务引擎：ExcelCalculator(formulas)、DataFiller、
+│   │                       # AirCompressorCalculator、SkillCaller(claude-agent-sdk)
+│   └── llm_client.py       # 直连 Messages API 客户端（含 token 用量统计）
+├── .claude/skills/         # Agent Skill 集（提取/填充/仿真/报价等，SKILL.md + 脚本）
+├── config/                 # 单元格映射、模板配置、气象数据
+├── 00_sample/              # 模板测算表 + 标注样例调研表（评测集来源）
+├── simulation/             # 冷站 8760h 仿真引擎（agent 动态生成仿真代码）
+├── quote_module/           # 标准能管报价生成流水线
+├── proxy/ oauth-server/    # Go 反向代理 + OIDC 认证网关
+├── ARCHITECTURE.md         # ★ 架构与决策边界设计说明（P3 改造新增）
+└── evaluation/report.md    # ★ 最新回归评测报告
+```
 
-#### 修改计算公式
+## 技术栈
 
-编辑 `00_sample/机房智能化节能评估表-按冷站电量数据.xlsx`，更新 Excel 公式。
+Python 3.10+ · claude-agent-sdk · httpx 直连 Messages API · FastAPI + SSE ·
+formulas（纯 Python Excel 公式引擎）· pandas/openpyxl · Next.js 16 + React 19 +
+Tailwind v4 · Go Gin（OIDC 网关）· pytest（unit/integration/e2e 三层）
 
-更新 `config/cell_mapping.json`，调整单元格映射。
+## 许可证
 
-#### 添加新的气象数据
-
-编辑 `config/weather_data.json`，添加新城市的湿球温度数据。
-
-### 关键技术系数
-
-| 优化项 | 核心系数 | 物理依据 |
-|--------|----------|----------|
-| 冷机供水温度优化 | **4% / ℃** | 提高蒸发温度，改善制冷循环效率 |
-| 水泵变频优化 | **频率^2.5** | 泵的相似定律，能耗与转速的 2.5 次方成正比 |
-| 冷却塔优化 | **1.5% / ℃** | 降低冷凝温度，提高冷机 COP |
-
-## 📄 许可证
-
-本项目为内部工具，版权归公司所有。
-
----
-
-## 📚 附录
-
-### 术语解释
-
-- **AR**：Account Representative，销售代表
-- **SR**：Solution Representative，解决方案专家
-- **节能率**：空调系统节能改造后能耗降低的百分比
-- **数据完整度**：调研表中实测数据占应有数据的比例
-- **COP**：Coefficient of Performance，性能系数
-
-### 相关文档
-
-- [DEPLOYMENT.md](./DEPLOYMENT.md) - 部署指南
-- [02_prd/PRD-空调节能率智能测算工具.md](./02_prd/PRD-空调节能率智能测算工具.md) - 产品需求文档
-- [03_plan/技术方案详细设计-LLM混合架构.md](./03_plan/技术方案详细设计-LLM混合架构.md) - 技术方案
-
-### 支持与反馈
-
-如有问题或建议，请联系项目负责人。
-
----
-
-**最后更新**：2025-12-21
-**文档版本**：1.0
+内部工具，版权归公司所有。

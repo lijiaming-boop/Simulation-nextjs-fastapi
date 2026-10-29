@@ -30,6 +30,12 @@ _calculate_tasks: dict = {}
 _suggest_tasks: dict = {}
 # session_id → 仿真任务后台 thread
 _sim_tasks: dict = {}
+# session_id → 报价提取后台 thread
+_quote_extract_tasks: dict = {}
+# session_id → 报价生成后台 thread
+_quote_generate_tasks: dict = {}
+# session_id → 报价计算后台 thread
+_quote_calculate_tasks: dict = {}
 
 
 def is_extract_running(session_id: str) -> bool:
@@ -53,22 +59,52 @@ def is_sim_running(session_id: str) -> bool:
     return t is not None and t.is_alive()
 
 
+def is_quote_extract_running(session_id: str) -> bool:
+    t = _quote_extract_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+def is_quote_generate_running(session_id: str) -> bool:
+    t = _quote_generate_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
+def is_quote_calculate_running(session_id: str) -> bool:
+    t = _quote_calculate_tasks.get(session_id)
+    return t is not None and t.is_alive()
+
+
 # ==================== AI 事件通道 ====================
 
+class _EventProxy:
+    """代理队列：put_nowait 路由到事件总线（Redis Pub/Sub 或进程内队列）
+
+    保留旧调用点的 `q.put_nowait(event)` 写法，事件实际经 apps/api/events.py
+    投递——配置 REDIS_URL 后多副本部署无需粘滞路由。
+    """
+
+    def __init__(self, session_id: str) -> None:
+        self._sid = session_id
+
+    def put_nowait(self, event: dict) -> None:
+        from .events import ensure_queue, publish_event
+        ensure_queue(self._sid)  # 进程内模式需要队列先存在（缓冲到 SSE 消费）
+        publish_event(self._sid, event)
+
+
 def ensure_ai_queue(session_id: str) -> asyncio.Queue:
-    """为 session 创建/复用 AI 事件 Queue"""
+    """为 session 创建/复用 AI 事件通道（M2+ 起经事件总线投递）"""
     s = session_store.get(session_id)
     if s is None:
         raise RuntimeError(f"session {session_id!r} 不存在")
-    if "ai_queue" not in s:
-        # 注意：必须在主线程事件循环中创建，才能被 SSE 端点消费
-        s["ai_queue"] = asyncio.Queue()
-    return s["ai_queue"]
+    from .events import ensure_queue
+    ensure_queue(session_id)  # 进程内降级通道
+    return s.get("ai_queue") or _EventProxy(session_id)
 
 
-def get_ai_queue(session_id: str) -> Optional[asyncio.Queue]:
+def get_ai_queue(session_id: str):
     s = session_store.get(session_id)
-    return s.get("ai_queue") if s else None
+    return _EventProxy(session_id) if s else None
 
 
 # ==================== 提取任务（在线程中执行） ====================
@@ -100,7 +136,7 @@ def _run_extract_in_thread(
         if module_type == "air_conditioner":
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 开始提取数据（Claude Agent SDK）...")
 
-            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller = SkillCaller(timeout=600, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
             caller.call_skill(
                 "extract-and-check-data",
                 str(input_path),
@@ -115,7 +151,7 @@ def _run_extract_in_thread(
             # === 空压场景：Claude Agent SDK 一次完成文本提取 + 结构化 ===
             ai_callback(datetime.now().strftime("%H:%M:%S"), "🚀 [空压] 提取结构化数据（Claude Agent SDK）...")
 
-            caller = SkillCaller(timeout=300, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+            caller = SkillCaller(timeout=600, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
             caller.call_skill(
                 "extract-air-compressor-data-llm",
                 str(input_path),
@@ -187,6 +223,9 @@ def start_extract(
 
     # 注入主事件循环（线程内 put_nowait 需要用）
     session_store._main_loop = main_loop
+    from .events import set_main_loop as _set_main_loop
+    if main_loop is not None:
+        _set_main_loop(main_loop)
 
     # 确保 AI Queue 存在
     ensure_ai_queue(session_id)
@@ -358,6 +397,12 @@ def _run_calculate_in_thread(
             with open(formatted_path, "w", encoding="utf-8") as f:
                 json.dump(formatted, f, ensure_ascii=False, indent=2)
 
+            # 5.5 生成报价单和方案文档
+            emit("log", "生成报价单和方案文档...")
+            calculator._generate_quotation(str(session_dir), filled_data, result)
+            calculator._generate_scheme_document(str(session_dir), filled_data, result)
+            emit("log", "报价单生成完成")
+
             # 6. 写回 session_store
             s["filling_suggestions"] = filling_suggestions
             s["result"] = result
@@ -485,6 +530,7 @@ def _run_suggest_in_thread(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
         )
         for line in proc.stdout:
             line = line.rstrip("\n")
@@ -505,9 +551,12 @@ def _run_suggest_in_thread(
 
         # 3. LLM 增强（可选，走 Claude Agent SDK）
         if use_llm:
-            emit("log", "🤖 调用 LLM 对规则建议做智能增强...")
+            emit("log", "🤖 调用 LLM 对规则建议做智能增强（经 LLM 网关）...")
             try:
-                client = SkillCaller(timeout=180, api_key=_LLM_API_KEY or None, project_root=PROJECT_ROOT)
+                from core.llm_gateway import LLMGateway
+                client = LLMGateway(user_id=s.get("user_id"),
+                                    purpose_default="suggest.enhance",
+                                    store=session_store)
                 if module_type == "air_compressor":
                     prompt = (
                         "你是一位空压机节能测算顾问。下面是某空压机项目的提取数据、质量报告以及基于规则生成的填充建议。\n"
@@ -705,7 +754,7 @@ def _run_topology_extraction(session_id: str, upload_path: str, loop: asyncio.Ab
         if excel_text_path:
             args.append(str(excel_text_path))
 
-        skill_result = caller.call_skill(
+        _ = caller.call_skill(
             "plant-simulation",
             *args,
             callback=cb,
@@ -922,7 +971,7 @@ def _run_simulation(session_id: str, loop: asyncio.AbstractEventLoop) -> None:
                 callback=cb,
                 max_retries=2,
             )
-        except Exception as timeout_e:
+        except Exception:
             # 超时容错：检查输出文件是否已生成
             csv_files = list(output_dir.glob("*.csv"))
             xlsx_files = list(output_dir.glob("*.xlsx"))
@@ -1252,3 +1301,298 @@ def _generate_default_cop_table(rated_cop: float) -> dict:
         "load_ratios": load_ratios,
         "cop_table": cop_table,
     }
+
+
+# ==================== 报价模块服务 ====================
+
+def _run_quote_extract_in_thread(
+    session_id: str,
+    survey_path: Path,
+) -> None:
+    """在线程中调用 quote_module.ai_client 完成调研表 AI 解析"""
+    loop = session_store._main_loop
+
+    def ai_callback(message: str) -> None:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        session_store.append_ai_log(session_id, timestamp, message)
+        event = {"type": "log", "timestamp": timestamp, "message": message}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    s = session_store.get(session_id)
+    if not s:
+        return
+
+    try:
+        ai_callback("🚀 开始 AI 解析调研表...")
+
+        from quote_module.ai_client import read_survey_with_ai
+        from apps.api.quote_local_parser import enrich_project_data
+
+        project_data = read_survey_with_ai(
+            str(survey_path),
+            callback=ai_callback,
+        )
+        if not project_data:
+            raise ValueError("AI 返回空数据")
+        project_data = enrich_project_data(project_data)
+
+        s["quote_project_data"] = project_data
+        s["quote_parse_mode"] = "ai"
+        session_store.update_stage(session_id, "extracted")
+        dw_count = len(project_data.get("data_warnings", []))
+        ai_callback("✅ AI 解析完成" + (f"（⚠️ {dw_count} 项数据提醒）" if dw_count else ""))
+
+        event = {"type": "complete", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "提取完成"}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    except Exception as e:
+        ai_callback(f"⚠️ AI 解析失败: {e}，尝试本地降级解析...")
+        try:
+            from apps.api.quote_local_parser import read_survey_local, enrich_project_data
+            project_data = read_survey_local(str(survey_path))
+            project_data = enrich_project_data(project_data)
+            s["quote_project_data"] = project_data
+            s["quote_parse_mode"] = "local"
+            session_store.update_stage(session_id, "extracted")
+            dw_count = len(project_data.get("data_warnings", []))
+            ai_callback("✅ 本地降级解析完成" + (f"（⚠️ {dw_count} 项数据提醒）" if dw_count else ""))
+
+            event = {"type": "complete", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "提取完成（本地降级）"}
+            q = get_ai_queue(session_id)
+            if q is not None:
+                loop.call_soon_threadsafe(q.put_nowait, event)
+
+        except Exception as e2:
+            session_store.update_stage(session_id, "error")
+            s["quote_error"] = f"解析失败: AI={e}, 本地={e2}"
+            ai_callback(f"❌ 解析全部失败: {e2}")
+
+            event = {"type": "error", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": str(e2)}
+            q = get_ai_queue(session_id)
+            if q is not None:
+                loop.call_soon_threadsafe(q.put_nowait, event)
+
+
+def start_quote_extract(session_id: str, main_loop) -> None:
+    """启动报价调研表 AI 解析后台线程"""
+    s = session_store.get(session_id)
+    if not s:
+        raise RuntimeError(f"session {session_id!r} 不存在")
+
+    survey_path = s.get("quote_survey_path")
+    if not survey_path:
+        raise RuntimeError("未设置调研表路径")
+
+    session_store._main_loop = main_loop
+    ensure_ai_queue(session_id)
+    s["ai_logs"] = []
+    q = get_ai_queue(session_id)
+    while q is not None and not q.empty():
+        q.get_nowait()
+    session_store.update_stage(session_id, "extracting")
+
+    t = threading.Thread(
+        target=_run_quote_extract_in_thread,
+        args=(session_id, Path(survey_path)),
+        daemon=True,
+    )
+    _quote_extract_tasks[session_id] = t
+    t.start()
+
+
+def _run_quote_calculate_in_thread(session_id: str) -> None:
+    """在线程中执行报价计算：section9 分析 + calculate"""
+    loop = session_store._main_loop
+
+    def ai_callback(message: str) -> None:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        session_store.append_ai_log(session_id, timestamp, message)
+        event = {"type": "log", "timestamp": timestamp, "message": message}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    s = session_store.get(session_id)
+    if not s:
+        return
+
+    try:
+        ai_callback("🔢 开始计算报价...")
+
+        project_data = s.get("quote_project_data")
+        if not project_data:
+            raise RuntimeError("缺少项目数据，请先完成提取")
+
+        from quote_module.section9_analyzer import analyze_section9
+        from quote_module.scripts.calculate import calculate as quote_calc
+
+        notes = project_data.get("project_notes", {})
+        current_status = notes.get("current_status", "")
+
+        s9_parts = []
+        for arr_field in ("smart_analysis", "special_requirements", "other_notes"):
+            arr = notes.get(arr_field, [])
+            if isinstance(arr, list):
+                s9_parts.extend([x for x in arr if x])
+            elif isinstance(arr, str) and arr:
+                s9_parts.append(arr)
+        if not s9_parts and notes.get("goals"):
+            s9_parts.append(notes["goals"])
+        s9_text = "\n".join(s9_parts)
+
+        def log_callback(message: str) -> None:
+            ai_callback(f"[section9] {message}")
+
+        ai_callback("📋 分析项目需求 (section9)...")
+        section9_result = analyze_section9(current_status, s9_text, callback=log_callback)
+        s["quote_section9_result"] = section9_result
+
+        ai_callback("💰 执行价格计算...")
+        catalog_path = PROJECT_ROOT / "quote_module" / "outputs" / "price_catalog.json"
+        bottom_sheet = quote_calc(
+            project_data,
+            catalog_path=str(catalog_path),
+            tax_mode="exclusive",
+            section9_analysis=section9_result,
+        )
+
+        s["quote_bottom_sheet"] = bottom_sheet
+
+        bottom_path = s["session_dir"] / f"bottom_sheet_{session_id}.json"
+        with open(bottom_path, "w", encoding="utf-8") as f:
+            json.dump(bottom_sheet, f, ensure_ascii=False, indent=2)
+
+        session_store.update_stage(session_id, "calculated")
+        ai_callback("✅ 计算完成")
+
+        event = {"type": "complete", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "计算完成"}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    except Exception as e:
+        session_store.update_stage(session_id, "error")
+        s["quote_error"] = str(e)
+        ai_callback(f"❌ 计算失败: {e}")
+        event = {"type": "error", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": f"计算失败: {e}"}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+
+def start_quote_calculate(session_id: str, main_loop) -> None:
+    """启动报价计算后台线程"""
+    s = session_store.get(session_id)
+    if not s:
+        raise RuntimeError(f"session {session_id!r} 不存在")
+
+    project_data = s.get("quote_project_data")
+    if not project_data:
+        raise RuntimeError("缺少项目数据，请先完成提取")
+
+    session_store._main_loop = main_loop
+    ensure_ai_queue(session_id)
+    s["ai_logs"] = []
+    q = get_ai_queue(session_id)
+    while q is not None and not q.empty():
+        q.get_nowait()
+    session_store.update_stage(session_id, "calculating")
+
+    t = threading.Thread(
+        target=_run_quote_calculate_in_thread,
+        args=(session_id,),
+        daemon=True,
+    )
+    _quote_calculate_tasks[session_id] = t
+    t.start()
+
+
+def _run_quote_generate_in_thread(
+    session_id: str,
+    bottom_sheet_path: Path,
+    output_dir: Path,
+) -> None:
+    """在线程中生成报价表和方案文档"""
+    loop = session_store._main_loop
+
+    def ai_callback(message: str) -> None:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        session_store.append_ai_log(session_id, timestamp, message)
+        event = {"type": "log", "timestamp": timestamp, "message": message}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    s = session_store.get(session_id)
+    if not s:
+        return
+
+    try:
+        ai_callback("🚀 开始生成报价表和方案文档...")
+
+        from quote_module.scripts.generate_quote import generate as gen_quote
+        from quote_module.scripts.generate_solution import generate as gen_solution
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        ai_callback("📊 生成报价表 (标准价 + 渠道价)...")
+        gen_quote(str(bottom_sheet_path), str(output_dir))
+
+        ai_callback("📝 生成技术方案文档...")
+        gen_solution(str(bottom_sheet_path), str(output_dir / "技术方案.docx"))
+
+        generated_files = sorted([str(p) for p in output_dir.glob("*") if p.is_file()])
+        s["quote_generated_files"] = generated_files
+        session_store.update_stage(session_id, "done")
+
+        ai_callback(f"✅ 生成完成，共 {len(generated_files)} 个文件")
+
+        event = {"type": "complete", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "生成完成"}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+    except Exception as e:
+        session_store.update_stage(session_id, "error")
+        s["quote_error"] = str(e)
+        ai_callback(f"❌ 生成失败: {e}")
+
+        event = {"type": "error", "timestamp": datetime.now().strftime("%H:%M:%S"), "message": str(e)}
+        q = get_ai_queue(session_id)
+        if q is not None:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+
+
+def start_quote_generate(session_id: str, main_loop) -> None:
+    """启动报价生成后台线程"""
+    s = session_store.get(session_id)
+    if not s:
+        raise RuntimeError(f"session {session_id!r} 不存在")
+
+    bottom_sheet = s.get("quote_bottom_sheet")
+    if not bottom_sheet:
+        raise RuntimeError("缺少计算结果，请先完成计算")
+
+    session_store._main_loop = main_loop
+    ensure_ai_queue(session_id)
+    s["ai_logs"] = []
+    q = get_ai_queue(session_id)
+    while q is not None and not q.empty():
+        q.get_nowait()
+    session_store.update_stage(session_id, "generating")
+
+    bottom_sheet_path = s["session_dir"] / f"bottom_sheet_{session_id}.json"
+    output_dir = s["session_dir"] / f"generated_{session_id}"
+
+    t = threading.Thread(
+        target=_run_quote_generate_in_thread,
+        args=(session_id, bottom_sheet_path, output_dir),
+        daemon=True,
+    )
+    _quote_generate_tasks[session_id] = t
+    t.start()
+

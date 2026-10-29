@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 开发模式：允许 127.0.0.1 访问，否则 Next.js 16 会阻止跨域 dev 资源
+  allowedDevOrigins: ["127.0.0.1"],
   // 开发模式：把 /api/* 转发到 FastAPI (http://127.0.0.1:8000)
   async rewrites() {
     return [

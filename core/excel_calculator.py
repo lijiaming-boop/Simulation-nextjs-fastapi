@@ -4,7 +4,6 @@
 """
 import json
 import shutil
-from copy import copy
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -27,6 +26,13 @@ class ExcelCalculator:
         self.mapper = CellMapping()
         self.template_config = TemplateConfig()
         self.weather_service = weather_service or WeatherService()
+
+        project_root = Path(__file__).resolve().parent.parent
+        self.template_dir = project_root / "00_sample" / "模板测算表"
+        self.quotation_template_path = self.template_dir / "2026年空调云智控报价模板.xlsx"
+        self.scheme_template_path = self.template_dir / "空调系统数智化升级方案模板.docx"
+        self.quotation_filename = "ac_quotation.xlsx"
+        self.scheme_filename = "ac_scheme.docx"
 
     def calculate(
         self,
@@ -69,22 +75,9 @@ class ExcelCalculator:
         temp_excel = Path(output_path).parent / "calculation_result.xlsx"
         shutil.copy(template_path, temp_excel)
 
-        try:
-            # 优先使用 formulas 库（纯 Python，无需外部依赖）
-            result = self._calculate_with_formulas(data, temp_excel)
-        except Exception as e:
-            # 输出详细错误信息
-            import traceback
-            error_details = traceback.format_exc()
-            print("=" * 80)
-            print("❌ Excel计算失败，降级到mock结果")
-            print("=" * 80)
-            print(f"异常类型: {type(e).__name__}")
-            print(f"异常信息: {str(e)}")
-            print(f"\n完整堆栈跟踪:")
-            print(error_details)
-            print("=" * 80)
-            result = self._mock_result(data)
+        # 公式计算失败必须显式报错，严禁静默降级到 mock/默认值——
+        # 前端展示的是给销售报价用的节能率，假数据比报错危害更大
+        result = self._calculate_with_formulas(data, temp_excel)
 
         # 保存结果
         output_path = Path(output_path)
@@ -93,74 +86,11 @@ class ExcelCalculator:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
-        # 确保所有公式都被计算并写入
-        self._ensure_formulas_calculated(temp_excel)
-        
         # 生成简化版Excel文件
         self._create_simplified_excel(temp_excel, Path(output_path).parent / "simplified_result.xlsx")
         
         return str(output_path)
     
-    def _ensure_formulas_calculated(self, excel_path: Path):
-        """确保Excel中的所有公式都被计算并写入
-        
-        Args:
-            excel_path: Excel文件路径
-        """
-        import openpyxl
-        
-        # 加载工作簿
-        wb = openpyxl.load_workbook(excel_path)
-        
-        # 遍历所有工作表
-        for sheet_name in wb.sheetnames:
-            sheet = wb[sheet_name]
-            
-            # 遍历所有单元格
-            for row in range(1, sheet.max_row + 1):
-                for col in range(1, sheet.max_column + 1):
-                    cell = sheet.cell(row=row, column=col)
-                    
-                    # 如果是公式，尝试获取计算结果
-                    if cell.data_type == 'f':
-                        # 保存原始格式
-                        old_font = copy(cell.font)
-                        old_border = copy(cell.border)
-                        old_fill = copy(cell.fill)
-                        old_number_format = cell.number_format
-                        old_protection = copy(cell.protection)
-                        old_alignment = copy(cell.alignment)
-                        
-                        # 尝试多种方法获取计算结果
-                        calculated_value = None
-                        
-                        # 方法1: 使用displayed_value
-                        if hasattr(cell, 'displayed_value') and cell.displayed_value is not None:
-                            calculated_value = cell.displayed_value
-                        
-                        # 方法2: 使用internal_value
-                        elif hasattr(cell, 'internal_value') and cell.internal_value is not None:
-                            calculated_value = cell.internal_value
-                        
-                        # 方法3: 使用value（如果是数值类型）
-                        elif isinstance(cell.value, (int, float)):
-                            calculated_value = cell.value
-                        
-                        # 如果获取到计算结果，替换公式
-                        if calculated_value is not None:
-                            cell.value = calculated_value
-                            # 恢复格式
-                            cell.font = old_font
-                            cell.border = old_border
-                            cell.fill = old_fill
-                            cell.number_format = old_number_format
-                            cell.protection = old_protection
-                            cell.alignment = old_alignment
-        
-        # 保存工作簿
-        wb.save(excel_path)
-        wb.close()
-
     def _create_simplified_excel(self, original_excel_path: Path, simplified_excel_path: Path):
         """创建简化版Excel文件，创建新工作表并只复制需要保留的行
         
@@ -374,7 +304,7 @@ class ExcelCalculator:
                         end_row=new_end_row,
                         end_column=new_end_col
                     )
-                except:
+                except Exception:
                     pass
         
         # 删除原始工作表
@@ -397,8 +327,8 @@ class ExcelCalculator:
             计算结果字典（包含范围）
         """
         try:
-            import formulas
-            import openpyxl
+            import formulas  # noqa: F401  可用性探测
+            import openpyxl  # noqa: F401
         except ImportError as e:
             raise RuntimeError(f"Required library not installed: {e}")
 
@@ -483,6 +413,117 @@ class ExcelCalculator:
             formatted_result["monthly_data"].append(formatted_month)
         
         return formatted_result
+
+    def _generate_quotation(self, session_dir: str, filled_data: dict, result: dict):
+        """生成空调报价单
+
+        在产品价目表模板最前面插入「项目节能测算」汇总表，
+        写入项目信息与节能计算结果，另存到会话目录。
+        """
+        if not self.quotation_template_path.exists():
+            print(f"报价模板不存在: {self.quotation_template_path}")
+            return None
+
+        from openpyxl import load_workbook
+
+        quotation_path = Path(session_dir) / self.quotation_filename
+
+        try:
+            wb = load_workbook(self.quotation_template_path)
+
+            ws = wb.create_sheet("项目节能测算", 0)
+            ws.column_dimensions["A"].width = 22
+            ws.column_dimensions["B"].width = 30
+
+            rows = [
+                ("项目区域", filled_data.get("project_region", "")),
+                ("站房类型", filled_data.get("station_type", "")),
+                ("", ""),
+                ("电价 (元/kWh)", filled_data.get("electricity_price", "")),
+                ("数据完整率", f"{result.get('completeness', 0) * 100:.1f}%"),
+                ("", ""),
+                ("总节电量 (万kWh/年)", round(float(result.get("total_saving", 0)), 2)),
+                ("冷机节电 (万kWh/年)", round(float(result.get("chiller_saving", 0)), 2)),
+                ("水泵节电 (万kWh/年)", round(float(result.get("pump_saving", 0)), 2)),
+                ("冷却塔节电 (万kWh/年)", round(float(result.get("tower_saving", 0)), 2)),
+                ("", ""),
+                ("综合节能率", f"{result.get('energy_saving_rate', 0) * 100:.1f}%"),
+                ("节能率范围", result.get("energy_saving_rate_range", "")),
+            ]
+            ws["A1"] = "空调系统节能测算汇总"
+            for idx, (label, value) in enumerate(rows, start=2):
+                ws.cell(row=idx, column=1, value=label)
+                ws.cell(row=idx, column=2, value=value)
+
+            wb.save(quotation_path)
+            print(f"报价单已生成: {quotation_path}")
+            return str(quotation_path)
+
+        except Exception as e:
+            print(f"生成报价单失败: {str(e)}")
+            return None
+
+    def _generate_scheme_document(self, session_dir: str, filled_data: dict, result: dict):
+        """生成空调系统数智化升级方案文档
+
+        基于 docx 模板将正文段落中的【】占位符替换为实际项目数据，
+        固定输出到会话目录，供前端下载。
+        """
+        if not self.scheme_template_path.exists():
+            print(f"方案模板不存在: {self.scheme_template_path}")
+            return None
+
+        scheme_path = Path(session_dir) / self.scheme_filename
+
+        try:
+            from docx import Document
+        except ImportError:
+            print("生成方案文档需要 python-docx，已跳过")
+            return None
+
+        try:
+            mapping = self._build_scheme_mapping(filled_data, result)
+            document = Document(self.scheme_template_path)
+            for paragraph in document.paragraphs:
+                self._fill_paragraph(paragraph, mapping)
+            document.save(scheme_path)
+            print(f"方案文档已生成: {scheme_path}")
+            return str(scheme_path)
+        except Exception as e:
+            print(f"生成方案文档失败: {str(e)}")
+            return None
+
+    @staticmethod
+    def _fill_paragraph(paragraph, mapping: dict):
+        """将段落中的【】占位符替换为实际值"""
+        text = paragraph.text
+        if "【" not in text:
+            return
+        for key, value in mapping.items():
+            text = text.replace(key, str(value))
+        runs = paragraph.runs
+        if runs:
+            runs[0].text = text
+            for run in runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(text)
+
+    def _build_scheme_mapping(self, filled_data: dict, result: dict) -> dict:
+        """构造空调方案文档占位符到实际值的映射表"""
+        return {
+            "【项目区域】": str(filled_data.get("project_region", "")),
+            "【站房类型】": str(filled_data.get("station_type", "")),
+            "【数据时间段】": f"{datetime.now().year}年",
+            "【电价(元/kWh)】": str(filled_data.get("electricity_price", "0.6")),
+            "【数据完整率(%)】": f"{result.get('completeness', 0) * 100:.1f}",
+            "【总节电量(万kWh)】": f"{result.get('total_saving', 0):.1f}",
+            "【冷机节电(万kWh)】": f"{result.get('chiller_saving', 0):.1f}",
+            "【水泵节电(万kWh)】": f"{result.get('pump_saving', 0):.1f}",
+            "【冷却塔节电(万kWh)】": f"{result.get('tower_saving', 0):.1f}",
+            "【综合节能率(%)】": f"{result.get('energy_saving_rate', 0) * 100:.1f}",
+            "【节能率范围】": str(result.get("energy_saving_rate_range", "")),
+        }
 
     def _calculate_single_sheet(
         self,
@@ -587,6 +628,8 @@ class ExcelCalculator:
         wb.close()
 
         # 阶段4: 提取计算结果
+        _excel_error_prefixes = ("#",)  # #DIV/0!、#N/A、#VALUE! 等 Excel 错误值
+
         def get_result_value(result_field: str) -> float:
             """提取结果单元格的值"""
             cell = self.mapper.get_result_cell(result_field)
@@ -596,9 +639,25 @@ class ExcelCalculator:
                 value = result_data[cell_id]
                 if hasattr(value, 'value'):
                     value = value.value[0][0]
-                return float(value) if value is not None else 0.0
+                if value is None:
+                    return 0.0
+                text = str(value).strip()
+                if text.startswith(_excel_error_prefixes) and not _is_number(text):
+                    raise RuntimeError(
+                        f"Excel 公式结果为错误值 {text}（{sheet_name} {cell}，字段 {result_field}）。"
+                        "通常是输入数据缺失（如能耗/温差/频率为空）导致公式除零——"
+                        "请检查调研表提取与填充结果，而不是静默采用无效数值。"
+                    )
+                return float(value)
             else:
                 return 0.0
+
+        def _is_number(text: str) -> bool:
+            try:
+                float(text)
+                return True
+            except (TypeError, ValueError):
+                return False
 
         result = {
             "chiller_saving": get_result_value("chiller_saving_total"),
@@ -612,37 +671,3 @@ class ExcelCalculator:
         }
 
         return result
-
-    def _mock_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """生成 mock 结果用于测试 (formulas 库不可用时)"""
-        return {
-            # 节能率范围
-            "energy_saving_rate": 0.15,  # 向后兼容（下限值）
-            "energy_saving_rate_min": 0.12,
-            "energy_saving_rate_max": 0.18,
-            "energy_saving_rate_range": "12.0% - 18.0%",
-
-            # 分项节能量范围
-            "chiller_saving": 12.5,
-            "chiller_saving_min": 10.0,
-            "chiller_saving_max": 15.0,
-
-            "pump_saving": 3.2,
-            "pump_saving_min": 2.5,
-            "pump_saving_max": 4.0,
-
-            "tower_saving": 1.8,
-            "tower_saving_min": 1.5,
-            "tower_saving_max": 2.2,
-
-            "total_saving": 17.5,
-            "total_saving_min": 14.0,
-            "total_saving_max": 21.2,
-
-            # 元数据
-            "completeness": data["_metadata"]["final_completeness"],
-            "filled_count": data["_metadata"]["fill_count"],
-            "calculation_timestamp": datetime.now().isoformat(),
-            "calculation_method": "dual_sheet",
-            "mock": True  # 标记为 mock 数据
-        }

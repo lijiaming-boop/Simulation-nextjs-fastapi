@@ -27,7 +27,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from openpyxl import load_workbook
@@ -359,7 +358,7 @@ def _parse_chiller_row(ws: Worksheet, row: int) -> Optional[Dict[str, Any]]:
     chiller_type = _detect_chiller_type(type_str)
 
     # 名称：型号优先，否则用类型描述
-    name = model or type_str or f"主机组"
+    name = model or type_str or "主机组"
 
     return {
         "name": name,

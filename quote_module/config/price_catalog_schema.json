@@ -1,0 +1,240 @@
+{
+  "_version": "1.0",
+  "_description": "报价体系 Excel 解析配置 — build_price_catalog.py 据此解析各 sheet",
+
+  "sheet_discovery": {
+    "software_platform": {
+      "name_keywords": ["软件", "平台"],
+      "exclude_keywords": ["空调", "空压"],
+      "header_row": 2,
+      "data_start_row": 3,
+      "merged_columns": [1, 2],
+      "output_section": "software",
+      "columns": {
+        "module_name":      { "header_keywords": ["模块"] },
+        "category":         { "header_keywords": ["分类"] },
+        "function_name":    { "header_keywords": ["功能"] },
+        "config_type":      { "header_keywords": ["标配/选配"] },
+        "func_desc":        { "header_keywords": ["类型"] },
+        "standard_price":   { "header_keywords": ["标准底价"], "type": "number" },
+        "channel_price":    { "header_keywords": ["渠道底价"], "type": "number" }
+      }
+    },
+    "software_hvac": {
+      "name_keywords": ["软件", "空调"],
+      "header_row": 1,
+      "data_start_row": 2,
+      "merged_columns": [1],
+      "output_section": "software",
+      "key_prefix": "hvac_",
+      "columns": {
+        "module_name":      { "header_keywords": ["模块"] },
+        "function_name":    { "header_keywords": ["功能"] },
+        "standard_price":   { "header_keywords": ["标准底价"], "type": "number" },
+        "channel_price":    { "header_keywords": ["渠道底价"], "type": "number" }
+      }
+    },
+    "software_compressor": {
+      "name_keywords": ["空压"],
+      "exclude_keywords": ["硬件", "三方"],
+      "header_row": 3,
+      "data_start_row": 4,
+      "merged_columns": [1],
+      "output_section": "software",
+      "key_prefix": "compressor_",
+      "columns": {
+        "module_name":      { "header_keywords": ["模块"] },
+        "function_name":    { "header_keywords": ["设备类型"] },
+        "standard_price":   { "header_keywords": ["标准底价"], "type": "number" },
+        "channel_price":    { "header_keywords": ["非联营"], "type": "number" }
+      }
+    },
+    "hardware_our": {
+      "name_keywords": ["一方硬件"],
+      "header_row": 2,
+      "data_start_row": 4,
+      "merged_columns": [],
+      "output_section": "hardware",
+      "columns": {
+        "device_name":      { "header_keywords": ["产品名称"] },
+        "model":            { "header_keywords": ["型号"] },
+        "channel_price":    { "header_keywords": ["渠道销售价格"], "type": "number" },
+        "standard_price":   { "header_keywords": ["市场指导价格"], "type": "number" }
+      }
+    },
+    "hardware_third_party": {
+      "name_keywords": ["三方硬件", "能管"],
+      "exclude_keywords": ["空调", "空压"],
+      "header_row": 2,
+      "data_start_row": 4,
+      "merged_columns": [2],
+      "output_section": "hardware",
+      "columns": {
+        "device_name":      { "header_keywords": ["产品/服务"] },
+        "spec_desc":        { "header_keywords": ["描述"] },
+        "brand":            { "header_keywords": ["品牌"] },
+        "model":            { "header_keywords": ["型号"] },
+        "channel_price":    { "header_keywords": ["渠道销售"], "type": "number" },
+        "standard_price":   { "header_keywords": ["市场指导价格"], "type": "number" },
+        "remark":           { "header_keywords": ["备注"] }
+      }
+    },
+    "flow_meter_ac": {
+      "name_keywords": ["三方硬件", "空调"],
+      "header_row": 2,
+      "data_start_row": 4,
+      "merged_columns": [],
+      "output_section": "flow_meters",
+      "columns": {
+        "device_name":      { "header_keywords": ["产品名称"] },
+        "model":            { "header_keywords": ["型号"] },
+        "spec":             { "header_keywords": ["规格参数"] },
+        "brand":            { "header_keywords": ["品牌"] },
+        "install_type":     { "header_keywords": ["安装方式"] },
+        "channel_price":    { "header_keywords": ["渠道销售价格"], "type": "number" },
+        "standard_price":   { "header_keywords": ["市场指导价格"], "type": "number" }
+      }
+    },
+    "hardware_third_party_compressor": {
+      "name_keywords": ["三方硬件", "空压"],
+      "header_row": 2,
+      "data_start_row": 4,
+      "merged_columns": [],
+      "output_section": "hardware",
+      "columns": {
+        "device_name":      { "header_keywords": ["产品名称"] },
+        "model":            { "header_keywords": ["产品型号"] },
+        "spec_desc":        { "header_keywords": ["规格参数"] },
+        "brand":            { "header_keywords": ["品牌"] },
+        "channel_price":    { "header_keywords": ["渠道销售价格"], "type": "number" },
+        "standard_price":   { "header_keywords": ["市场指导价格"], "type": "number" }
+      }
+    },
+    "flow_meter_compressor": {
+      "name_keywords": ["三方硬件", "空压"],
+      "header_row": 2,
+      "data_start_row": 4,
+      "merged_columns": [],
+      "output_section": "flow_meters",
+      "columns": {
+        "device_name":      { "header_keywords": ["产品名称"] },
+        "model":            { "header_keywords": ["产品型号"] },
+        "spec":             { "header_keywords": ["规格参数"] },
+        "brand":            { "header_keywords": ["品牌"] },
+        "channel_price":    { "header_keywords": ["渠道销售价格"], "type": "number" },
+        "standard_price":   { "header_keywords": ["市场指导价格"], "type": "number" }
+      }
+    },
+    "construction": {
+      "name_keywords": ["施工调试", "施工"],
+      "header_row": 2,
+      "data_start_row": 3,
+      "merged_columns": [],
+      "output_section": "construction",
+      "columns": {
+        "service_name":     { "header_keywords": ["产品/服务"] },
+        "unit_price":       { "header_keywords": ["施工单价"], "type": "number" }
+      }
+    },
+    "tax_template": {
+      "name_keywords": ["报价模板"],
+      "header_row": null,
+      "data_start_row": null,
+      "output_section": "tax_info",
+      "columns": {}
+    }
+  },
+
+  "hardware_rules": {
+    "description": "硬件识别规则：从三方硬件能管 sheet 中识别硬件类型",
+    "rules": [
+      {
+        "key": "adl400_meter",
+        "name": "三相多功能电表",
+        "brand": "安科瑞",
+        "model": "ADL400",
+        "match": "field:device_name contains 'ADL400' or (field:device_name contains '三相' and field:spec_desc contains 'ADL400')",
+        "description": "ADL400 三相电表"
+      },
+      {
+        "key": "cable_per_meter",
+        "name": "屏蔽双绞线",
+        "brand": "国产优质",
+        "model": "RVSP2×1.0",
+        "match": "field:device_name contains_any ['通讯线','RVSP','屏蔽双绞']",
+        "fallback_price": {"standard": 6.375, "channel": 5.1}
+      },
+      {
+        "key": "comm_box",
+        "name": "通讯箱",
+        "brand": "国产优质",
+        "model": "/",
+        "match": "field:device_name contains '通讯箱'",
+        "description": "报价体系无此硬件价格，匹配后仍需人工确认"
+      },
+      {
+        "key": "power_supply",
+        "name": "开关电源",
+        "brand": "国产优质",
+        "model": "/",
+        "match": "field:device_name contains '开关电源'",
+        "fallback_price": {"standard": 200, "channel": 200}
+      },
+      {
+        "key": "air_switch",
+        "name": "空气开关",
+        "brand": "国产优质",
+        "model": "/",
+        "match": "field:device_name contains '空气开关'",
+        "fallback_price": {"standard": 50, "channel": 50}
+      }
+    ]
+  },
+
+  "construction_rules": {
+    "description": "施工条目识别规则",
+    "rules": [
+      { "key": "meter_install",     "match": "service contains '新装电表'", "name": "新装电表施工", "fallback_price": 500 },
+      { "key": "cloudbox_install",   "match": "service contains '通讯箱'", "name": "通讯箱安装", "fallback_price": 350 },
+      { "key": "cable_concentrated", "match": "service contains '集中区域'", "name": "通讯线敷设(集中区域)", "fallback_price": 100 },
+      { "key": "cable_scattered",    "match": "service contains '分散区域'", "name": "通讯线敷设(分散区域)", "fallback_price": 120 }
+    ]
+  },
+
+  "software_key_mapping": {
+    "_description": "软件名称 → 系统 key 映射（compat_map 外部化）",
+    "基础平台": "platform",
+    "系统基础平台": "platform",
+    "批次单耗": "batch_analysis",
+    "批次能耗": "batch_analysis",
+    "移动端": "mobile_cloud",
+    "微信小程序": "mobile_cloud",
+    "定制化报表": "extra_report",
+    "定制报表": "extra_report",
+    "定制化大屏": "extra_dashboard",
+    "定制大屏": "extra_dashboard",
+    "站房组态": "extra_topology",
+    "能流拓扑": "extra_topology",
+    "标准API数据输出": "api_development",
+    "接口开发": "api_development"
+  },
+
+  "hardware_defaults": {
+    "_description": "硬件辅材兜底默认值（仅用于报价体系中有明确价格的物料）",
+    "power_supply": { "name": "开关电源", "brand": "国产优质", "model": "/", "standard_price": 200, "channel_price": 200 },
+    "air_switch":   { "name": "空气开关", "brand": "国产优质", "model": "/", "standard_price": 50,  "channel_price": 50 }
+  },
+
+  "validation": {
+    "anchors": {
+      "hardware.adl400_meter.standard_price": 305,
+      "hardware.adl400_meter.channel_price": 245,
+      "water_meters.DN50.standard_price": 1080,
+      "software.platform.standard_price": 60000,
+      "software.platform.channel_price": 42000
+    },
+    "required_sections": ["software", "hardware", "water_meters", "flow_meters", "ct_mapping", "construction"],
+    "price_min": 0,
+    "warn_on_missing_software_key": true
+  }
+}

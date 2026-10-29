@@ -533,6 +533,28 @@ function AcResultPanel({
       {/* 置信度说明 */}
       <ConfidenceNote r={r} />
 
+      {/* 报价单 + 方案文档下载（与空压模块位置一致） */}
+      <div className="space-y-3 border-t border-green-200 pt-4">
+        <h4 className="text-sm font-medium text-green-900">📥 下载文件</h4>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <a
+            href={resultDownloadUrl(sessionId, "ac_quotation.xlsx")}
+            className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+            download
+          >
+            下载空调报价单 Excel
+          </a>
+          <a
+            href={resultDownloadUrl(sessionId, "ac_scheme.docx")}
+            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+            download
+          >
+            下载数智化升级方案 Word
+          </a>
+        </div>
+        <p className="text-xs text-gray-500">报价单含项目节能测算汇总 + 云智控产品价目表；方案文档含项目现状分析与节能效益预估</p>
+      </div>
+
       {/* 下载区 */}
       <DownloadSection sessionId={sessionId} />
 

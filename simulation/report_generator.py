@@ -1,6 +1,4 @@
 """报告生成"""
-from typing import Dict
-import pandas as pd
 
 
 def generate_report_markdown(summary: dict, config_desc: str = "") -> str:

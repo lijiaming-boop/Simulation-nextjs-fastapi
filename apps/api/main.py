@@ -9,10 +9,15 @@ from dotenv import load_dotenv
 # 加载项目根目录的 .env 文件
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from fastapi import FastAPI
+import json as _json
+import logging
+import time
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import router as api_router
+from .routers import public_router, router as api_router
 from .deps import startup_banner
 
 
@@ -39,6 +44,26 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(api_router, prefix="/api")
+    application.include_router(public_router, prefix="/api")  # /health 匿名探活
+
+    # 最小可观测（清单5）：request_id + JSON 结构化访问日志
+    logger = logging.getLogger("api.access")
+
+    @application.middleware("http")
+    async def access_log(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+        started = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        logger.info(_json.dumps({
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "user": request.headers.get("x-user-info", "") and "authenticated" or "anonymous",
+        }, ensure_ascii=False))
+        return response
 
     return application
 
